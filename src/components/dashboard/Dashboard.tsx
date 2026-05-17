@@ -188,7 +188,7 @@ function HealthHero() {
             <div className="absolute inset-0 grid place-items-center">
               <div className="text-center">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1">Saúde Geral</div>
-                <div className="font-display text-6xl leading-none tabular-nums">{score}</div>
+                <div className="font-display text-[56px] font-semibold leading-none tabular-nums">{score}</div>
                 <div className="text-[11px] text-muted-foreground mt-1">de 100</div>
               </div>
             </div>
@@ -205,9 +205,9 @@ function HealthHero() {
               <span className="text-muted-foreground text-[11px]">·</span>
               <Trend value={factoryHealth.trend} />
             </div>
-            <h2 className="font-display text-3xl lg:text-4xl leading-[1.05] tracking-tight text-balance">
+            <h2 className="font-display text-[28px] lg:text-[36px] font-semibold leading-[1.05] tracking-tight text-balance">
               A fábrica está operando<br />
-              <span className="text-muted-foreground italic">acima do ritmo esperado.</span>
+              <span className="text-muted-foreground font-normal">acima do ritmo esperado.</span>
             </h2>
             <div className="flex items-center gap-2 mt-4 text-[11px] text-muted-foreground">
               <Clock className="size-3.5" />
@@ -290,7 +290,7 @@ function Metric({ label, value, accent = false }: { label: string; value: string
       <div className={`text-[10px] uppercase tracking-wider mb-1 ${accent ? "text-background/70" : "text-muted-foreground"}`}>
         {label}
       </div>
-      <div className="font-display text-2xl tabular-nums leading-none">{value}</div>
+      <div className="font-display text-[22px] font-semibold tabular-nums leading-none">{value}</div>
     </div>
   );
 }
@@ -308,7 +308,7 @@ function GoalsRow() {
               <div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Meta · {g.label}</div>
                 <div className="mt-2 flex items-baseline gap-2">
-                  <span className="font-display text-4xl tabular-nums">{g.produced.toLocaleString("pt-BR")}</span>
+                  <span className="font-display text-[34px] font-semibold tabular-nums">{g.produced.toLocaleString("pt-BR")}</span>
                   <span className="text-muted-foreground text-sm">/ {g.target.toLocaleString("pt-BR")}</span>
                 </div>
               </div>
@@ -430,7 +430,7 @@ function AllowanceCard() {
         </ResponsiveContainer>
         <div className="absolute inset-0 grid place-items-center pointer-events-none">
           <div className="text-center">
-            <div className="font-display text-3xl tabular-nums">{allowance.ratePct}%</div>
+            <div className="font-display text-[26px] font-semibold tabular-nums">{allowance.ratePct}%</div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">de {allowance.targetPct}%</div>
           </div>
         </div>
@@ -645,7 +645,7 @@ function RankingCard() {
           const pct = (r.score / r.target) * 100;
           return (
             <div key={r.name} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0">
-              <div className={`size-7 rounded-md grid place-items-center font-display text-sm tabular-nums ${
+              <div className={`size-7 rounded-md grid place-items-center font-display text-[13px] font-semibold tabular-nums ${
                 i === 0 ? "bg-foreground text-background" : "bg-secondary text-foreground"
               }`}>
                 {i + 1}
@@ -783,7 +783,7 @@ export function Dashboard() {
               <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-1">
                 Visão geral · Turno A
               </div>
-              <h1 className="font-display text-4xl lg:text-5xl tracking-tight leading-none">
+              <h1 className="font-display text-[36px] lg:text-[44px] font-semibold tracking-tight leading-none">
                 Bom dia, Jonatas.
               </h1>
             </div>
@@ -851,7 +851,7 @@ function HealthSummary() {
         {items.map(({ icon: Icon, label, value }) => (
           <div key={label} className="rounded-xl border border-border/40 bg-secondary/30 p-4">
             <Icon className="size-4 text-muted-foreground mb-3" />
-            <div className="font-display text-2xl tabular-nums">{value}</div>
+            <div className="font-display text-[22px] font-semibold tabular-nums">{value}</div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">{label}</div>
           </div>
         ))}
