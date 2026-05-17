@@ -205,7 +205,7 @@ function HealthHero() {
               <span className="text-muted-foreground text-[11px]">·</span>
               <Trend value={factoryHealth.trend} />
             </div>
-            <h2 className="font-display text-[26px] font-semibold lg:text-4xl leading-[1.05] tracking-tight text-balance">
+            <h2 className="font-display text-[28px] lg:text-[36px] font-semibold leading-[1.05] tracking-tight text-balance">
               A fábrica está operando<br />
               <span className="text-muted-foreground font-normal">acima do ritmo esperado.</span>
             </h2>
@@ -783,7 +783,7 @@ export function Dashboard() {
               <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-1">
                 Visão geral · Turno A
               </div>
-              <h1 className="font-display text-[34px] font-semibold lg:text-5xl tracking-tight leading-none">
+              <h1 className="font-display text-[36px] lg:text-[44px] font-semibold tracking-tight leading-none">
                 Bom dia, Jonatas.
               </h1>
             </div>
