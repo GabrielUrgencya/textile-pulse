@@ -207,7 +207,7 @@ function HealthHero() {
             </div>
             <h2 className="font-display text-[26px] font-semibold lg:text-4xl leading-[1.05] tracking-tight text-balance">
               A fábrica está operando<br />
-              <span className="text-muted-foreground italic">acima do ritmo esperado.</span>
+              <span className="text-muted-foreground font-normal">acima do ritmo esperado.</span>
             </h2>
             <div className="flex items-center gap-2 mt-4 text-[11px] text-muted-foreground">
               <Clock className="size-3.5" />
