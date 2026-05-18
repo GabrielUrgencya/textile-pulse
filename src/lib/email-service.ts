@@ -9,7 +9,14 @@
 import { Resend } from "resend";
 import * as Sentry from "@sentry/nextjs";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 
 const FROM_ADDRESS =
   process.env.RESEND_FROM_ADDRESS || "LISION <noreply@lision.app>";
@@ -33,7 +40,7 @@ export async function sendEmail(payload: EmailPayload): Promise<boolean> {
   }
 
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: FROM_ADDRESS,
       to: Array.isArray(payload.to) ? payload.to : [payload.to],
       subject: payload.subject,
