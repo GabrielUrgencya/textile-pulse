@@ -47,6 +47,7 @@ function isPublicRoute(request: NextRequest): boolean {
     path.startsWith("/api/auth/pin") ||
     path.startsWith("/api/auth/logout") ||
     path.startsWith("/api/kiosk/") ||
+    path.startsWith("/api/faction/") ||
     path === "/api/health"
   );
 }

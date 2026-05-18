@@ -104,6 +104,7 @@ model Tenant {
   notifications    Notification[]
   auditLogs        AuditLog[]
   kioskTokens      KioskToken[]
+  factionTokens    FactionToken[]
 
   @@map("tenants")
 }
@@ -271,8 +272,9 @@ model Faction {
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  tenant    Tenant            @relation(fields: [tenantId], references: [id])
-  shipments FactionShipment[]
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  shipments     FactionShipment[]
+  factionTokens FactionToken[]
 
   @@map("factions")
 }
@@ -443,6 +445,24 @@ model KioskToken {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@map("kiosk_tokens")
+}
+
+/// Faction Tokens — Portal da Facção com token + PIN (Story 6.1)
+model FactionToken {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  factionId      String    @map("faction_id") @db.Uuid
+  token          String    @unique @default(uuid()) @db.Uuid
+  pinHash        String    @map("pin_hash")
+  name           String
+  isActive       Boolean   @default(true) @map("is_active")
+  lastAccessedAt DateTime? @map("last_accessed_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  faction Faction @relation(fields: [factionId], references: [id])
+
+  @@map("faction_tokens")
 }
 
 /// OpsClock (controle de motoristas na fábrica)
