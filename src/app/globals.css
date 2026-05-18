@@ -1,5 +1,4 @@
-@import "tailwindcss" source(none);
-@source "../src";
+@import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -43,7 +42,7 @@
 :root {
   --radius: 0.75rem;
 
-  /* Pure black/white monochrome palette */
+  /* Pure black/white monochrome palette — OKLCH */
   --background: oklch(0.07 0 0);
   --foreground: oklch(0.98 0 0);
 

@@ -1,0 +1,444 @@
+// ============================================================
+// LISION — Schema Prisma v1.0
+// Sistema de Rastreamento de Produção Têxtil por Lotes
+// Baseado em: ARCHITECTURE.md v2.0 (Seção 4.4)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum LotStatus {
+  CREATED
+  IN_CUT
+  IN_TRIMS
+  IN_PRODUCTION
+  AT_FACTION
+  IN_FINISHING
+  IN_CLEANING
+  IN_QUALITY
+  IN_PACKING
+  IN_STOCK
+  PARTIALLY_STOCKED
+}
+
+enum ScanEventType {
+  STAGE_IN
+  STAGE_OUT
+  FACTION_SEND
+  FACTION_RECEIVE
+  FACTION_RETURN
+  DEFECT_DETECTED
+  REWORK_COMPLETE
+  ADUANA_CHECK
+  STOCK_ENTRY
+  DISCARD
+}
+
+enum UserRole {
+  ADMIN
+  GERENTE
+  COORDENADOR
+  OPERADOR
+  FACCAO
+}
+
+enum AlertColor {
+  GREEN
+  AMBER
+  RED
+}
+
+enum DefectType {
+  COSTURA
+  TECIDO
+  AVIAMENTO
+  OUTRO
+}
+
+enum DefectSeverity {
+  LEVE
+  MEDIO
+  GRAVE
+}
+
+enum ShipmentStatus {
+  PREPARING
+  SENT
+  RECEIVED_BY_FACTION
+  PARTIALLY_RETURNED
+  RETURNED
+  OVERDUE
+}
+
+// ============================================================
+// CORE TABLES
+// ============================================================
+
+/// Multi-tenant: cada fábrica = 1 tenant
+model Tenant {
+  id               String    @id @default(uuid()) @db.Uuid
+  name             String
+  slug             String    @unique
+  logoUrl          String?   @map("logo_url")
+  settings         Json      @default("{\"allowance_target\":0.002,\"daily_target\":500,\"weekly_target\":2500,\"monthly_target\":20000,\"currency\":\"BRL\",\"timezone\":\"America/Sao_Paulo\",\"work_hours_per_day\":8,\"work_days_per_week\":5.5}")
+  subscriptionPlan String    @default("pilot") @map("subscription_plan")
+  isActive         Boolean   @default(true) @map("is_active")
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  profiles         Profile[]
+  stages           Stage[]
+  productionOrders ProductionOrder[]
+  factions         Faction[]
+  drivers          Driver[]
+  dailyMetrics     DailyMetric[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+
+  @@map("tenants")
+}
+
+/// Perfis de usuário (extends Supabase auth.users)
+model Profile {
+  id        String   @id @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  fullName  String   @map("full_name")
+  phone     String?
+  email     String?
+  role      UserRole @default(OPERADOR)
+  sector    String?
+  pinCode   String?  @map("pin_code")
+  avatarUrl String?  @map("avatar_url")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  tenant              Tenant             @relation(fields: [tenantId], references: [id])
+  createdOrders       ProductionOrder[]  @relation("OrderCreatedBy")
+  createdLots         Lot[]              @relation("LotCreatedBy")
+  holdingLots         Lot[]              @relation("LotCurrentHolder")
+  scanEvents          ScanEvent[]
+  detectedDefects     DefectRecord[]     @relation("DefectDetectedBy")
+  resolvedDefects     DefectRecord[]     @relation("DefectResolvedBy")
+  sentShipments       FactionShipment[]  @relation("ShipmentSentBy")
+  receivedShipments   FactionShipment[]  @relation("ShipmentReceivedBy")
+  aduanaValidations   AduanaValidation[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+
+  @@map("profiles")
+}
+
+/// Etapas configuráveis por tenant
+model Stage {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  name                  String
+  displayName           String   @map("display_name")
+  orderIndex            Int      @map("order_index")
+  type                  String
+  isMandatory           Boolean  @default(true) @map("is_mandatory")
+  expectedDurationHours Decimal? @map("expected_duration_hours") @db.Decimal(6, 2)
+  color                 String?
+  icon                  String?
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  lots       Lot[]
+  scanEvents ScanEvent[]
+
+  @@unique([tenantId, orderIndex])
+  @@map("stages")
+}
+
+/// Ordens de Produção (OP Mãe)
+/// meta_coefficient: fonte da verdade em reference_targets, snapshot aqui na criação da OP
+model ProductionOrder {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  opNumber        String   @map("op_number")
+  productName     String   @map("product_name")
+  reference       String?
+  description     String?
+  totalQuantity   Int      @map("total_quantity")
+  /// Snapshot de reference_targets.meta_coefficient na criação da OP (Item 13 v2.1)
+  metaCoefficient Decimal  @default(1.0) @map("meta_coefficient") @db.Decimal(4, 2)
+  status          String   @default("OPEN")
+  erpReference    String?  @map("erp_reference")
+  priority        Int      @default(0)
+  notes           String?
+  createdById     String?  @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  createdBy Profile? @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  lots      Lot[]
+
+  @@unique([tenantId, opNumber])
+  @@map("production_orders")
+}
+
+/// Lotes (subdivisão da OP Mãe — ENTIDADE CENTRAL DE RASTREIO)
+model Lot {
+  id                    String    @id @default(uuid()) @db.Uuid
+  poId                  String    @map("po_id") @db.Uuid
+  barcode               String    @unique
+  lotNumber             String    @map("lot_number")
+  quantity              Int
+  quantityOk            Int       @default(0) @map("quantity_ok")
+  quantityDefect        Int       @default(0) @map("quantity_defect")
+  quantityStocked       Int       @default(0) @map("quantity_stocked")
+  quantityDiscarded     Int       @default(0) @map("quantity_discarded")
+  currentStageId        String?   @map("current_stage_id") @db.Uuid
+  status                LotStatus @default(CREATED)
+  destination           String?
+  currentHolderId       String?   @map("current_holder_id") @db.Uuid
+  enteredCurrentStageAt DateTime? @map("entered_current_stage_at") @db.Timestamptz
+  createdById           String?   @map("created_by") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  productionOrder   ProductionOrder    @relation(fields: [poId], references: [id])
+  currentStage      Stage?             @relation(fields: [currentStageId], references: [id])
+  currentHolder     Profile?           @relation("LotCurrentHolder", fields: [currentHolderId], references: [id])
+  createdBy         Profile?           @relation("LotCreatedBy", fields: [createdById], references: [id])
+  scanEvents        ScanEvent[]
+  defectRecords     DefectRecord[]
+  factionShipments  FactionShipment[]
+  aduanaValidations AduanaValidation[]
+
+  @@unique([poId, lotNumber])
+  @@index([barcode])
+  @@index([status])
+  @@index([currentStageId])
+  @@map("lots")
+}
+
+/// Scan Events (APPEND-ONLY — cada bipagem é um evento imutável)
+model ScanEvent {
+  id               String        @id @default(uuid()) @db.Uuid
+  lotId            String        @map("lot_id") @db.Uuid
+  stageId          String?       @map("stage_id") @db.Uuid
+  userId           String        @map("user_id") @db.Uuid
+  eventType        ScanEventType @map("event_type")
+  scannedAt        DateTime      @default(now()) @map("scanned_at") @db.Timestamptz
+  quantityScanned  Int?          @map("quantity_scanned")
+  quantityOk       Int?          @map("quantity_ok")
+  quantityDefect   Int?          @map("quantity_defect")
+  deviceInfo       String?       @map("device_info")
+  metadata         Json          @default("{}")
+  isOfflineSync    Boolean       @default(false) @map("is_offline_sync")
+  offlineScannedAt DateTime?     @map("offline_scanned_at") @db.Timestamptz
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  lot   Lot     @relation(fields: [lotId], references: [id])
+  stage Stage?  @relation(fields: [stageId], references: [id])
+  user  Profile @relation(fields: [userId], references: [id])
+
+  @@index([lotId])
+  @@index([scannedAt])
+  @@index([userId])
+  @@index([eventType])
+  @@map("scan_events")
+}
+
+/// Facções externas
+/// Campos desnormalizados removidos (Item 5 v2.1 - Opção A): total_pieces_sent, total_pieces_returned, total_defects, defect_rate
+/// Quantidades computadas via query sobre faction_shipments/defect_records
+model Faction {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  name            String
+  type            String
+  contactName     String?  @map("contact_name")
+  contactPhone    String?  @map("contact_phone")
+  address         String?
+  pricePerPiece   Decimal? @map("price_per_piece") @db.Decimal(10, 2)
+  avgDeliveryDays Int      @default(7) @map("avg_delivery_days")
+  rating          Decimal  @default(5.0) @db.Decimal(3, 1)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  shipments FactionShipment[]
+
+  @@map("factions")
+}
+
+/// Envios para Facção
+model FactionShipment {
+  id                String         @id @default(uuid()) @db.Uuid
+  factionId         String         @map("faction_id") @db.Uuid
+  lotId             String         @map("lot_id") @db.Uuid
+  driverId          String?        @map("driver_id") @db.Uuid
+  quantitySent      Int            @map("quantity_sent")
+  quantityReturned  Int            @default(0) @map("quantity_returned")
+  quantityDefective Int            @default(0) @map("quantity_defective")
+  sentAt            DateTime       @default(now()) @map("sent_at") @db.Timestamptz
+  expectedReturnAt  DateTime       @map("expected_return_at") @db.Timestamptz
+  actualReturnAt    DateTime?      @map("actual_return_at") @db.Timestamptz
+  sentById          String?        @map("sent_by") @db.Uuid
+  receivedById      String?        @map("received_by") @db.Uuid
+  status            ShipmentStatus @default(PREPARING)
+  paymentValue      Decimal?       @map("payment_value") @db.Decimal(10, 2)
+  deductionValue    Decimal        @default(0) @map("deduction_value") @db.Decimal(10, 2)
+  notes             String?
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  faction    Faction       @relation(fields: [factionId], references: [id])
+  lot        Lot           @relation(fields: [lotId], references: [id])
+  driver     Driver?       @relation(fields: [driverId], references: [id])
+  sentBy     Profile?      @relation("ShipmentSentBy", fields: [sentById], references: [id])
+  receivedBy Profile?      @relation("ShipmentReceivedBy", fields: [receivedById], references: [id])
+  defects    DefectRecord[]
+
+  @@map("faction_shipments")
+}
+
+/// Defeitos registrados por lote
+model DefectRecord {
+  id                String         @id @default(uuid()) @db.Uuid
+  lotId             String         @map("lot_id") @db.Uuid
+  shipmentId        String?        @map("shipment_id") @db.Uuid
+  quantity          Int            @default(1)
+  defectType        DefectType     @map("defect_type")
+  severity          DefectSeverity
+  description       String?
+  photoUrl          String?        @map("photo_url")
+  detectedById      String         @map("detected_by") @db.Uuid
+  detectedAt        DateTime       @default(now()) @map("detected_at") @db.Timestamptz
+  resolvedById      String?        @map("resolved_by") @db.Uuid
+  resolvedAt        DateTime?      @map("resolved_at") @db.Timestamptz
+  resolvedQuantity  Int            @default(0) @map("resolved_quantity")
+  discardedQuantity Int            @default(0) @map("discarded_quantity")
+  resolution        String?
+  status            String         @default("PENDING")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  lot        Lot              @relation(fields: [lotId], references: [id])
+  shipment   FactionShipment? @relation(fields: [shipmentId], references: [id])
+  detectedBy Profile          @relation("DefectDetectedBy", fields: [detectedById], references: [id])
+  resolvedBy Profile?         @relation("DefectResolvedBy", fields: [resolvedById], references: [id])
+
+  @@map("defect_records")
+}
+
+/// Motoristas
+model Driver {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  name         String
+  phone        String?
+  vehiclePlate String?  @map("vehicle_plate")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  shipments FactionShipment[]
+  opsClock  OpsClock[]
+
+  @@map("drivers")
+}
+
+/// Aduana Validations
+model AduanaValidation {
+  id           String     @id @default(uuid()) @db.Uuid
+  lotId        String     @map("lot_id") @db.Uuid
+  shipmentId   String?    @map("shipment_id") @db.Uuid
+  driverId     String?    @map("driver_id") @db.Uuid
+  scannedById  String     @map("scanned_by") @db.Uuid
+  alertColor   AlertColor @map("alert_color")
+  alertReason  String?    @map("alert_reason")
+  alertIgnored Boolean    @default(false) @map("alert_ignored")
+  ignoreReason String?    @map("ignore_reason")
+  scannedAt    DateTime   @default(now()) @map("scanned_at") @db.Timestamptz
+
+  lot       Lot     @relation(fields: [lotId], references: [id])
+  scannedBy Profile @relation(fields: [scannedById], references: [id])
+
+  @@map("aduana_validations")
+}
+
+/// Métricas diárias agregadas
+model DailyMetric {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  date           DateTime @db.Date
+  totalProduced  Int      @default(0) @map("total_produced")
+  totalStocked   Int      @default(0) @map("total_stocked")
+  totalDefects   Int      @default(0) @map("total_defects")
+  totalLost      Int      @default(0) @map("total_lost")
+  allowanceRate  Decimal  @default(0) @map("allowance_rate") @db.Decimal(6, 4)
+  targetMet      Decimal  @default(0) @map("target_met") @db.Decimal(5, 2)
+  topProducers   Json     @default("[]") @map("top_producers")
+  stageTimes     Json     @default("{}") @map("stage_times")
+  factionSummary Json     @default("{}") @map("faction_summary")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, date])
+  @@map("daily_metrics")
+}
+
+/// Notificações
+model Notification {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  userId     String?   @map("user_id") @db.Uuid
+  targetRole UserRole? @map("target_role")
+  type       String
+  title      String
+  message    String
+  severity   String    @default("INFO")
+  readAt     DateTime? @map("read_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id])
+  user   Profile? @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+/// Audit Log
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  details    Json     @default("{}")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id])
+  user   Profile? @relation(fields: [userId], references: [id])
+
+  @@map("audit_log")
+}
+
+/// OpsClock (controle de motoristas na fábrica)
+model OpsClock {
+  id               String    @id @default(uuid()) @db.Uuid
+  driverId         String    @map("driver_id") @db.Uuid
+  arrivedAt        DateTime  @map("arrived_at") @db.Timestamptz
+  loadingStartedAt DateTime? @map("loading_started_at") @db.Timestamptz
+  loadingEndedAt   DateTime? @map("loading_ended_at") @db.Timestamptz
+  departedAt       DateTime? @map("departed_at") @db.Timestamptz
+
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@map("ops_clock")
+}

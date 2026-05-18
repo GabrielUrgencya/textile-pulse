@@ -6,7 +6,7 @@ import {
   Search, Settings, Sparkles, Target, TrendingUp, Users, Zap,
 } from "lucide-react";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
+  Area, AreaChart, CartesianGrid, Cell,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
