@@ -29,16 +29,16 @@ import {
 import { cn } from "@/lib/utils";
 
 const mainItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Produção", url: "/production/orders", icon: Factory },
-  { title: "Scan", url: "/scan", icon: ScanLine },
-  { title: "Qualidade", url: "/quality", icon: ShieldCheck },
-  { title: "Facções", url: "/factions", icon: Truck },
-  { title: "Equipe", url: "/team", icon: Users },
+  { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard className="size-4 shrink-0" /> },
+  { title: "Produção", url: "/production/orders", icon: <Factory className="size-4 shrink-0" /> },
+  { title: "Scan", url: "/scan", icon: <ScanLine className="size-4 shrink-0" /> },
+  { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" /> },
+  { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" /> },
+  { title: "Equipe", url: "/team", icon: <Users className="size-4 shrink-0" /> },
 ];
 
 const bottomItems = [
-  { title: "Configurações", url: "/settings", icon: Settings },
+  { title: "Configurações", url: "/settings", icon: <Settings className="size-4 shrink-0" /> },
 ];
 
 export function AppSidebar() {
@@ -143,11 +143,10 @@ function NavLink({
   active,
   collapsed,
 }: {
-  item: { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
+  item: { title: string; url: string; icon: React.ReactNode };
   active: boolean;
   collapsed: boolean;
 }) {
-  const Icon = item.icon;
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -162,7 +161,7 @@ function NavLink({
         isActive={active}
       >
         <Link href={item.url}>
-          <Icon className="size-4 shrink-0" />
+          {item.icon}
           {!collapsed && <span>{item.title}</span>}
         </Link>
       </SidebarMenuButton>

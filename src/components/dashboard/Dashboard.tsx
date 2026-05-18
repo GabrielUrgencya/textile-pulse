@@ -110,8 +110,12 @@ function TopBar({ now }: { now: Date }) {
           </div>
           <div className="hidden md:flex items-center gap-2 text-right leading-tight">
             <div className="text-right">
-              <div className="font-mono text-sm tabular-nums">{time}</div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground capitalize">{date}</div>
+              <div className="font-mono text-sm tabular-nums" suppressHydrationWarning>
+                {time}
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground capitalize" suppressHydrationWarning>
+                {date}
+              </div>
             </div>
           </div>
           <button className="size-9 rounded-lg bg-secondary/60 border border-border/60 grid place-items-center hover:bg-secondary transition">

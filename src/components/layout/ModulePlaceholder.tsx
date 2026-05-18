@@ -1,15 +1,15 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { Menu } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export function ModulePlaceholder({
   title,
-  icon: Icon,
+  icon,
 }: {
   title: string;
-  icon: LucideIcon;
+  icon: ReactNode;
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground relative">
@@ -30,7 +30,7 @@ export function ModulePlaceholder({
 
       <main className="relative px-6 lg:px-10 py-16 max-w-[1600px] mx-auto">
         <div className="flex flex-col items-center justify-center text-center py-24">
-          <Icon className="size-16 text-foreground opacity-20 mb-8" strokeWidth={1.5} />
+          {icon}
           <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-2">
             Módulo
           </div>
