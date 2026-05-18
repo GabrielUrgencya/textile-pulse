@@ -275,6 +275,7 @@ model Faction {
   tenant        Tenant            @relation(fields: [tenantId], references: [id])
   shipments     FactionShipment[]
   factionTokens FactionToken[]
+  notifications Notification[]
 
   @@map("factions")
 }
@@ -299,6 +300,13 @@ model FactionShipment {
   notes             String?
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  /// Portal fields (Story 6.2)
+  factionConfirmedAt      DateTime? @map("faction_confirmed_at") @db.Timestamptz
+  factionEstimatedReturn  DateTime? @map("faction_estimated_return") @db.Date
+  factionEstimatedReturnAt DateTime? @map("faction_estimated_return_at") @db.Timestamptz
+  rescheduleCount         Int       @default(0) @map("reschedule_count")
+  lastRescheduledAt       DateTime? @map("last_rescheduled_at") @db.Timestamptz
 
   faction    Faction       @relation(fields: [factionId], references: [id])
   lot        Lot           @relation(fields: [lotId], references: [id])
@@ -329,6 +337,12 @@ model DefectRecord {
   resolution        String?
   status            String         @default("PENDING")
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  /// Portal fields (Story 6.2)
+  factionResponse         String?   @map("faction_response")
+  factionResponseAt       DateTime? @map("faction_response_at") @db.Timestamptz
+  contestationReason      String?   @map("contestation_reason")
+  contestationResolvedAt  DateTime? @map("contestation_resolved_at") @db.Timestamptz
 
   lot        Lot              @relation(fields: [lotId], references: [id])
   shipment   FactionShipment? @relation(fields: [shipmentId], references: [id])
@@ -408,8 +422,12 @@ model Notification {
   readAt     DateTime? @map("read_at") @db.Timestamptz
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
-  tenant Tenant   @relation(fields: [tenantId], references: [id])
-  user   Profile? @relation(fields: [userId], references: [id])
+  /// Portal field (Story 6.2)
+  factionId  String?  @map("faction_id") @db.Uuid
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  user    Profile? @relation(fields: [userId], references: [id])
+  faction Faction? @relation(fields: [factionId], references: [id])
 
   @@map("notifications")
 }
