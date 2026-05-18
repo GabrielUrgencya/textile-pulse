@@ -1,3 +1,5 @@
+"use client";
+
 import { ScanLine } from "lucide-react";
 import { ModulePlaceholder } from "@/components/layout/ModulePlaceholder";
 
