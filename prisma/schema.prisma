@@ -103,6 +103,7 @@ model Tenant {
   dailyMetrics     DailyMetric[]
   notifications    Notification[]
   auditLogs        AuditLog[]
+  kioskTokens      KioskToken[]
 
   @@map("tenants")
 }
@@ -427,6 +428,21 @@ model AuditLog {
   user   Profile? @relation(fields: [userId], references: [id])
 
   @@map("audit_log")
+}
+
+/// Kiosk Tokens — TV Dashboard sem login (Item 8 v2.1)
+model KioskToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  token     String   @unique @default(uuid()) @db.Uuid
+  name      String
+  scope     String   @default("dashboard")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("kiosk_tokens")
 }
 
 /// OpsClock (controle de motoristas na fábrica)
