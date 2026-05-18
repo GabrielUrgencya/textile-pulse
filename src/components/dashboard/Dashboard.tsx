@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Bell,
-  CircleDot, Clock, Command, Factory, Gauge, Layers, MoveRight,
+  CircleDot, Clock, Command, Factory, Gauge, Layers, Menu, MoveRight,
   Search, Settings, Sparkles, Target, TrendingUp, Users, Zap,
 } from "lucide-react";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Area, AreaChart, CartesianGrid, Cell,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -89,20 +90,16 @@ function TopBar({ now }: { now: Date }) {
   return (
     <header className="sticky top-0 z-30 backdrop-blur-xl bg-background/70 border-b border-border/60">
       <div className="flex items-center gap-6 px-6 lg:px-10 h-16">
+        <SidebarTrigger className="md:hidden -ml-2 size-9 rounded-lg bg-secondary/60 border border-border/60 text-muted-foreground hover:text-foreground">
+          <Menu className="size-4" />
+        </SidebarTrigger>
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-lg bg-foreground text-background grid place-items-center">
-            <Factory className="size-4.5" strokeWidth={2.2} />
-          </div>
           <div className="leading-tight">
-            <div className="font-display text-xl">Trama</div>
+            <div className="font-display text-xl">LISION</div>
             <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground -mt-0.5">
-              Production Intelligence
+              Rastreamento Têxtil
             </div>
           </div>
-        </div>
-
-        <div className="hidden md:flex items-center gap-2 ml-4">
-          <NavItem active>Dashboard</NavItem>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -113,8 +110,12 @@ function TopBar({ now }: { now: Date }) {
           </div>
           <div className="hidden md:flex items-center gap-2 text-right leading-tight">
             <div className="text-right">
-              <div className="font-mono text-sm tabular-nums">{time}</div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground capitalize">{date}</div>
+              <div className="font-mono text-sm tabular-nums" suppressHydrationWarning>
+                {time}
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground capitalize" suppressHydrationWarning>
+                {date}
+              </div>
             </div>
           </div>
           <button className="size-9 rounded-lg bg-secondary/60 border border-border/60 grid place-items-center hover:bg-secondary transition">
@@ -827,7 +828,7 @@ export function Dashboard() {
             <div className="inline-flex items-center gap-2">
               <Command className="size-3" /> v2.4 · sincronizando com PCP a cada 30s
             </div>
-            <div>Trama Production Intelligence</div>
+            <div>LISION — Rastreamento Têxtil</div>
           </footer>
         </main>
       </div>
