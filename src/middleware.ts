@@ -31,7 +31,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Protect API routes (except auth endpoints)
-  if (request.nextUrl.pathname.startsWith("/api/") && !isAuthRoute(request)) {
+  if (request.nextUrl.pathname.startsWith("/api/") && !isPublicRoute(request)) {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -40,12 +40,13 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
-function isAuthRoute(request: NextRequest): boolean {
+function isPublicRoute(request: NextRequest): boolean {
   const path = request.nextUrl.pathname;
   return (
     path.startsWith("/api/auth/login") ||
     path.startsWith("/api/auth/pin") ||
-    path.startsWith("/api/auth/logout")
+    path.startsWith("/api/auth/logout") ||
+    path === "/api/health"
   );
 }
 
