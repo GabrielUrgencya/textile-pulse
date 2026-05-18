@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Factory,
   LayoutDashboard,
@@ -43,8 +44,22 @@ const bottomItems = [
 
 export function AppSidebar() {
   const pathname = usePathname() ?? "/dashboard";
+  const router = useRouter();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setLoggingOut(false);
+    }
+  }
 
   const isActive = (url: string) =>
     url === "/dashboard" ? pathname === url : pathname.startsWith(url);
@@ -125,7 +140,9 @@ export function AppSidebar() {
                 </div>
               </div>
               <button
-                className="size-8 shrink-0 rounded-md border border-border/60 bg-secondary/40 grid place-items-center text-muted-foreground hover:text-foreground hover:bg-secondary transition"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="size-8 shrink-0 rounded-md border border-border/60 bg-secondary/40 grid place-items-center text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-50 transition"
                 aria-label="Sair"
               >
                 <LogOut className="size-4" />
