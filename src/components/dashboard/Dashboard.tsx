@@ -11,10 +11,15 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
+import { useDashboardData } from "@/hooks/use-dashboard-data";
+import type { KpiResult, ChartDataPoint, ProductionOrder } from "@/hooks/use-dashboard-data";
+
+// Mock data — used as fallback when not authenticated or APIs unavailable
 import {
-  activity, allowance, defects, factions, factoryHealth, goals,
-  hourlyProduction, productionOrders, projection, ranking,
-  stages, stalledBatches, tickers,
+  activity, allowance, defects, factions, factoryHealth, goals as mockGoals,
+  hourlyProduction as mockHourlyProduction, productionOrders as mockOrders,
+  projection, ranking as mockRanking, stages as mockStages,
+  stalledBatches, tickers as mockTickers,
 } from "./data";
 
 /* ------------------------------ small atoms ------------------------------ */
@@ -83,9 +88,21 @@ function Trend({ value, suffix = "%" }: { value: number; suffix?: string }) {
 
 /* --------------------------------- TopBar --------------------------------- */
 
-function TopBar({ now }: { now: Date }) {
+function buildTickers(kpis: KpiResult | null) {
+  if (!kpis) return mockTickers;
+  return [
+    { label: "Peças hoje", value: kpis.produced_today.toLocaleString("pt-BR"), trend: 0 },
+    { label: "Taxa defeito", value: `${kpis.defect_rate.toFixed(1)}%`, trend: 0 },
+    { label: "Lotes ativos", value: kpis.total_lots.toString(), trend: 0 },
+    { label: "OPs ativas", value: kpis.active_ops.toString(), trend: 0 },
+    { label: "Total scans", value: kpis.total_scans.toLocaleString("pt-BR"), trend: 0 },
+  ];
+}
+
+function TopBar({ now, kpis }: { now: Date; kpis: KpiResult | null }) {
   const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const date = now.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  const tickerItems = buildTickers(kpis);
 
   return (
     <header className="sticky top-0 z-30 backdrop-blur-xl bg-background/70 border-b border-border/60">
@@ -132,11 +149,11 @@ function TopBar({ now }: { now: Date }) {
 
       {/* Ticker */}
       <div className="flex items-center gap-8 px-6 lg:px-10 h-10 border-t border-border/60 overflow-x-auto text-[12px]">
-        {tickers.map((t) => (
+        {tickerItems.map((t) => (
           <div key={t.label} className="flex items-center gap-2 whitespace-nowrap shrink-0">
             <span className="text-muted-foreground uppercase tracking-wider text-[10px]">{t.label}</span>
             <span className="font-mono tabular-nums font-medium">{t.value}</span>
-            <Trend value={t.trend} />
+            {t.trend !== 0 && <Trend value={t.trend} />}
           </div>
         ))}
       </div>
@@ -285,11 +302,20 @@ function Metric({ label, value, accent = false }: { label: string; value: string
 
 /* ------------------------------ Goal Cards ------------------------------- */
 
-function GoalsRow() {
+function GoalsRow({ kpis }: { kpis: KpiResult | null }) {
+  // When authenticated with real data, map KPIs to goals; otherwise use mock
+  const goals = kpis
+    ? [
+        { label: "Hoje", produced: kpis.produced_today, target: 2100, unit: "peças" },
+        { label: "Lotes", produced: kpis.total_lots, target: 100, unit: "lotes" },
+        { label: "OPs ativas", produced: kpis.active_ops, target: 15, unit: "ordens" },
+      ]
+    : mockGoals;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:col-span-12">
       {goals.map((g, i) => {
-        const pct = (g.produced / g.target) * 100;
+        const pct = g.target > 0 ? (g.produced / g.target) * 100 : 0;
         return (
           <Card key={g.label} className="group">
             <div className="flex items-start justify-between">
@@ -316,7 +342,7 @@ function GoalsRow() {
 
             <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
               <span>{g.unit}</span>
-              <span>faltam {(g.target - g.produced).toLocaleString("pt-BR")}</span>
+              <span>faltam {Math.max(0, g.target - g.produced).toLocaleString("pt-BR")}</span>
             </div>
           </Card>
         );
@@ -327,8 +353,22 @@ function GoalsRow() {
 
 /* ---------------------------- Hourly Production --------------------------- */
 
-function HourlyChart() {
-  const max = Math.max(...hourlyProduction.map(h => h.value));
+function formatChartData(chart: ChartDataPoint[]) {
+  if (chart.length === 0) return mockHourlyProduction;
+  return chart.map((point) => {
+    const hour = point.period.includes("T")
+      ? `${new Date(point.period).getHours().toString().padStart(2, "0")}h`
+      : point.period;
+    return { hour, value: point.scans, ideal: point.defects };
+  });
+}
+
+function HourlyChart({ chart }: { chart: ChartDataPoint[] }) {
+  const chartData = formatChartData(chart);
+  const maxEntry = chartData.reduce((a, b) => (b.value > a.value ? b : a), chartData[0] || { hour: "-", value: 0 });
+  const minEntry = chartData.reduce((a, b) => (b.value < a.value ? b : a), chartData[0] || { hour: "-", value: 0 });
+  const total = chartData.reduce((a, b) => a + b.value, 0);
+
   return (
     <Card className="lg:col-span-8">
       <CardHeader
@@ -337,13 +377,13 @@ function HourlyChart() {
         right={
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-foreground" /> bipado</span>
-            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-px border-t border-dashed border-muted-foreground" /> ritmo ideal</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-px border-t border-dashed border-muted-foreground" /> defeitos</span>
           </div>
         }
       />
       <div className="h-[260px] -mx-2">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={hourlyProduction} margin={{ top: 10, right: 12, left: -10, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 12, left: -10, bottom: 0 }}>
             <defs>
               <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="oklch(0.98 0 0)" stopOpacity={0.25} />
@@ -369,9 +409,9 @@ function HourlyChart() {
         </ResponsiveContainer>
       </div>
       <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/40">
-        <SubMetric label="Maior produção" value={`10h · ${max}`} />
-        <SubMetric label="Menor produção" value="12h · 92" />
-        <SubMetric label="Total no turno" value={hourlyProduction.reduce((a, b) => a + b.value, 0).toLocaleString("pt-BR")} />
+        <SubMetric label="Maior produção" value={`${maxEntry.hour} · ${maxEntry.value}`} />
+        <SubMetric label="Menor produção" value={`${minEntry.hour} · ${minEntry.value}`} />
+        <SubMetric label="Total no turno" value={total.toLocaleString("pt-BR")} />
       </div>
     </Card>
   );
@@ -433,32 +473,79 @@ function AllowanceCard() {
 
 /* -------------------------------- Stages --------------------------------- */
 
-function StagesCard() {
+function StagesCard({ kpis }: { kpis: KpiResult | null }) {
+  // Use real lots_by_stage when available, otherwise fallback to mock stages
+  const useReal = kpis && kpis.lots_by_stage.length > 0;
+
+  if (!useReal) {
+    // Render mock stages with full detail
+    const maxPieces = Math.max(...mockStages.map(x => x.pieces));
+    return (
+      <Card className="lg:col-span-7">
+        <CardHeader
+          eyebrow="Fluxo da produção"
+          title="Peças por etapa"
+          right={<Layers className="size-4 text-muted-foreground" />}
+        />
+        <div className="space-y-2.5">
+          {mockStages.map((s, i) => {
+            const w = (s.pieces / maxPieces) * 100;
+            return (
+              <div key={s.name} className="group">
+                <div className="flex items-center justify-between text-[12px] mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{s.name}</span>
+                    {s.over && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/15 text-destructive border border-destructive/30">
+                        acima do tempo
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-mono tabular-nums text-muted-foreground">
+                    <span className="text-foreground">{s.pieces}</span> peças · {s.lots} lotes · {s.avgTime}
+                    <span className="text-muted-foreground/60"> / esperado {s.expected}</span>
+                  </div>
+                </div>
+                <div className="relative h-7 rounded-md bg-secondary/40 overflow-hidden border border-border/40">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${w}%` }}
+                    transition={{ duration: 1, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+                    className={`absolute inset-y-0 left-0 ${s.over ? "bg-gradient-to-r from-destructive/40 to-destructive/10" : "bg-gradient-to-r from-foreground/80 to-foreground/20"}`}
+                  />
+                  <div className="absolute inset-y-0 left-0 w-full flex items-center px-2 text-[10px] font-mono text-foreground/70">
+                    {Array.from({ length: 30 }).map((_, k) => (
+                      <span key={k} className="w-1 h-0.5 mr-1 bg-foreground/10" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    );
+  }
+
+  const stageData = kpis.lots_by_stage;
+  const maxCount = Math.max(...stageData.map(s => s.count));
+
   return (
     <Card className="lg:col-span-7">
       <CardHeader
         eyebrow="Fluxo da produção"
-        title="Peças por etapa"
+        title="Lotes por etapa"
         right={<Layers className="size-4 text-muted-foreground" />}
       />
       <div className="space-y-2.5">
-        {stages.map((s, i) => {
-          const total = Math.max(...stages.map(x => x.pieces));
-          const w = (s.pieces / total) * 100;
+        {stageData.map((s, i) => {
+          const w = (s.count / maxCount) * 100;
           return (
-            <div key={s.name} className="group">
+            <div key={s.stage_id} className="group">
               <div className="flex items-center justify-between text-[12px] mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{s.name}</span>
-                  {s.over && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/15 text-destructive border border-destructive/30">
-                      acima do tempo
-                    </span>
-                  )}
-                </div>
+                <span className="font-medium">{s.stage_name}</span>
                 <div className="font-mono tabular-nums text-muted-foreground">
-                  <span className="text-foreground">{s.pieces}</span> peças · {s.lots} lotes · {s.avgTime}
-                  <span className="text-muted-foreground/60"> / esperado {s.expected}</span>
+                  <span className="text-foreground">{s.count}</span> lotes
                 </div>
               </div>
               <div className="relative h-7 rounded-md bg-secondary/40 overflow-hidden border border-border/40">
@@ -466,7 +553,7 @@ function StagesCard() {
                   initial={{ width: 0 }}
                   animate={{ width: `${w}%` }}
                   transition={{ duration: 1, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
-                  className={`absolute inset-y-0 left-0 ${s.over ? "bg-gradient-to-r from-destructive/40 to-destructive/10" : "bg-gradient-to-r from-foreground/80 to-foreground/20"}`}
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-foreground/80 to-foreground/20"
                 />
                 <div className="absolute inset-y-0 left-0 w-full flex items-center px-2 text-[10px] font-mono text-foreground/70">
                   {Array.from({ length: 30 }).map((_, k) => (
@@ -484,8 +571,9 @@ function StagesCard() {
 
 /* ------------------------------ Defects Card ------------------------------ */
 
-function DefectsCard() {
+function DefectsCard({ kpis }: { kpis: KpiResult | null }) {
   const max = Math.max(...defects.byType.map(d => d.value));
+  const defectRateDisplay = kpis ? `${kpis.defect_rate.toFixed(1)}%` : `${defects.reworkQueue}`;
   return (
     <Card className="lg:col-span-5">
       <CardHeader
@@ -493,7 +581,7 @@ function DefectsCard() {
         title="Qualidade no chão de fábrica"
       />
       <div className="grid grid-cols-3 gap-3 mb-5">
-        <Metric label="Fila retrabalho" value={defects.reworkQueue.toString()} accent />
+        <Metric label={kpis ? "Taxa defeito" : "Fila retrabalho"} value={defectRateDisplay} accent />
         <Metric label="Hoje" value={defects.today.toString()} />
         <Metric label="No mês" value={defects.month.toString()} />
       </div>
@@ -521,13 +609,91 @@ function DefectsCard() {
 
 /* ----------------------------- Production Orders --------------------------- */
 
-function OrdersCard() {
+function formatStatus(status: string) {
+  const s = status.toLowerCase();
+  if (s === "active" || s === "em dia") return { label: "ATIVO", style: "bg-success/10 text-success border-success/20" };
+  if (s === "completed" || s === "done") return { label: "CONCLUÍDA", style: "bg-secondary text-muted-foreground border-border/40" };
+  if (s === "cancelled") return { label: "CANCELADA", style: "bg-destructive/10 text-destructive border-destructive/20" };
+  return { label: status.toUpperCase(), style: "bg-warning/10 text-warning border-warning/20" };
+}
+
+function OrdersCard({ orders, isAuthenticated }: { orders: ProductionOrder[]; isAuthenticated: boolean }) {
+  // Use real orders when authenticated, fallback to mock orders
+  const useMock = !isAuthenticated || orders.length === 0;
+
+  if (useMock) {
+    return (
+      <Card className="lg:col-span-8" pad={false}>
+        <div className="p-5 pb-3">
+          <CardHeader
+            eyebrow="Ordens de produção"
+            title="OPs em andamento"
+            right={
+              <button className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+                ver todas <MoveRight className="size-3" />
+              </button>
+            }
+          />
+        </div>
+        <div className="grid grid-cols-12 px-5 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-y border-border/40 bg-secondary/20">
+          <div className="col-span-3">OP</div>
+          <div className="col-span-3">Produto</div>
+          <div className="col-span-3">Progresso</div>
+          <div className="col-span-2">Prazo</div>
+          <div className="col-span-1 text-right">Status</div>
+        </div>
+        <div>
+          {mockOrders.map((o, i) => {
+            const pct = (o.done / o.total) * 100;
+            return (
+              <motion.div
+                key={o.id}
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.05 * i }}
+                className="grid grid-cols-12 items-center px-5 py-3.5 text-[13px] border-b border-border/30 last:border-0 hover:bg-secondary/20 transition"
+              >
+                <div className="col-span-3">
+                  <div className="font-mono text-[11px] text-muted-foreground">{o.id}</div>
+                </div>
+                <div className="col-span-3 font-medium truncate">{o.name}</div>
+                <div className="col-span-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+                      <div className="h-full bg-foreground rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="font-mono text-[11px] text-muted-foreground tabular-nums w-10 text-right">{pct.toFixed(0)}%</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1 font-mono">
+                    {o.done.toLocaleString("pt-BR")} / {o.total.toLocaleString("pt-BR")}
+                  </div>
+                </div>
+                <div className="col-span-2 font-mono text-[12px] text-muted-foreground">{o.due}</div>
+                <div className="col-span-1 text-right">
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap ${
+                      o.status === "EM DIA" ? "bg-success/10 text-success border-success/20" :
+                      o.status === "ATENÇÃO" ? "bg-warning/10 text-warning border-warning/20" :
+                      "bg-destructive/10 text-destructive border-destructive/20"
+                    }`}
+                  >
+                    {o.status}
+                  </span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="lg:col-span-8" pad={false}>
       <div className="p-5 pb-3">
         <CardHeader
           eyebrow="Ordens de produção"
-          title="OPs em andamento"
+          title="OPs recentes"
           right={
             <button className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
               ver todas <MoveRight className="size-3" />
@@ -537,14 +703,15 @@ function OrdersCard() {
       </div>
       <div className="grid grid-cols-12 px-5 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-y border-border/40 bg-secondary/20">
         <div className="col-span-3">OP</div>
-        <div className="col-span-3">Produto</div>
-        <div className="col-span-3">Progresso</div>
-        <div className="col-span-2">Prazo</div>
+        <div className="col-span-4">Produto</div>
+        <div className="col-span-2">Quantidade</div>
+        <div className="col-span-2">Criada em</div>
         <div className="col-span-1 text-right">Status</div>
       </div>
       <div>
-        {productionOrders.map((o, i) => {
-          const pct = (o.done / o.total) * 100;
+        {orders.map((o, i) => {
+          const st = formatStatus(o.status);
+          const createdAt = new Date(o.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
           return (
             <motion.div
               key={o.id}
@@ -554,30 +721,16 @@ function OrdersCard() {
               className="grid grid-cols-12 items-center px-5 py-3.5 text-[13px] border-b border-border/30 last:border-0 hover:bg-secondary/20 transition"
             >
               <div className="col-span-3">
-                <div className="font-mono text-[11px] text-muted-foreground">{o.id}</div>
+                <div className="font-mono text-[11px] text-muted-foreground">{o.op_number}</div>
               </div>
-              <div className="col-span-3 font-medium truncate">{o.name}</div>
-              <div className="col-span-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
-                    <div className="h-full bg-foreground rounded-full" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="font-mono text-[11px] text-muted-foreground tabular-nums w-10 text-right">{pct.toFixed(0)}%</span>
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-1 font-mono">
-                  {o.done.toLocaleString("pt-BR")} / {o.total.toLocaleString("pt-BR")}
-                </div>
+              <div className="col-span-4 font-medium truncate">{o.product_name}</div>
+              <div className="col-span-2 font-mono text-[12px] text-muted-foreground">
+                {o.total_quantity.toLocaleString("pt-BR")}
               </div>
-              <div className="col-span-2 font-mono text-[12px] text-muted-foreground">{o.due}</div>
+              <div className="col-span-2 font-mono text-[12px] text-muted-foreground">{createdAt}</div>
               <div className="col-span-1 text-right">
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap ${
-                    o.status === "EM DIA" ? "bg-success/10 text-success border-success/20" :
-                    o.status === "ATENÇÃO" ? "bg-warning/10 text-warning border-warning/20" :
-                    "bg-destructive/10 text-destructive border-destructive/20"
-                  }`}
-                >
-                  {o.status}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap ${st.style}`}>
+                  {st.label}
                 </span>
               </div>
             </motion.div>
@@ -620,7 +773,44 @@ function StalledCard() {
   );
 }
 
-function RankingCard() {
+function RankingCard({ kpis }: { kpis: KpiResult | null }) {
+  const hasRealData = kpis && kpis.top_producers.length > 0;
+
+  if (!hasRealData) {
+    // Fallback to mock ranking
+    return (
+      <Card className="lg:col-span-5">
+        <CardHeader
+          eyebrow="Produtividade · hoje"
+          title="Ranking de operadores"
+          right={<Users className="size-4 text-muted-foreground" />}
+        />
+        <div className="space-y-2">
+          {mockRanking.map((r, i) => {
+            const pct = (r.score / r.target) * 100;
+            return (
+              <div key={r.name} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0">
+                <div className={`size-7 rounded-md grid place-items-center font-display text-[13px] font-semibold tabular-nums ${
+                  i === 0 ? "bg-foreground text-background" : "bg-secondary text-foreground"
+                }`}>
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-medium truncate">{r.name}</div>
+                  <div className="text-[10px] text-muted-foreground">{r.sector}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono tabular-nums text-sm">{r.score}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">{pct.toFixed(0)}% meta</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="lg:col-span-5">
       <CardHeader
@@ -629,26 +819,22 @@ function RankingCard() {
         right={<Users className="size-4 text-muted-foreground" />}
       />
       <div className="space-y-2">
-        {ranking.map((r, i) => {
-          const pct = (r.score / r.target) * 100;
-          return (
-            <div key={r.name} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0">
-              <div className={`size-7 rounded-md grid place-items-center font-display text-[13px] font-semibold tabular-nums ${
-                i === 0 ? "bg-foreground text-background" : "bg-secondary text-foreground"
-              }`}>
-                {i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium truncate">{r.name}</div>
-                <div className="text-[10px] text-muted-foreground">{r.sector}</div>
-              </div>
-              <div className="text-right">
-                <div className="font-mono tabular-nums text-sm">{r.score}</div>
-                <div className="text-[10px] text-muted-foreground font-mono">{pct.toFixed(0)}% meta</div>
-              </div>
+        {kpis.top_producers.slice(0, 5).map((r, i) => (
+          <div key={r.user_id} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0">
+            <div className={`size-7 rounded-md grid place-items-center font-display text-[13px] font-semibold tabular-nums ${
+              i === 0 ? "bg-foreground text-background" : "bg-secondary text-foreground"
+            }`}>
+              {i + 1}
             </div>
-          );
-        })}
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-medium truncate">{r.full_name}</div>
+              <div className="text-[10px] text-muted-foreground">{r.scan_count} bipagens</div>
+            </div>
+            <div className="text-right">
+              <div className="font-mono tabular-nums text-sm">{r.scan_count}</div>
+            </div>
+          </div>
+        ))}
       </div>
     </Card>
   );
@@ -749,6 +935,8 @@ function ActivityCard() {
 
 export function Dashboard() {
   const [now, setNow] = useState(new Date());
+  const { data } = useDashboardData();
+
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
@@ -758,7 +946,7 @@ export function Dashboard() {
     <div className="min-h-screen bg-background text-foreground relative">
       <div className="fixed inset-0 bg-grid opacity-30 pointer-events-none" />
       <div className="relative">
-        <TopBar now={now} />
+        <TopBar now={now} kpis={data.kpis} />
 
         <main className="px-6 lg:px-10 py-6 lg:py-8 max-w-[1600px] mx-auto">
           {/* Section title */}
@@ -793,22 +981,22 @@ export function Dashboard() {
             <HealthHero />
             <ProjectionCard />
 
-            <GoalsRow />
+            <GoalsRow kpis={data.kpis} />
 
-            <HourlyChart />
+            <HourlyChart chart={data.chart} />
             <AllowanceCard />
 
-            <StagesCard />
-            <DefectsCard />
+            <StagesCard kpis={data.kpis} />
+            <DefectsCard kpis={data.kpis} />
 
-            <OrdersCard />
+            <OrdersCard orders={data.orders} isAuthenticated={data.isAuthenticated} />
             <StalledCard />
 
-            <RankingCard />
+            <RankingCard kpis={data.kpis} />
             <FactionsCard />
 
             <ActivityCard />
-            <HealthSummary />
+            <HealthSummary kpis={data.kpis} />
           </div>
 
           <footer className="mt-10 pt-6 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
@@ -825,13 +1013,21 @@ export function Dashboard() {
 
 /* ----------------------------- Health Summary ----------------------------- */
 
-function HealthSummary() {
-  const items = [
-    { icon: Gauge,      label: "OEE",        value: "87%" },
-    { icon: Target,     label: "Meta dia",   value: "87.7%" },
-    { icon: Activity,   label: "Ritmo",      value: "218/h" },
-    { icon: TrendingUp, label: "vs ontem",   value: "+6.2%" },
-  ];
+function HealthSummary({ kpis }: { kpis: KpiResult | null }) {
+  const items = kpis
+    ? [
+        { icon: Gauge,      label: "Peças hoje",   value: kpis.produced_today.toLocaleString("pt-BR") },
+        { icon: Target,     label: "Taxa defeito",  value: `${kpis.defect_rate.toFixed(1)}%` },
+        { icon: Activity,   label: "Total scans",  value: kpis.total_scans.toLocaleString("pt-BR") },
+        { icon: TrendingUp, label: "OPs ativas",   value: kpis.active_ops.toString() },
+      ]
+    : [
+        { icon: Gauge,      label: "OEE",        value: "87%" },
+        { icon: Target,     label: "Meta dia",   value: "87.7%" },
+        { icon: Activity,   label: "Ritmo",      value: "218/h" },
+        { icon: TrendingUp, label: "vs ontem",   value: "+6.2%" },
+      ];
+
   return (
     <Card className="lg:col-span-7">
       <CardHeader eyebrow="Resumo" title="KPIs do turno" />
@@ -849,8 +1045,19 @@ function HealthSummary() {
           <Sparkles className="size-3" /> Insight automático
         </div>
         <p className="text-[13px] leading-relaxed text-foreground/90">
-          Costura B está concentrando <span className="font-semibold">42% do gargalo</span> do turno.
-          Realocar 2 operadores de Acabamento pode recuperar até <span className="font-semibold">180 peças</span> até o fim do dia.
+          {kpis ? (
+            <>
+              Hoje foram registradas <span className="font-semibold">{kpis.produced_today.toLocaleString("pt-BR")} bipagens</span> com taxa de defeito de <span className="font-semibold">{kpis.defect_rate.toFixed(1)}%</span>.
+              {kpis.lots_by_stage.length > 0 && (
+                <> Existem <span className="font-semibold">{kpis.total_lots} lotes</span> distribuídos em {kpis.lots_by_stage.length} etapas.</>
+              )}
+            </>
+          ) : (
+            <>
+              Costura B está concentrando <span className="font-semibold">42% do gargalo</span> do turno.
+              Realocar 2 operadores de Acabamento pode recuperar até <span className="font-semibold">180 peças</span> até o fim do dia.
+            </>
+          )}
         </p>
       </div>
     </Card>
