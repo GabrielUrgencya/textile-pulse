@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Bell,
-  CircleDot, Clock, Command, Factory, Gauge, Layers, Menu, MoveRight,
+  CircleDot, Clock, Command, Gauge, Layers, Menu, MoveRight,
   Search, Settings, Sparkles, Target, TrendingUp, Users, Zap,
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -144,19 +144,6 @@ function TopBar({ now }: { now: Date }) {
   );
 }
 
-function NavItem({ children, active = false }: { children: React.ReactNode; active?: boolean }) {
-  return (
-    <div
-      className={`px-3 py-1.5 rounded-md text-sm transition cursor-pointer ${
-        active
-          ? "bg-foreground text-background font-medium"
-          : "text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {children}
-    </div>
-  );
-}
 
 /* --------------------------- Factory Health Hero -------------------------- */
 
