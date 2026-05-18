@@ -1,0 +1,25 @@
+{
+  "name": "LISION Portal",
+  "short_name": "LISION",
+  "description": "Portal de acompanhamento para facções da Liserie",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "/portal",
+  "scope": "/portal",
+  "theme_color": "#0d0d0d",
+  "background_color": "#0d0d0d",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

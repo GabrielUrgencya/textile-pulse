@@ -1,8 +1,23 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { InstallPrompt } from "./install-prompt";
 
 export const metadata: Metadata = {
   title: "LISION Portal — Facção",
   description: "Portal de acompanhamento para facções da Liserie",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "LISION",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0d0d0d",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function PortalLayout({
@@ -13,6 +28,7 @@ export default function PortalLayout({
   return (
     <div className="min-h-dvh bg-background text-foreground">
       {children}
+      <InstallPrompt />
     </div>
   );
 }
