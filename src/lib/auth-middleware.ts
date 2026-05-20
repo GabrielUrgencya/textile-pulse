@@ -1,25 +1,31 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "./supabase-server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Validates the Supabase session and returns the authenticated user.
- * Use in protected API Route Handlers to enforce authentication.
+ * Creates a Supabase client and validates the session in one step.
+ * Returns both the client (for RLS queries) and the user.
  *
- * Returns NextResponse with 401 if no valid session, otherwise the user object.
+ * The middleware already blocks unauthenticated requests to /api/* routes,
+ * but this provides a typed user object for route handlers that need it
+ * (e.g., created_by fields) and the supabase client for data queries.
  */
-export async function withAuth() {
+export async function withAuth(): Promise<
+  | { supabase: SupabaseClient; user: NonNullable<Awaited<ReturnType<SupabaseClient["auth"]["getSession"]>>["data"]["session"]>["user"]; error: null }
+  | { supabase: null; user: null; error: NextResponse }
+> {
   const supabase = createSupabaseServerClient();
   const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (error || !user) {
+  if (!session?.user) {
     return {
+      supabase: null,
       user: null,
       error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
 
-  return { user, error: null };
+  return { supabase, user: session.user, error: null };
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Factory,
   LayoutDashboard,
@@ -44,7 +44,6 @@ const bottomItems = [
 
 export function AppSidebar() {
   const pathname = usePathname() ?? "/dashboard";
-  const router = useRouter();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const [loggingOut, setLoggingOut] = useState(false);
@@ -54,8 +53,7 @@ export function AppSidebar() {
     setLoggingOut(true);
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/login");
-      router.refresh();
+      window.location.href = "/login";
     } catch {
       setLoggingOut(false);
     }
@@ -177,7 +175,7 @@ function NavLink({
         )}
         isActive={active}
       >
-        <Link href={item.url}>
+        <Link href={item.url} prefetch>
           {item.icon}
           {!collapsed && <span>{item.title}</span>}
         </Link>

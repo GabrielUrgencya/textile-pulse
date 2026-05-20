@@ -5,8 +5,6 @@ import type { NextRequest } from "next/server";
 /** Session duration: 8 hours (factory shift) */
 const SESSION_MAX_AGE = 8 * 60 * 60; // 28800 seconds
 
-const PUBLIC_PAGES = ["/login"];
-
 const PUBLIC_API_PREFIXES = [
   "/api/auth/login",
   "/api/auth/pin",
@@ -16,8 +14,26 @@ const PUBLIC_API_PREFIXES = [
 ];
 
 export async function middleware(request: NextRequest) {
-  const response = NextResponse.next();
   const path = request.nextUrl.pathname;
+
+  // --- Fast path: public API routes — no auth needed, skip Supabase entirely ---
+  if (path.startsWith("/api/")) {
+    const isPublicApi =
+      path === "/api/health" ||
+      PUBLIC_API_PREFIXES.some((prefix) => path.startsWith(prefix));
+
+    if (isPublicApi) {
+      return NextResponse.next();
+    }
+  }
+
+  // --- Fast path: portal has its own auth (faction tokens) ---
+  if (path.startsWith("/portal")) {
+    return NextResponse.next();
+  }
+
+  // --- Routes that need auth: create Supabase client and validate session ---
+  const response = NextResponse.next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,35 +61,25 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session if expired
+  // Validate session locally (JWT decode from cookies — no network call)
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
-  // --- Protect API routes (except public auth/kiosk/faction endpoints) ---
+  // --- Protect API routes ---
   if (path.startsWith("/api/")) {
-    const isPublicApi =
-      path === "/api/health" ||
-      PUBLIC_API_PREFIXES.some((prefix) => path.startsWith(prefix));
-
-    if (!isPublicApi && !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return response;
   }
 
   // --- Protect page routes ---
-  const isPublicPage = PUBLIC_PAGES.some(
-    (p) => path === p || path.startsWith(p + "/")
-  );
-
-  // Portal has its own auth (faction tokens) — skip
-  if (path.startsWith("/portal")) {
-    return response;
-  }
+  const isLoginPage = path === "/login" || path.startsWith("/login/");
 
   // Unauthenticated user on protected page → redirect to login
-  if (!isPublicPage && !user) {
+  if (!isLoginPage && !user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("redirect", path);
@@ -81,7 +87,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Authenticated user on login page → redirect to dashboard
-  if (isPublicPage && user) {
+  if (isLoginPage && user) {
     const dashUrl = request.nextUrl.clone();
     dashUrl.pathname = "/dashboard";
     return NextResponse.redirect(dashUrl);
@@ -92,7 +98,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    // Only match API routes and actual page routes — skip all static assets
     "/api/:path*",
-    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|icons|manifest\\.json|monitoring|sw\\.js|workbox-).*)",
   ],
 };
