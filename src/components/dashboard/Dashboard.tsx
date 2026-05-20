@@ -12,7 +12,7 @@ import {
 } from "recharts";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import type { KpiResult, ChartDataPoint, ProductionOrder } from "@/hooks/use-dashboard-data";
+import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange } from "@/hooks/use-dashboard-data";
 
 // Mock data — used as fallback when not authenticated or APIs unavailable
 import {
@@ -933,9 +933,38 @@ function ActivityCard() {
 
 /* --------------------------------- ROOT ---------------------------------- */
 
+type Period = "today" | "week" | "month";
+
+const PERIOD_LABELS: { key: Period; label: string }[] = [
+  { key: "today", label: "Hoje" },
+  { key: "week", label: "Semana" },
+  { key: "month", label: "Mês" },
+];
+
+function getDateRange(period: Period): DateRange {
+  const today = new Date();
+  const to = today.toISOString().slice(0, 10);
+  switch (period) {
+    case "today":
+      return { from: to, to };
+    case "week": {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 7);
+      return { from: d.toISOString().slice(0, 10), to };
+    }
+    case "month": {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 30);
+      return { from: d.toISOString().slice(0, 10), to };
+    }
+  }
+}
+
 export function Dashboard() {
   const [now, setNow] = useState(new Date());
-  const { data } = useDashboardData();
+  const [period, setPeriod] = useState<Period>("today");
+  const dateRange = getDateRange(period);
+  const { data, isLoading } = useDashboardData(dateRange);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -964,20 +993,23 @@ export function Dashboard() {
               </h1>
             </div>
             <div className="hidden md:flex items-center gap-2">
-              {["Hoje", "Semana", "Mês", "Trimestre"].map((p, i) => (
+              {PERIOD_LABELS.map((p) => (
                 <button
-                  key={p}
+                  key={p.key}
+                  onClick={() => setPeriod(p.key)}
                   className={`px-3 py-1.5 rounded-md text-[12px] transition ${
-                    i === 0 ? "bg-foreground text-background font-medium" : "text-muted-foreground hover:text-foreground border border-border/40"
+                    period === p.key
+                      ? "bg-foreground text-background font-medium"
+                      : "text-muted-foreground hover:text-foreground border border-border/40"
                   }`}
                 >
-                  {p}
+                  {p.label}
                 </button>
               ))}
             </div>
           </motion.div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 transition-opacity duration-300 ${isLoading && data.kpis ? "opacity-60" : "opacity-100"}`}>
             <HealthHero />
             <ProjectionCard />
 

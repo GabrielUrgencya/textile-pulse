@@ -55,7 +55,12 @@ async function fetchJson<T>(url: string): Promise<{ data: T; status: number }> {
   return { data, status: res.status };
 }
 
-export function useDashboardData(): UseDashboardDataReturn {
+export interface DateRange {
+  from: string;
+  to: string;
+}
+
+export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn {
   const [data, setData] = useState<DashboardData>({
     kpis: null,
     chart: [],
@@ -66,6 +71,10 @@ export function useDashboardData(): UseDashboardDataReturn {
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const authFailedRef = useRef(false);
+
+  // Stabilize dateRange reference to avoid unnecessary re-renders
+  const fromParam = dateRange?.from;
+  const toParam = dateRange?.to;
 
   const stopPolling = useCallback(() => {
     if (intervalRef.current) {
@@ -80,10 +89,12 @@ export function useDashboardData(): UseDashboardDataReturn {
 
     try {
       const today = new Date().toISOString().slice(0, 10);
+      const from = fromParam || today;
+      const to = toParam || today;
 
       const [kpisRes, chartRes, ordersRes] = await Promise.all([
-        fetchJson<{ kpis: KpiResult }>(`/api/dashboard/kpis?from=${today}&to=${today}`),
-        fetchJson<{ chart: ChartDataPoint[] }>(`/api/dashboard/production-chart?from=${today}&to=${today}`),
+        fetchJson<{ kpis: KpiResult }>(`/api/dashboard/kpis?from=${from}&to=${to}`),
+        fetchJson<{ chart: ChartDataPoint[] }>(`/api/dashboard/production-chart?from=${from}&to=${to}`),
         fetchJson<{ orders: ProductionOrder[] }>(`/api/production/orders?limit=10`),
       ]);
 
@@ -127,9 +138,11 @@ export function useDashboardData(): UseDashboardDataReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [stopPolling]);
+  }, [stopPolling, fromParam, toParam]);
 
   useEffect(() => {
+    // Show loading on period change
+    setIsLoading(true);
     fetchAll();
     intervalRef.current = setInterval(fetchAll, POLL_INTERVAL_MS);
     return () => stopPolling();
