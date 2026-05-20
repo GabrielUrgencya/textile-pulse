@@ -1,17 +1,10 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { withAuth } from "@/lib/auth-middleware";
 
 export async function POST(request: Request) {
-  const supabase = createSupabaseServerClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase, user } = auth;
 
   const body = await request.json().catch(() => null);
 
@@ -30,8 +23,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // AC2: meta_coefficient snapshot (reference_targets table not yet created,
-  // accept from body or use default 1.0)
   const metaCoefficient = body.meta_coefficient ?? 1.0;
 
   const { data: order, error: insertError } = await supabase
@@ -62,18 +53,10 @@ export async function POST(request: Request) {
   return NextResponse.json({ order }, { status: 201 });
 }
 
-// AC3: List OPs with pagination
 export async function GET(request: Request) {
-  const supabase = createSupabaseServerClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase } = auth;
 
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));

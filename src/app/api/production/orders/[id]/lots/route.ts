@@ -1,31 +1,36 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { withAuth } from "@/lib/auth-middleware";
 
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createSupabaseServerClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase, user } = auth;
 
   const { id: poId } = params;
 
-  // Verify PO exists (RLS filters by tenant)
-  const { data: order, error: orderError } = await supabase
-    .from("production_orders")
-    .select("id, op_number")
-    .eq("id", poId)
-    .single();
+  // Verify PO exists and get first stage in parallel
+  const [orderResult, stageResult, lotCountResult] = await Promise.all([
+    supabase
+      .from("production_orders")
+      .select("id, op_number")
+      .eq("id", poId)
+      .single(),
+    supabase
+      .from("stages")
+      .select("id")
+      .order("order_index", { ascending: true })
+      .limit(1)
+      .single(),
+    supabase
+      .from("lots")
+      .select("id", { count: "exact", head: true })
+      .eq("po_id", poId),
+  ]);
 
-  if (orderError || !order) {
+  if (orderResult.error || !orderResult.data) {
     return NextResponse.json(
       { error: "Production order not found" },
       { status: 404 }
@@ -41,24 +46,8 @@ export async function POST(
     );
   }
 
-  // Get the first stage (CORTE) as initial stage
-  const { data: firstStage } = await supabase
-    .from("stages")
-    .select("id")
-    .order("order_index", { ascending: true })
-    .limit(1)
-    .single();
-
-  // Determine next lot sequence number
-  const { count: existingLots } = await supabase
-    .from("lots")
-    .select("id", { count: "exact", head: true })
-    .eq("po_id", poId);
-
-  const lotSeq = (existingLots || 0) + 1;
-
-  // AC7: Generate barcode in format OP-{op_number}-L{lot_seq}
-  // op_number already contains the YYYYMMDD-seq part
+  const order = orderResult.data;
+  const lotSeq = (lotCountResult.count || 0) + 1;
   const barcode = `OP-${order.op_number}-L${String(lotSeq).padStart(3, "0")}`;
   const lotNumber = `L${String(lotSeq).padStart(3, "0")}`;
 
@@ -69,7 +58,7 @@ export async function POST(
       barcode,
       lot_number: lotNumber,
       quantity: body.quantity,
-      current_stage_id: firstStage?.id || null,
+      current_stage_id: stageResult.data?.id || null,
       status: "CREATED",
       destination: body.destination || null,
       created_by: user.id,
@@ -78,7 +67,6 @@ export async function POST(
     .single();
 
   if (insertError) {
-    // Check for unique constraint violation on barcode
     if (insertError.message.includes("unique") || insertError.message.includes("duplicate")) {
       return NextResponse.json(
         { error: "Barcode already exists", barcode },
