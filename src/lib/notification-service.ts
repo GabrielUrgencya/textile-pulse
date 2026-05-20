@@ -11,7 +11,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "./email-service";
 import { sendWhatsApp } from "./whatsapp-service";
-import * as Sentry from "@sentry/nextjs";
+
 
 // --- Types (AC2) ---
 
@@ -42,7 +42,7 @@ export interface NotificationResult {
 /**
  * Dispatches a notification to all specified channels.
  * Internal channel always runs first. Email/WhatsApp failures
- * are logged to Sentry but never block the flow (AC8).
+ * are logged to console but never block the flow (AC8).
  */
 export async function sendNotification(
   payload: NotificationPayload
@@ -96,18 +96,12 @@ async function dispatchInternal(
 
     if (error) {
       console.error("[notification-service] Failed to insert notification:", error);
-      Sentry.captureException(error, {
-        tags: { service: "notification", channel: "internal" },
-      });
       return false;
     }
 
     return true;
   } catch (error) {
     console.error("[notification-service] Internal dispatch error:", error);
-    Sentry.captureException(error, {
-      tags: { service: "notification", channel: "internal" },
-    });
     return false;
   }
 }

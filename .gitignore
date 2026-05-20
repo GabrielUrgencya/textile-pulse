@@ -45,6 +45,12 @@ AUDIOS GABRIEL/
 CONVERSAS*.md
 lision_v2.html
 
+# personal context files
+CONTEXTO.txt
+CONTEXTO*.txt
+ÚLTIMO*.txt
+*.jpeg
+
 # AIOX framework (project-dev mode)
 .aiox-core/
 .aiox/

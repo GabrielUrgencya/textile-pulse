@@ -7,7 +7,7 @@
  */
 
 import { Resend } from "resend";
-import * as Sentry from "@sentry/nextjs";
+
 
 let _resend: Resend | null = null;
 
@@ -50,10 +50,6 @@ export async function sendEmail(payload: EmailPayload): Promise<boolean> {
     return true;
   } catch (error) {
     console.error("[email-service] Failed to send email:", error);
-    Sentry.captureException(error, {
-      tags: { service: "email", provider: "resend" },
-      extra: { subject: payload.subject, to: payload.to },
-    });
     return false;
   }
 }
