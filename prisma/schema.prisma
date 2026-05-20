@@ -28,6 +28,7 @@ enum LotStatus {
   IN_PACKING
   IN_STOCK
   PARTIALLY_STOCKED
+  IN_REWORK
 }
 
 enum ScanEventType {
@@ -155,9 +156,10 @@ model Stage {
   icon                  String?
   createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  tenant     Tenant      @relation(fields: [tenantId], references: [id])
-  lots       Lot[]
-  scanEvents ScanEvent[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  lots          Lot[]
+  scanEvents    ScanEvent[]
+  defectRecords DefectRecord[]
 
   @@unique([tenantId, orderIndex])
   @@map("stages")
@@ -338,16 +340,20 @@ model DefectRecord {
   status            String         @default("PENDING")
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
 
+  /// Stage where the lot was when defect was detected (Story 3.3 — rework flow)
+  previousStageId   String?        @map("previous_stage_id") @db.Uuid
+
   /// Portal fields (Story 6.2)
   factionResponse         String?   @map("faction_response")
   factionResponseAt       DateTime? @map("faction_response_at") @db.Timestamptz
   contestationReason      String?   @map("contestation_reason")
   contestationResolvedAt  DateTime? @map("contestation_resolved_at") @db.Timestamptz
 
-  lot        Lot              @relation(fields: [lotId], references: [id])
-  shipment   FactionShipment? @relation(fields: [shipmentId], references: [id])
-  detectedBy Profile          @relation("DefectDetectedBy", fields: [detectedById], references: [id])
-  resolvedBy Profile?         @relation("DefectResolvedBy", fields: [resolvedById], references: [id])
+  lot            Lot              @relation(fields: [lotId], references: [id])
+  shipment       FactionShipment? @relation(fields: [shipmentId], references: [id])
+  detectedBy     Profile          @relation("DefectDetectedBy", fields: [detectedById], references: [id])
+  resolvedBy     Profile?         @relation("DefectResolvedBy", fields: [resolvedById], references: [id])
+  previousStage  Stage?           @relation(fields: [previousStageId], references: [id])
 
   @@map("defect_records")
 }

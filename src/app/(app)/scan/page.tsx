@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { MetricBox } from "@/components/ui/metric-box";
+import { DefectModal } from "@/components/defects/DefectModal";
 import { supabase } from "@/lib/supabase";
 
 /* ────────────── Types ────────────── */
@@ -35,6 +36,7 @@ interface ScanResult {
   stageName: string;
   status: "success" | "warning" | "destructive";
   message: string;
+  lotId?: string;
   lotStatus?: string;
   warning?: string;
   timestamp: Date;
@@ -136,6 +138,7 @@ function ScanPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [sessionStats, setSessionStats] = useState({ total: 0, success: 0, warnings: 0, errors: 0 });
+  const [defectModalOpen, setDefectModalOpen] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<number>(0);
@@ -235,6 +238,7 @@ function ScanPage() {
             message: data.warning
               ? `Registrado com aviso: ${data.warning}`
               : "Bipagem registrada com sucesso",
+            lotId: data.scan_event?.lot_id,
             lotStatus: data.lot_status,
             warning: data.warning,
             timestamp: new Date(),
@@ -499,6 +503,16 @@ function ScanPage() {
                           <span>Scan fora da ordem esperada</span>
                         </div>
                       )}
+                      {lastResult.status === "success" && lastResult.lotId && (
+                        <button
+                          type="button"
+                          onClick={() => setDefectModalOpen(true)}
+                          className="mt-3 px-3 py-1.5 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive text-[12px] font-medium hover:bg-destructive/20 transition-colors flex items-center gap-1.5"
+                        >
+                          <AlertTriangle className="size-3" />
+                          Reportar Defeito
+                        </button>
+                      )}
                     </div>
                     <span className="font-mono text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">
                       {formatTime(lastResult.timestamp)}
@@ -632,6 +646,22 @@ function ScanPage() {
             </div>
           </LisionCard>
         </motion.div>
+      )}
+
+      {/* Defect Modal */}
+      {lastResult?.lotId && (
+        <DefectModal
+          lotId={lastResult.lotId}
+          barcode={lastResult.barcode}
+          open={defectModalOpen}
+          onClose={() => setDefectModalOpen(false)}
+          onSuccess={() => {
+            setDefectModalOpen(false);
+            setLastResult((prev) =>
+              prev ? { ...prev, lotStatus: "IN_REWORK" } : prev
+            );
+          }}
+        />
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  AlertTriangle,
   Factory,
   LayoutDashboard,
   LogOut,
@@ -33,6 +34,7 @@ const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard className="size-4 shrink-0" /> },
   { title: "Produção", url: "/production/orders", icon: <Factory className="size-4 shrink-0" /> },
   { title: "Scan", url: "/scan", icon: <ScanLine className="size-4 shrink-0" /> },
+  { title: "Retrabalho", url: "/rework", icon: <AlertTriangle className="size-4 shrink-0" /> },
   { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" /> },
   { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" /> },
   { title: "Equipe", url: "/team", icon: <Users className="size-4 shrink-0" /> },
