@@ -7,7 +7,7 @@ export async function GET(
 ) {
   const auth = await withAuth();
   if (auth.error) return auth.error;
-  const { supabase } = auth;
+  const { supabase, user } = auth;
 
   const { id } = params;
 
@@ -84,5 +84,6 @@ export async function GET(
       defect,
       discarded,
     },
+    user_role: (user.app_metadata?.role as string) || null,
   });
 }
