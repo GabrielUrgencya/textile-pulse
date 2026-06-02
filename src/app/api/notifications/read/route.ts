@@ -17,7 +17,6 @@ export async function PATCH(request: Request) {
   }
 
   const userId = user.id;
-  const role = user.app_metadata?.role as string | undefined;
   const now = new Date().toISOString();
 
   if (body.all === true) {
