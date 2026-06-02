@@ -1,8 +1,7 @@
 "use client";
 
-import { Truck } from "lucide-react";
-import { ModulePlaceholder } from "@/components/layout/ModulePlaceholder";
+import { FactionsPage } from "@/components/factions/FactionsPage";
 
 export default function Page() {
-  return <ModulePlaceholder title="Facções" icon={<Truck className="size-16 text-foreground opacity-20 mb-8" strokeWidth={1.5} />} />;
+  return <FactionsPage />;
 }

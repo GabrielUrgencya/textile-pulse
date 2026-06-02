@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useUserProfile } from "@/hooks/use-user-profile";
 import {
   AlertTriangle,
   Factory,
@@ -14,6 +15,7 @@ import {
   Truck,
   Users,
 } from "lucide-react";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 
 import {
   Sidebar,
@@ -49,6 +51,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const [loggingOut, setLoggingOut] = useState(false);
+  const { profile } = useUserProfile();
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -127,18 +130,19 @@ export function AppSidebar() {
           )}
         >
           <div className="size-9 shrink-0 rounded-lg bg-foreground text-background grid place-items-center font-semibold text-sm">
-            JM
+            {profile?.initials || "?"}
           </div>
           {!collapsed && (
             <>
               <div className="flex-1 min-w-0 leading-tight">
                 <div className="text-[13px] font-medium truncate">
-                  Jonatas Mendes
+                  {profile?.fullName || "Carregando..."}
                 </div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground truncate">
-                  Admin · Produção
+                  {profile?.role || ""}
                 </div>
               </div>
+              <NotificationBell />
               <button
                 onClick={handleLogout}
                 disabled={loggingOut}

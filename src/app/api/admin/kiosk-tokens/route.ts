@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { hasPermission, type AppRole } from "@/lib/permissions";
 
 /**
  * POST /api/admin/kiosk-tokens — Create kiosk token (ADMIN only)
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
 
   // AC2: Only ADMIN can create tokens
   const role = user.app_metadata?.role;
-  if (role !== "ADMIN") {
+  if (!hasPermission(role as AppRole, "settings:manage")) {
     return NextResponse.json({ error: "Forbidden: ADMIN role required" }, { status: 403 });
   }
 
@@ -72,7 +73,7 @@ export async function GET() {
 
   // AC3: Only ADMIN can list tokens
   const role = user.app_metadata?.role;
-  if (role !== "ADMIN") {
+  if (!hasPermission(role as AppRole, "settings:manage")) {
     return NextResponse.json({ error: "Forbidden: ADMIN role required" }, { status: 403 });
   }
 

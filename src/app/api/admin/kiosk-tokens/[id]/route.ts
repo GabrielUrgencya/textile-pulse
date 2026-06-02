@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { hasPermission, type AppRole } from "@/lib/permissions";
 
 /**
  * DELETE /api/admin/kiosk-tokens/:id — Revoke kiosk token (ADMIN only)
@@ -22,7 +23,7 @@ export async function DELETE(
   }
 
   const role = user.app_metadata?.role;
-  if (role !== "ADMIN") {
+  if (!hasPermission(role as AppRole, "settings:manage")) {
     return NextResponse.json({ error: "Forbidden: ADMIN role required" }, { status: 403 });
   }
 

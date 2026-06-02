@@ -47,6 +47,39 @@ export function checkRateLimit(key: string): {
   };
 }
 
+export function checkRateLimitCustom(
+  key: string,
+  maxAttempts: number,
+  windowMs: number
+): {
+  allowed: boolean;
+  remaining: number;
+  retryAfterMs: number;
+} {
+  const now = Date.now();
+  const entry = store.get(key);
+
+  if (!entry || now >= entry.expiry) {
+    store.set(key, { count: 1, expiry: now + windowMs });
+    return { allowed: true, remaining: maxAttempts - 1, retryAfterMs: 0 };
+  }
+
+  if (entry.count >= maxAttempts) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterMs: entry.expiry - now,
+    };
+  }
+
+  entry.count++;
+  return {
+    allowed: true,
+    remaining: maxAttempts - entry.count,
+    retryAfterMs: 0,
+  };
+}
+
 export function rateLimitKey(ip: string, tenantId: string): string {
   return `${ip}:${tenantId}`;
 }

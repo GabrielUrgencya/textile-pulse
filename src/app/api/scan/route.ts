@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { checkRateLimitCustom } from "@/lib/rate-limiter";
+
+const SCAN_RATE_LIMIT = 100; // max requests
+const SCAN_RATE_WINDOW = 60 * 1000; // per 1 minute
 
 const BARCODE_REGEX = /^OP-[0-9]{8}-[0-9]{3}-L[0-9]{3}$/;
 
@@ -26,6 +30,21 @@ export async function POST(request: Request) {
 
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Rate limit: 100 scans/min per user
+  const rl = checkRateLimitCustom(`scan:${user.id}`, SCAN_RATE_LIMIT, SCAN_RATE_WINDOW);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again shortly." },
+      {
+        status: 429,
+        headers: {
+          "X-RateLimit-Remaining": "0",
+          "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)),
+        },
+      }
+    );
   }
 
   const body = await request.json().catch(() => null);

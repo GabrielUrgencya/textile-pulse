@@ -114,7 +114,7 @@ export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn 
           orders: [],
           isAuthenticated: false,
         });
-        setError(null); // No error banner for auth — we use mock fallback
+        setError("Não autenticado");
         setIsLoading(false);
         return;
       }
@@ -134,7 +134,7 @@ export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn 
 
       setError(anyServerError ? "Erro no servidor ao carregar alguns dados" : null);
     } catch {
-      setError(null); // Network errors silently fall back to mock
+      setError("Erro de conexão ao carregar dados");
     } finally {
       setIsLoading(false);
     }

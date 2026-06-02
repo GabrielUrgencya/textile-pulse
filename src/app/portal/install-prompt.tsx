@@ -13,12 +13,25 @@ export function InstallPrompt() {
   const [showBanner, setShowBanner] = useState(false);
 
   useEffect(() => {
+    // Register service worker
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    // Safe localStorage helpers (Safari private mode, storage full, etc.)
+    function safeGetItem(key: string): string | null {
+      try { return localStorage.getItem(key); } catch { return null; }
+    }
+    function safeSetItem(key: string, value: string): void {
+      try { localStorage.setItem(key, value); } catch { /* no-op */ }
+    }
+
     // Count visits
-    const visits = Number(localStorage.getItem("lision_portal_visits") || "0") + 1;
-    localStorage.setItem("lision_portal_visits", String(visits));
+    const visits = Number(safeGetItem("lision_portal_visits") || "0") + 1;
+    safeSetItem("lision_portal_visits", String(visits));
 
     // Don't show if already dismissed or installed
-    if (localStorage.getItem("lision_pwa_dismissed")) return;
+    if (safeGetItem("lision_pwa_dismissed")) return;
 
     // Only show after 2nd visit
     if (visits < 2) return;
@@ -45,7 +58,7 @@ export function InstallPrompt() {
 
   const handleDismiss = useCallback(() => {
     setShowBanner(false);
-    localStorage.setItem("lision_pwa_dismissed", "1");
+    try { localStorage.setItem("lision_pwa_dismissed", "1"); } catch { /* no-op */ }
   }, []);
 
   if (!showBanner) return null;

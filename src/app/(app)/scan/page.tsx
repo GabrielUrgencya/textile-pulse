@@ -356,7 +356,7 @@ function ScanPage() {
               getAudioContext();
               setSoundEnabled((p) => !p);
             }}
-            className="p-2 rounded-lg border border-border/40 hover:bg-secondary/50 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border/40 hover:bg-secondary/50 transition-colors"
             title={soundEnabled ? "Desativar som" : "Ativar som"}
           >
             {soundEnabled ? (
@@ -364,6 +364,7 @@ function ScanPage() {
             ) : (
               <VolumeX className="size-4 text-muted-foreground" />
             )}
+            <span className="text-xs text-muted-foreground">{soundEnabled ? "Som" : "Mudo"}</span>
           </button>
           {/* T5: Fullscreen toggle */}
           <button

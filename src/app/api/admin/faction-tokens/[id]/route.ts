@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { hasPermission, type AppRole } from "@/lib/permissions";
 
 /**
  * DELETE /api/admin/faction-tokens/[id] — Revoke faction token (soft delete)
  * Story 6.7 — AC5, AC6
  */
 
-const ALLOWED_ROLES = ["ADMIN", "GERENTE"];
 
 export async function DELETE(
   _request: Request,
@@ -25,8 +25,8 @@ export async function DELETE(
 
   // AC6: Only ADMIN or GERENTE
   const role = user.app_metadata?.role;
-  if (!ALLOWED_ROLES.includes(role)) {
-    return NextResponse.json({ error: "Forbidden: ADMIN or GERENTE role required" }, { status: 403 });
+  if (!hasPermission(role as AppRole, "factions:manage")) {
+    return NextResponse.json({ error: "Forbidden: factions:manage required" }, { status: 403 });
   }
 
   const { id } = await params;

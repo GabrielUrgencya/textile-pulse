@@ -1,8 +1,13 @@
 "use client";
 
-import { ShieldCheck } from "lucide-react";
-import { ModulePlaceholder } from "@/components/layout/ModulePlaceholder";
+import { QualityPage } from "@/components/quality/QualityPage";
+import { useUserProfile } from "@/hooks/use-user-profile";
+import { hasPermission, type AppRole } from "@/lib/permissions";
 
 export default function Page() {
-  return <ModulePlaceholder title="Qualidade" icon={<ShieldCheck className="size-16 text-foreground opacity-20 mb-8" strokeWidth={1.5} />} />;
+  const { profile } = useUserProfile();
+  const role = (profile?.role || "OPERADOR") as AppRole;
+  const canViewFactions = hasPermission(role, "factions:view");
+
+  return <QualityPage canViewFactions={canViewFactions} />;
 }

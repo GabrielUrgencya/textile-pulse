@@ -7,7 +7,7 @@ interface MetricBoxProps extends React.HTMLAttributes<HTMLDivElement> {
   accent?: boolean;
 }
 
-function MetricBox({ label, value, accent = false, className, ...props }: MetricBoxProps) {
+function MetricBox({ label, value, accent = false, className, children, ...props }: MetricBoxProps) {
   return (
     <div
       className={cn(
@@ -28,6 +28,7 @@ function MetricBox({ label, value, accent = false, className, ...props }: Metric
       <div className="font-display text-[22px] font-semibold tabular-nums leading-none">
         {value}
       </div>
+      {children}
     </div>
   );
 }

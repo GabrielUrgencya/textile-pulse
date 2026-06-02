@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { hasPermission, type AppRole } from "@/lib/permissions";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 /**
  * POST /api/admin/faction-tokens — Generate faction token + PIN
@@ -8,7 +10,6 @@ import bcrypt from "bcryptjs";
  * Story 6.7 — AC1, AC2, AC3, AC4, AC6, AC7
  */
 
-const ALLOWED_ROLES = ["ADMIN", "GERENTE"];
 const PORTAL_BASE_URL = "https://liserie.lision.app/portal";
 
 export async function POST(request: Request) {
@@ -25,8 +26,8 @@ export async function POST(request: Request) {
 
   // AC6: Only ADMIN or GERENTE
   const role = user.app_metadata?.role;
-  if (!ALLOWED_ROLES.includes(role)) {
-    return NextResponse.json({ error: "Forbidden: ADMIN or GERENTE role required" }, { status: 403 });
+  if (!hasPermission(role as AppRole, "factions:manage")) {
+    return NextResponse.json({ error: "Forbidden: factions:manage required" }, { status: 403 });
   }
 
   const tenantId = user.app_metadata?.tenant_id;
@@ -61,8 +62,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Faction not found" }, { status: 404 });
   }
 
-  // AC3: Generate secure 6-digit PIN
-  const pin = Math.floor(100000 + Math.random() * 900000).toString();
+  // AC3: Generate cryptographically secure 6-digit PIN
+  const pinNum = crypto.randomInt(100000, 999999);
+  const pin = pinNum.toString();
   const pinHash = await bcrypt.hash(pin, 10);
 
   // AC1: Insert token
@@ -115,8 +117,8 @@ export async function GET() {
 
   // AC6: Only ADMIN or GERENTE
   const role = user.app_metadata?.role;
-  if (!ALLOWED_ROLES.includes(role)) {
-    return NextResponse.json({ error: "Forbidden: ADMIN or GERENTE role required" }, { status: 403 });
+  if (!hasPermission(role as AppRole, "factions:manage")) {
+    return NextResponse.json({ error: "Forbidden: factions:manage required" }, { status: 403 });
   }
 
   // AC4: List tokens without pin_hash

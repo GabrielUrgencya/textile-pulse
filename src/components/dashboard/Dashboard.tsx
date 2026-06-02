@@ -1,26 +1,39 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
-  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Bell,
-  CircleDot, Clock, Command, Gauge, Layers, Menu, MoveRight,
-  Search, Settings, Sparkles, Target, TrendingUp, Users, Zap,
+  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight,
+  Command, Gauge, Layers, Menu, MoveRight,
+  Sparkles, Target, TrendingUp, Users,
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
-  Area, AreaChart, CartesianGrid, Cell,
-  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, CartesianGrid,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange } from "@/hooks/use-dashboard-data";
+import { useUserProfile } from "@/hooks/use-user-profile";
+import type { UserProfile } from "@/hooks/use-user-profile";
+import { humanizeEvent, relativeTimestamp, type ActivityEventRaw } from "@/lib/event-templates";
 
-// Mock data — used as fallback when not authenticated or APIs unavailable
-import {
-  activity, allowance, defects, factions, factoryHealth, goals as mockGoals,
-  hourlyProduction as mockHourlyProduction, productionOrders as mockOrders,
-  projection, ranking as mockRanking, stages as mockStages,
-  stalledBatches, tickers as mockTickers,
-} from "./data";
+/* ------------------------------ types ----------------------------------- */
+
+export interface StaleLot {
+  barcode: string;
+  lot_number: string;
+  op_number: string;
+  stage_name: string;
+  hours_stalled: number;
+}
+
+export interface ActivityEvent {
+  time: string;
+  operator_name: string;
+  action: string;
+  barcode: string;
+  stage_name: string;
+}
 
 /* ------------------------------ small atoms ------------------------------ */
 
@@ -86,10 +99,38 @@ function Trend({ value, suffix = "%" }: { value: number; suffix?: string }) {
   );
 }
 
+function Metric({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className={`rounded-xl border border-border/40 p-3 ${accent ? "bg-foreground text-background" : "bg-secondary/30"}`}>
+      <div className={`text-[10px] uppercase tracking-wider mb-1 ${accent ? "text-background/70" : "text-muted-foreground"}`}>
+        {label}
+      </div>
+      <div className="font-display text-[22px] font-semibold tabular-nums leading-none">{value}</div>
+    </div>
+  );
+}
+
+function SubMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="font-mono text-sm tabular-nums mt-1">{value}</div>
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex items-center justify-center py-8 text-[13px] text-muted-foreground">
+      {message}
+    </div>
+  );
+}
+
 /* --------------------------------- TopBar --------------------------------- */
 
 function buildTickers(kpis: KpiResult | null) {
-  if (!kpis) return mockTickers;
+  if (!kpis) return [];
   return [
     { label: "Peças hoje", value: kpis.produced_today.toLocaleString("pt-BR"), trend: 0 },
     { label: "Taxa defeito", value: `${kpis.defect_rate.toFixed(1)}%`, trend: 0 },
@@ -99,7 +140,7 @@ function buildTickers(kpis: KpiResult | null) {
   ];
 }
 
-function TopBar({ now, kpis }: { now: Date; kpis: KpiResult | null }) {
+function TopBar({ now, kpis, userProfile }: { now: Date; kpis: KpiResult | null; userProfile: UserProfile | null }) {
   const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const date = now.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   const tickerItems = buildTickers(kpis);
@@ -120,11 +161,6 @@ function TopBar({ now, kpis }: { now: Date; kpis: KpiResult | null }) {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          <div className="hidden lg:flex items-center gap-2 px-3 h-9 rounded-lg bg-secondary/60 border border-border/60 text-sm text-muted-foreground w-72">
-            <Search className="size-4" />
-            <span className="flex-1">Pesquisar lotes, OPs, operadores…</span>
-            <kbd className="text-[10px] font-mono bg-background/60 border border-border px-1.5 py-0.5 rounded">⌘K</kbd>
-          </div>
           <div className="hidden md:flex items-center gap-2 text-right leading-tight">
             <div className="text-right">
               <div className="font-mono text-sm tabular-nums" suppressHydrationWarning>
@@ -135,187 +171,113 @@ function TopBar({ now, kpis }: { now: Date; kpis: KpiResult | null }) {
               </div>
             </div>
           </div>
-          <button className="size-9 rounded-lg bg-secondary/60 border border-border/60 grid place-items-center hover:bg-secondary transition">
-            <Bell className="size-4" />
-          </button>
-          <button className="size-9 rounded-lg bg-secondary/60 border border-border/60 grid place-items-center hover:bg-secondary transition">
-            <Settings className="size-4" />
-          </button>
           <div className="size-9 rounded-lg bg-foreground text-background grid place-items-center font-semibold text-sm">
-            JM
+            {userProfile?.initials || "?"}
           </div>
         </div>
       </div>
 
       {/* Ticker */}
       <div className="flex items-center gap-8 px-6 lg:px-10 h-10 border-t border-border/60 overflow-x-auto text-[12px]">
-        {tickerItems.map((t) => (
-          <div key={t.label} className="flex items-center gap-2 whitespace-nowrap shrink-0">
-            <span className="text-muted-foreground uppercase tracking-wider text-[10px]">{t.label}</span>
-            <span className="font-mono tabular-nums font-medium">{t.value}</span>
-            {t.trend !== 0 && <Trend value={t.trend} />}
-          </div>
-        ))}
+        {tickerItems.length > 0 ? (
+          tickerItems.map((t) => (
+            <div key={t.label} className="flex items-center gap-2 whitespace-nowrap shrink-0">
+              <span className="text-muted-foreground uppercase tracking-wider text-[10px]">{t.label}</span>
+              <span className="font-mono tabular-nums font-medium">{t.value}</span>
+              {t.trend !== 0 && <Trend value={t.trend} />}
+            </div>
+          ))
+        ) : (
+          <span className="text-muted-foreground text-[11px]">Carregando indicadores...</span>
+        )}
       </div>
     </header>
   );
 }
 
+/* ------------------------------ Targets ------------------------------ */
 
-/* --------------------------- Factory Health Hero -------------------------- */
-
-function HealthHero() {
-  const score = factoryHealth.score;
-  const circ = 2 * Math.PI * 88;
-  const offset = circ - (score / 100) * circ;
-
-  return (
-    <Card className="lg:col-span-7" pad={false}>
-      <div className="relative p-6 lg:p-8">
-        <div className="absolute inset-0 bg-grid opacity-40 pointer-events-none" />
-        <div className="absolute inset-0 bg-radial pointer-events-none" />
-
-        <div className="relative flex flex-col lg:flex-row items-start lg:items-center gap-8">
-          {/* Gauge */}
-          <div className="relative size-[220px] shrink-0">
-            <svg viewBox="0 0 200 200" className="size-full -rotate-90">
-              <circle cx="100" cy="100" r="88" stroke="oklch(0.18 0 0)" strokeWidth="10" fill="none" />
-              <motion.circle
-                cx="100" cy="100" r="88"
-                stroke="oklch(0.98 0 0)" strokeWidth="10"
-                strokeLinecap="round" fill="none"
-                strokeDasharray={circ}
-                initial={{ strokeDashoffset: circ }}
-                animate={{ strokeDashoffset: offset }}
-                transition={{ duration: 1.6, ease: [0.22, 1, 0.36, 1] }}
-              />
-            </svg>
-            <div className="absolute inset-0 grid place-items-center">
-              <div className="text-center">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1">Saúde Geral</div>
-                <div className="font-display text-[56px] font-semibold leading-none tabular-nums">{score}</div>
-                <div className="text-[11px] text-muted-foreground mt-1">de 100</div>
-              </div>
-            </div>
-            <div className="absolute -top-2 -right-2 size-3 rounded-full bg-success shadow-[0_0_20px_oklch(0.75_0.16_145)] animate-pulse-dot" />
-          </div>
-
-          {/* Status */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <CircleDot className="size-3.5 text-success" />
-              <span className="text-[11px] uppercase tracking-[0.22em] text-success font-medium">
-                {factoryHealth.status}
-              </span>
-              <span className="text-muted-foreground text-[11px]">·</span>
-              <Trend value={factoryHealth.trend} />
-            </div>
-            <h2 className="font-display text-[28px] lg:text-[36px] font-semibold leading-[1.05] tracking-tight text-balance">
-              A fábrica está operando<br />
-              <span className="text-muted-foreground font-normal">acima do ritmo esperado.</span>
-            </h2>
-            <div className="flex items-center gap-2 mt-4 text-[11px] text-muted-foreground">
-              <Clock className="size-3.5" />
-              Última atualização {factoryHealth.lastUpdate}
-              <span className="ml-2 inline-flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-foreground animate-pulse-dot" /> live
-              </span>
-            </div>
-
-            {/* Alerts */}
-            <div className="mt-5 space-y-1.5">
-              {factoryHealth.alerts.map((a, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 + i * 0.08 }}
-                  className="flex items-start gap-2.5 text-[12px] py-1.5 px-3 rounded-md bg-secondary/40 border border-border/40"
-                >
-                  <AlertTriangle className="size-3.5 mt-0.5 text-warning shrink-0" />
-                  <span className="text-foreground/80">{a.text}</span>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
+interface Targets {
+  dailyPiecesTarget: number;
+  productivityTarget: number;
+  defectTolerance: number;
+  lotsTarget: number;
+  opsTarget: number;
+  shiftStart: string;
+  shiftEnd: string;
 }
 
-/* ----------------------------- Projection Card ---------------------------- */
+const DEFAULT_TARGETS: Targets = {
+  dailyPiecesTarget: 1000,
+  productivityTarget: 85,
+  defectTolerance: 3,
+  lotsTarget: 100,
+  opsTarget: 15,
+  shiftStart: "07:00",
+  shiftEnd: "17:00",
+};
 
-function ProjectionCard() {
-  return (
-    <Card className="lg:col-span-5">
-      <CardHeader
-        eyebrow="Projeção do turno"
-        title="Ritmo no ar"
-        right={
-          <div className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md bg-success/10 text-success border border-success/20">
-            <Zap className="size-3" /> +{projection.delta} acima da meta
-          </div>
-        }
-      />
-
-      <div className="grid grid-cols-3 gap-4">
-        <Metric label="Peças/hora" value={projection.rate.toString()} accent />
-        <Metric label="Projetado" value={projection.projected.toLocaleString("pt-BR")} />
-        <Metric label="Horas restantes" value={projection.shiftHoursLeft.toString().replace(".", ",") + "h"} />
-      </div>
-
-      <div className="mt-5">
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-2">
-          <span>Meta do turno</span>
-          <span className="font-mono">
-            {projection.projected.toLocaleString("pt-BR")} / {projection.target.toLocaleString("pt-BR")}
-          </span>
-        </div>
-        <div className="relative h-2.5 rounded-full bg-secondary overflow-hidden">
-          <motion.div
-            className="absolute inset-y-0 left-0 bg-foreground rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: `${Math.min(100, (projection.projected / projection.target) * 100)}%` }}
-            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-          />
-          <div className="absolute inset-0 animate-shimmer rounded-full" />
-        </div>
-        <div className="flex items-center gap-1 mt-3 text-[11px] text-muted-foreground">
-          <Sparkles className="size-3" /> projeção calculada nas últimas 2 horas
-        </div>
-      </div>
-    </Card>
-  );
+function parseTime(timeStr: string): { h: number; m: number } {
+  const [h, m] = timeStr.split(":").map(Number);
+  return { h: h || 0, m: m || 0 };
 }
 
-function Metric({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border border-border/40 p-3 ${accent ? "bg-foreground text-background" : "bg-secondary/30"}`}>
-      <div className={`text-[10px] uppercase tracking-wider mb-1 ${accent ? "text-background/70" : "text-muted-foreground"}`}>
-        {label}
-      </div>
-      <div className="font-display text-[22px] font-semibold tabular-nums leading-none">{value}</div>
-    </div>
-  );
+function getProjection(produced: number, shiftStart: string, shiftEnd: string, target: number): { projected: number; pct: number } {
+  const now = new Date();
+  const start = parseTime(shiftStart);
+  const end = parseTime(shiftEnd);
+
+  const shiftStartMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), start.h, start.m).getTime();
+  const shiftEndMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), end.h, end.m).getTime();
+  const nowMs = now.getTime();
+
+  if (nowMs <= shiftStartMs || shiftEndMs <= shiftStartMs) {
+    return { projected: produced, pct: target > 0 ? (produced / target) * 100 : 0 };
+  }
+
+  const hoursWorked = Math.max(0.1, (Math.min(nowMs, shiftEndMs) - shiftStartMs) / 3_600_000);
+  const hoursRemaining = Math.max(0, (shiftEndMs - nowMs) / 3_600_000);
+  const rate = produced / hoursWorked;
+  const projected = produced + rate * hoursRemaining;
+  const pct = target > 0 ? (projected / target) * 100 : 0;
+
+  return { projected: Math.round(projected), pct };
 }
 
 /* ------------------------------ Goal Cards ------------------------------- */
 
-function GoalsRow({ kpis }: { kpis: KpiResult | null }) {
-  // When authenticated with real data, map KPIs to goals; otherwise use mock
-  const goals = kpis
-    ? [
-        { label: "Hoje", produced: kpis.produced_today, target: 2100, unit: "peças" },
-        { label: "Lotes", produced: kpis.total_lots, target: 100, unit: "lotes" },
-        { label: "OPs ativas", produced: kpis.active_ops, target: 15, unit: "ordens" },
-      ]
-    : mockGoals;
+function GoalsRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets }) {
+  if (!kpis) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:col-span-12">
+        {[1, 2, 3].map((i) => (
+          <Card key={i}>
+            <div className="animate-pulse space-y-3">
+              <div className="h-3 w-20 bg-secondary rounded" />
+              <div className="h-8 w-32 bg-secondary rounded" />
+              <div className="h-1.5 bg-secondary rounded-full" />
+            </div>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  const projection = getProjection(kpis.produced_today, targets.shiftStart, targets.shiftEnd, targets.dailyPiecesTarget);
+
+  const goals = [
+    { label: "Hoje", produced: kpis.produced_today, target: targets.dailyPiecesTarget, unit: "peças", showProjection: true },
+    { label: "Lotes", produced: kpis.total_lots, target: targets.lotsTarget, unit: "lotes", showProjection: false },
+    { label: "OPs ativas", produced: kpis.active_ops, target: targets.opsTarget, unit: "ordens", showProjection: false },
+  ];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:col-span-12">
       {goals.map((g, i) => {
         const pct = g.target > 0 ? (g.produced / g.target) * 100 : 0;
+        const barColor = g.showProjection
+          ? projection.pct >= 80 ? "bg-success" : "bg-warning"
+          : "bg-foreground";
         return (
           <Card key={g.label} className="group">
             <div className="flex items-start justify-between">
@@ -333,7 +295,7 @@ function GoalsRow({ kpis }: { kpis: KpiResult | null }) {
 
             <div className="relative h-1.5 mt-4 rounded-full bg-secondary overflow-hidden">
               <motion.div
-                className="absolute inset-y-0 left-0 bg-foreground rounded-full"
+                className={`absolute inset-y-0 left-0 rounded-full ${barColor}`}
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.min(100, pct)}%` }}
                 transition={{ duration: 1.2, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
@@ -342,7 +304,13 @@ function GoalsRow({ kpis }: { kpis: KpiResult | null }) {
 
             <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
               <span>{g.unit}</span>
-              <span>faltam {Math.max(0, g.target - g.produced).toLocaleString("pt-BR")}</span>
+              {g.showProjection ? (
+                <span className={`font-mono ${projection.pct >= 80 ? "text-success" : "text-warning"}`}>
+                  Projeção: {projection.projected.toLocaleString("pt-BR")} ({projection.pct.toFixed(0)}%)
+                </span>
+              ) : (
+                <span>faltam {Math.max(0, g.target - g.produced).toLocaleString("pt-BR")}</span>
+              )}
             </div>
           </Card>
         );
@@ -354,7 +322,7 @@ function GoalsRow({ kpis }: { kpis: KpiResult | null }) {
 /* ---------------------------- Hourly Production --------------------------- */
 
 function formatChartData(chart: ChartDataPoint[]) {
-  if (chart.length === 0) return mockHourlyProduction;
+  if (chart.length === 0) return [];
   return chart.map((point) => {
     const hour = point.period.includes("T")
       ? `${new Date(point.period).getHours().toString().padStart(2, "0")}h`
@@ -365,8 +333,18 @@ function formatChartData(chart: ChartDataPoint[]) {
 
 function HourlyChart({ chart }: { chart: ChartDataPoint[] }) {
   const chartData = formatChartData(chart);
-  const maxEntry = chartData.reduce((a, b) => (b.value > a.value ? b : a), chartData[0] || { hour: "-", value: 0 });
-  const minEntry = chartData.reduce((a, b) => (b.value < a.value ? b : a), chartData[0] || { hour: "-", value: 0 });
+
+  if (chartData.length === 0) {
+    return (
+      <Card className="lg:col-span-8">
+        <CardHeader eyebrow="Produção por hora · turno atual" title="Bipagens registradas" />
+        <EmptyState message="Sem dados de produção para o período selecionado" />
+      </Card>
+    );
+  }
+
+  const maxEntry = chartData.reduce((a, b) => (b.value > a.value ? b : a), chartData[0]);
+  const minEntry = chartData.reduce((a, b) => (b.value < a.value ? b : a), chartData[0]);
   const total = chartData.reduce((a, b) => a + b.value, 0);
 
   return (
@@ -417,112 +395,18 @@ function HourlyChart({ chart }: { chart: ChartDataPoint[] }) {
   );
 }
 
-function SubMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="font-mono text-sm tabular-nums mt-1">{value}</div>
-    </div>
-  );
-}
-
-/* ------------------------------ Allowance --------------------------------- */
-
-function AllowanceCard() {
-  const pieData = [
-    { name: "Boas", value: 100 - allowance.ratePct },
-    { name: "Perda", value: allowance.ratePct },
-  ];
-  return (
-    <Card className="lg:col-span-4">
-      <CardHeader
-        eyebrow="Allowance · mês"
-        title="Taxa de perda"
-        right={
-          <span className="text-[11px] px-2 py-1 rounded-md bg-success/10 text-success border border-success/20">
-            dentro da meta
-          </span>
-        }
-      />
-      <div className="relative h-[180px] grid place-items-center">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={pieData} dataKey="value" innerRadius={60} outerRadius={80}
-              startAngle={90} endAngle={-270} strokeWidth={0}
-            >
-              <Cell fill="oklch(0.98 0 0)" />
-              <Cell fill="oklch(0.20 0 0)" />
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 grid place-items-center pointer-events-none">
-          <div className="text-center">
-            <div className="font-display text-[26px] font-semibold tabular-nums">{allowance.ratePct}%</div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">de {allowance.targetPct}%</div>
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3 mt-2 pt-4 border-t border-border/40">
-        <SubMetric label="Perdas hoje" value={`${allowance.lostToday} peças`} />
-        <SubMetric label="Perdas mês" value={`${allowance.lostMonth} peças`} />
-      </div>
-    </Card>
-  );
-}
-
 /* -------------------------------- Stages --------------------------------- */
 
 function StagesCard({ kpis }: { kpis: KpiResult | null }) {
-  // Use real lots_by_stage when available, otherwise fallback to mock stages
-  const useReal = kpis && kpis.lots_by_stage.length > 0;
-
-  if (!useReal) {
-    // Render mock stages with full detail
-    const maxPieces = Math.max(...mockStages.map(x => x.pieces));
+  if (!kpis || kpis.lots_by_stage.length === 0) {
     return (
       <Card className="lg:col-span-7">
         <CardHeader
           eyebrow="Fluxo da produção"
-          title="Peças por etapa"
+          title="Lotes por etapa"
           right={<Layers className="size-4 text-muted-foreground" />}
         />
-        <div className="space-y-2.5">
-          {mockStages.map((s, i) => {
-            const w = (s.pieces / maxPieces) * 100;
-            return (
-              <div key={s.name} className="group">
-                <div className="flex items-center justify-between text-[12px] mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{s.name}</span>
-                    {s.over && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/15 text-destructive border border-destructive/30">
-                        acima do tempo
-                      </span>
-                    )}
-                  </div>
-                  <div className="font-mono tabular-nums text-muted-foreground">
-                    <span className="text-foreground">{s.pieces}</span> peças · {s.lots} lotes · {s.avgTime}
-                    <span className="text-muted-foreground/60"> / esperado {s.expected}</span>
-                  </div>
-                </div>
-                <div className="relative h-7 rounded-md bg-secondary/40 overflow-hidden border border-border/40">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${w}%` }}
-                    transition={{ duration: 1, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
-                    className={`absolute inset-y-0 left-0 ${s.over ? "bg-gradient-to-r from-destructive/40 to-destructive/10" : "bg-gradient-to-r from-foreground/80 to-foreground/20"}`}
-                  />
-                  <div className="absolute inset-y-0 left-0 w-full flex items-center px-2 text-[10px] font-mono text-foreground/70">
-                    {Array.from({ length: 30 }).map((_, k) => (
-                      <span key={k} className="w-1 h-0.5 mr-1 bg-foreground/10" />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <EmptyState message="Sem dados de etapas disponíveis" />
       </Card>
     );
   }
@@ -555,11 +439,6 @@ function StagesCard({ kpis }: { kpis: KpiResult | null }) {
                   transition={{ duration: 1, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
                   className="absolute inset-y-0 left-0 bg-gradient-to-r from-foreground/80 to-foreground/20"
                 />
-                <div className="absolute inset-y-0 left-0 w-full flex items-center px-2 text-[10px] font-mono text-foreground/70">
-                  {Array.from({ length: 30 }).map((_, k) => (
-                    <span key={k} className="w-1 h-0.5 mr-1 bg-foreground/10" />
-                  ))}
-                </div>
               </div>
             </div>
           );
@@ -572,37 +451,28 @@ function StagesCard({ kpis }: { kpis: KpiResult | null }) {
 /* ------------------------------ Defects Card ------------------------------ */
 
 function DefectsCard({ kpis }: { kpis: KpiResult | null }) {
-  const max = Math.max(...defects.byType.map(d => d.value));
-  const defectRateDisplay = kpis ? `${kpis.defect_rate.toFixed(1)}%` : `${defects.reworkQueue}`;
+  if (!kpis) {
+    return (
+      <Card className="lg:col-span-5">
+        <CardHeader eyebrow="Defeitos · retrabalho" title="Qualidade no chão de fábrica" />
+        <EmptyState message="Dados de qualidade indisponíveis" />
+      </Card>
+    );
+  }
+
   return (
     <Card className="lg:col-span-5">
       <CardHeader
         eyebrow="Defeitos · retrabalho"
         title="Qualidade no chão de fábrica"
       />
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        <Metric label={kpis ? "Taxa defeito" : "Fila retrabalho"} value={defectRateDisplay} accent />
-        <Metric label="Hoje" value={defects.today.toString()} />
-        <Metric label="No mês" value={defects.month.toString()} />
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <Metric label="Taxa defeito" value={`${kpis.defect_rate.toFixed(1)}%`} accent />
+        <Metric label="Peças hoje" value={kpis.produced_today.toLocaleString("pt-BR")} />
       </div>
-      <div className="space-y-2.5">
-        {defects.byType.map((d, i) => (
-          <div key={d.type}>
-            <div className="flex justify-between text-[12px] mb-1">
-              <span>{d.type}</span>
-              <span className="font-mono tabular-nums text-muted-foreground">{d.value}</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${(d.value / max) * 100}%` }}
-                transition={{ duration: 1, delay: i * 0.08 }}
-                className="h-full bg-foreground rounded-full"
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+      <p className="text-[12px] text-muted-foreground">
+        Detalhes por tipo de defeito disponíveis no módulo <span className="font-medium text-foreground">Qualidade</span>.
+      </p>
     </Card>
   );
 }
@@ -617,73 +487,14 @@ function formatStatus(status: string) {
   return { label: status.toUpperCase(), style: "bg-warning/10 text-warning border-warning/20" };
 }
 
-function OrdersCard({ orders, isAuthenticated }: { orders: ProductionOrder[]; isAuthenticated: boolean }) {
-  // Use real orders when authenticated, fallback to mock orders
-  const useMock = !isAuthenticated || orders.length === 0;
-
-  if (useMock) {
+function OrdersCard({ orders }: { orders: ProductionOrder[] }) {
+  if (orders.length === 0) {
     return (
       <Card className="lg:col-span-8" pad={false}>
         <div className="p-5 pb-3">
-          <CardHeader
-            eyebrow="Ordens de produção"
-            title="OPs em andamento"
-            right={
-              <button className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-                ver todas <MoveRight className="size-3" />
-              </button>
-            }
-          />
+          <CardHeader eyebrow="Ordens de produção" title="OPs recentes" />
         </div>
-        <div className="grid grid-cols-12 px-5 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-y border-border/40 bg-secondary/20">
-          <div className="col-span-3">OP</div>
-          <div className="col-span-3">Produto</div>
-          <div className="col-span-3">Progresso</div>
-          <div className="col-span-2">Prazo</div>
-          <div className="col-span-1 text-right">Status</div>
-        </div>
-        <div>
-          {mockOrders.map((o, i) => {
-            const pct = (o.done / o.total) * 100;
-            return (
-              <motion.div
-                key={o.id}
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.05 * i }}
-                className="grid grid-cols-12 items-center px-5 py-3.5 text-[13px] border-b border-border/30 last:border-0 hover:bg-secondary/20 transition"
-              >
-                <div className="col-span-3">
-                  <div className="font-mono text-[11px] text-muted-foreground">{o.id}</div>
-                </div>
-                <div className="col-span-3 font-medium truncate">{o.name}</div>
-                <div className="col-span-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
-                      <div className="h-full bg-foreground rounded-full" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="font-mono text-[11px] text-muted-foreground tabular-nums w-10 text-right">{pct.toFixed(0)}%</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-1 font-mono">
-                    {o.done.toLocaleString("pt-BR")} / {o.total.toLocaleString("pt-BR")}
-                  </div>
-                </div>
-                <div className="col-span-2 font-mono text-[12px] text-muted-foreground">{o.due}</div>
-                <div className="col-span-1 text-right">
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap ${
-                      o.status === "EM DIA" ? "bg-success/10 text-success border-success/20" :
-                      o.status === "ATENÇÃO" ? "bg-warning/10 text-warning border-warning/20" :
-                      "bg-destructive/10 text-destructive border-destructive/20"
-                    }`}
-                  >
-                    {o.status}
-                  </span>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+        <EmptyState message="Nenhuma ordem de produção encontrada" />
       </Card>
     );
   }
@@ -741,43 +552,48 @@ function OrdersCard({ orders, isAuthenticated }: { orders: ProductionOrder[]; is
   );
 }
 
-/* ---------------------------- Stalled / Ranking --------------------------- */
+/* ----------------------------- Stalled Card ------------------------------ */
 
-function StalledCard() {
+function StalledCard({ staleLots }: { staleLots: StaleLot[] }) {
   return (
     <Card className="lg:col-span-4">
       <CardHeader
         eyebrow="Atenção imediata"
         title="Lotes parados"
         right={
-          <span className="text-[11px] px-2 py-1 rounded-md bg-destructive/10 text-destructive border border-destructive/20 inline-flex items-center gap-1">
-            <AlertTriangle className="size-3" /> {stalledBatches.length}
-          </span>
+          staleLots.length > 0 ? (
+            <span className="text-[11px] px-2 py-1 rounded-md bg-destructive/10 text-destructive border border-destructive/20 inline-flex items-center gap-1">
+              <AlertTriangle className="size-3" /> {staleLots.length}
+            </span>
+          ) : undefined
         }
       />
-      <div className="space-y-2.5">
-        {stalledBatches.map((b) => (
-          <div key={b.code} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border/40 hover:border-foreground/40 transition">
-            <div className="size-9 rounded-md bg-foreground text-background grid place-items-center font-mono text-[10px] font-bold shrink-0">
-              {b.hours.toFixed(1)}h
+      {staleLots.length === 0 ? (
+        <EmptyState message="Nenhum lote parado" />
+      ) : (
+        <div className="space-y-2.5">
+          {staleLots.map((b) => (
+            <div key={b.barcode} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border/40 hover:border-foreground/40 transition">
+              <div className="size-9 rounded-md bg-foreground text-background grid place-items-center font-mono text-[10px] font-bold shrink-0">
+                {b.hours_stalled.toFixed(1)}h
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-mono text-[12px] font-medium">{b.barcode}</div>
+                <div className="text-[11px] text-muted-foreground truncate">{b.stage_name}</div>
+              </div>
+              <div className="font-mono text-[10px] text-muted-foreground">{b.op_number}</div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-mono text-[12px] font-medium">{b.code}</div>
-              <div className="text-[11px] text-muted-foreground truncate">{b.stage} · {b.operator}</div>
-            </div>
-            <div className="font-mono text-[10px] text-muted-foreground">{b.op}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }
 
-function RankingCard({ kpis }: { kpis: KpiResult | null }) {
-  const hasRealData = kpis && kpis.top_producers.length > 0;
+/* ----------------------------- Ranking Card ------------------------------ */
 
-  if (!hasRealData) {
-    // Fallback to mock ranking
+function RankingCard({ kpis }: { kpis: KpiResult | null }) {
+  if (!kpis || kpis.top_producers.length === 0) {
     return (
       <Card className="lg:col-span-5">
         <CardHeader
@@ -785,28 +601,7 @@ function RankingCard({ kpis }: { kpis: KpiResult | null }) {
           title="Ranking de operadores"
           right={<Users className="size-4 text-muted-foreground" />}
         />
-        <div className="space-y-2">
-          {mockRanking.map((r, i) => {
-            const pct = (r.score / r.target) * 100;
-            return (
-              <div key={r.name} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0">
-                <div className={`size-7 rounded-md grid place-items-center font-display text-[13px] font-semibold tabular-nums ${
-                  i === 0 ? "bg-foreground text-background" : "bg-secondary text-foreground"
-                }`}>
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-medium truncate">{r.name}</div>
-                  <div className="text-[10px] text-muted-foreground">{r.sector}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono tabular-nums text-sm">{r.score}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">{pct.toFixed(0)}% meta</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <EmptyState message="Sem dados de produtividade" />
       </Card>
     );
   }
@@ -840,57 +635,11 @@ function RankingCard({ kpis }: { kpis: KpiResult | null }) {
   );
 }
 
-/* ------------------------------ Factions --------------------------------- */
-
-function FactionsCard() {
-  return (
-    <Card className="lg:col-span-7">
-      <CardHeader
-        eyebrow="Facções externas"
-        title="Lotes fora da fábrica"
-      />
-      <div className="grid grid-cols-12 px-1 pb-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border/40">
-        <div className="col-span-4">Facção</div>
-        <div className="col-span-2 text-right">Peças</div>
-        <div className="col-span-2 text-right">Lotes</div>
-        <div className="col-span-2 text-right">Defeito</div>
-        <div className="col-span-2 text-right">Prazo</div>
-      </div>
-      {factions.map((f) => (
-        <div key={f.name} className="grid grid-cols-12 items-center py-3 text-[13px] border-b border-border/30 last:border-0">
-          <div className="col-span-4 flex items-center gap-2.5">
-            <div className="size-7 rounded-md bg-secondary border border-border/60 grid place-items-center text-[10px] font-mono font-bold">
-              {f.name.split(" ").map(w => w[0]).join("").slice(0, 2)}
-            </div>
-            <span className="font-medium truncate">{f.name}</span>
-          </div>
-          <div className="col-span-2 text-right font-mono tabular-nums">{f.pieces.toLocaleString("pt-BR")}</div>
-          <div className="col-span-2 text-right font-mono tabular-nums text-muted-foreground">{f.lots}</div>
-          <div className="col-span-2 text-right font-mono tabular-nums">
-            <span className={f.defectRate > 2.5 ? "text-destructive" : ""}>{f.defectRate}%</span>
-          </div>
-          <div className="col-span-2 text-right">
-            {f.daysLeft < 0 ? (
-              <span className="text-[11px] px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/20 font-mono">
-                {Math.abs(f.daysLeft)}d atraso
-              </span>
-            ) : (
-              <span className="text-[11px] px-1.5 py-0.5 rounded bg-secondary border border-border/40 font-mono text-muted-foreground">
-                em {f.daysLeft}d
-              </span>
-            )}
-          </div>
-        </div>
-      ))}
-    </Card>
-  );
-}
-
 /* -------------------------------- Activity ------------------------------- */
 
-function ActivityCard() {
+function ActivityCard({ activityEvents }: { activityEvents: ActivityEvent[] }) {
   return (
-    <Card className="lg:col-span-5">
+    <Card className="lg:col-span-7">
       <CardHeader
         eyebrow="Live feed"
         title="Atividade recente"
@@ -900,35 +649,98 @@ function ActivityCard() {
           </span>
         }
       />
-      <div className="relative max-h-[320px] overflow-y-auto pr-1 -mr-2 space-y-1">
-        {activity.map((a, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.04 }}
-            className="flex items-start gap-3 py-2 border-b border-border/20 last:border-0"
-          >
-            <div className="font-mono text-[10px] text-muted-foreground w-10 pt-0.5 tabular-nums">{a.time}</div>
-            <div className={`size-1.5 rounded-full mt-2 shrink-0 ${
-              a.action === "Defeito" ? "bg-destructive" :
-              a.action === "OP concluída" ? "bg-success" :
-              "bg-foreground"
-            }`} />
-            <div className="flex-1 min-w-0 text-[12px]">
-              <div className="truncate">
-                <span className="font-medium">{a.op}</span>
-                <span className="text-muted-foreground"> · {a.action}</span>
-              </div>
-              <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                {a.batch} · {a.stage}
-              </div>
-            </div>
-          </motion.div>
+      {activityEvents.length === 0 ? (
+        <EmptyState message="Nenhuma atividade recente" />
+      ) : (
+        <div className="relative max-h-[320px] overflow-y-auto pr-1 -mr-2 space-y-1">
+          {activityEvents.map((a, i) => {
+            const raw: ActivityEventRaw = {
+              time: a.time,
+              operator_name: a.operator_name,
+              action: a.action,
+              barcode: a.barcode,
+              stage_name: a.stage_name,
+            };
+            const humanized = humanizeEvent(raw);
+            const timeLabel = relativeTimestamp(a.time);
+
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.04 }}
+                className="flex items-start gap-3 py-2 border-b border-border/20 last:border-0"
+              >
+                <div className="font-mono text-[10px] text-muted-foreground w-10 pt-0.5 tabular-nums">{timeLabel}</div>
+                <div className={`size-1.5 rounded-full mt-2 shrink-0 ${
+                  a.action === "DEFECT_REPORT" || a.action === "DEFECT_REPORTED" ? "bg-destructive" : "bg-foreground"
+                }`} />
+                <div className="flex-1 min-w-0 text-[12px]">
+                  <div className="leading-relaxed">{humanized}</div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ----------------------------- KPI Summary ------------------------------- */
+
+function KpiSummary({ kpis }: { kpis: KpiResult | null }) {
+  if (!kpis) {
+    return (
+      <Card className="lg:col-span-5">
+        <CardHeader eyebrow="Resumo" title="KPIs do turno" />
+        <EmptyState message="Dados indisponíveis" />
+      </Card>
+    );
+  }
+
+  const items = [
+    { icon: Gauge,      label: "Peças hoje",  value: kpis.produced_today.toLocaleString("pt-BR") },
+    { icon: Target,     label: "Taxa defeito", value: `${kpis.defect_rate.toFixed(1)}%` },
+    { icon: Activity,   label: "Total scans",  value: kpis.total_scans.toLocaleString("pt-BR") },
+    { icon: TrendingUp, label: "OPs ativas",   value: kpis.active_ops.toString() },
+  ];
+
+  return (
+    <Card className="lg:col-span-5">
+      <CardHeader eyebrow="Resumo" title="KPIs do turno" />
+      <div className="grid grid-cols-2 gap-3">
+        {items.map(({ icon: Icon, label, value }) => (
+          <div key={label} className="rounded-xl border border-border/40 bg-secondary/30 p-4">
+            <Icon className="size-4 text-muted-foreground mb-3" />
+            <div className="font-display text-[22px] font-semibold tabular-nums">{value}</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">{label}</div>
+          </div>
         ))}
+      </div>
+      <div className="mt-4 p-4 rounded-xl bg-secondary/30 border border-border/40">
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-2">
+          <Sparkles className="size-3" /> Insight automático
+        </div>
+        <p className="text-[13px] leading-relaxed text-foreground/90">
+          Hoje foram registradas <span className="font-semibold">{kpis.produced_today.toLocaleString("pt-BR")} bipagens</span> com taxa de defeito de <span className="font-semibold">{kpis.defect_rate.toFixed(1)}%</span>.
+          {kpis.lots_by_stage.length > 0 && (
+            <> Existem <span className="font-semibold">{kpis.total_lots} lotes</span> distribuídos em {kpis.lots_by_stage.length} etapas.</>
+          )}
+        </p>
       </div>
     </Card>
   );
+}
+
+/* --------------------------------- helpers ------------------------------- */
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Bom dia";
+  if (h < 18) return "Boa tarde";
+  return "Boa noite";
 }
 
 /* --------------------------------- ROOT ---------------------------------- */
@@ -965,17 +777,67 @@ export function Dashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const dateRange = getDateRange(period);
   const { data, isLoading } = useDashboardData(dateRange);
+  const { profile: userProfile } = useUserProfile();
+  const [staleLots, setStaleLots] = useState<StaleLot[]>([]);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
+  const [targets, setTargets] = useState<Targets>(DEFAULT_TARGETS);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
+  // Fetch targets from Settings
+  useEffect(() => {
+    async function fetchTargets() {
+      try {
+        const res = await fetch("/api/settings/targets", { credentials: "same-origin" });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data) setTargets(json.data);
+        }
+      } catch { /* use defaults */ }
+    }
+    fetchTargets();
+  }, []);
+
+  // Fetch stale lots
+  useEffect(() => {
+    async function fetchStaleLots() {
+      try {
+        const res = await fetch("/api/dashboard/stale-lots", { credentials: "same-origin" });
+        if (res.ok) {
+          const json = await res.json();
+          setStaleLots(json.stale_lots || []);
+        }
+      } catch { /* silent */ }
+    }
+    fetchStaleLots();
+    const interval = setInterval(fetchStaleLots, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch activity
+  useEffect(() => {
+    async function fetchActivity() {
+      try {
+        const res = await fetch("/api/dashboard/activity?limit=10", { credentials: "same-origin" });
+        if (res.ok) {
+          const json = await res.json();
+          setActivityEvents(json.activity || []);
+        }
+      } catch { /* silent */ }
+    }
+    fetchActivity();
+    const interval = setInterval(fetchActivity, 15_000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground relative">
       <div className="fixed inset-0 bg-grid opacity-30 pointer-events-none" />
       <div className="relative">
-        <TopBar now={now} kpis={data.kpis} />
+        <TopBar now={now} kpis={data.kpis} userProfile={userProfile} />
 
         <main className="px-6 lg:px-10 py-6 lg:py-8 max-w-[1600px] mx-auto">
           {/* Section title */}
@@ -986,10 +848,10 @@ export function Dashboard() {
           >
             <div>
               <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-1">
-                Visão geral · Turno A
+                Visão geral
               </div>
               <h1 className="font-display text-[36px] lg:text-[44px] font-semibold tracking-tight leading-none">
-                Bom dia, Jonatas.
+                {getGreeting()}, {userProfile?.fullName?.split(" ")[0] || "Operador"}.
               </h1>
             </div>
             <div className="hidden md:flex items-center gap-2">
@@ -1009,26 +871,27 @@ export function Dashboard() {
             </div>
           </motion.div>
 
-          <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 transition-opacity duration-300 ${isLoading && data.kpis ? "opacity-60" : "opacity-100"}`}>
-            <HealthHero />
-            <ProjectionCard />
+          {!data.isAuthenticated && !isLoading && (
+            <div className="mb-6 p-4 rounded-xl border border-warning/30 bg-warning/5 text-[13px] text-warning">
+              <AlertTriangle className="size-4 inline-block mr-2 -mt-0.5" />
+              Sessão não autenticada — os dados exibidos podem estar incompletos. Faça login novamente.
+            </div>
+          )}
 
-            <GoalsRow kpis={data.kpis} />
+          <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 transition-opacity duration-300 ${isLoading && data.kpis ? "opacity-60" : "opacity-100"}`}>
+            <GoalsRow kpis={data.kpis} targets={targets} />
 
             <HourlyChart chart={data.chart} />
-            <AllowanceCard />
+            <StalledCard staleLots={staleLots} />
 
             <StagesCard kpis={data.kpis} />
             <DefectsCard kpis={data.kpis} />
 
-            <OrdersCard orders={data.orders} isAuthenticated={data.isAuthenticated} />
-            <StalledCard />
+            <OrdersCard orders={data.orders} />
 
             <RankingCard kpis={data.kpis} />
-            <FactionsCard />
-
-            <ActivityCard />
-            <HealthSummary kpis={data.kpis} />
+            <ActivityCard activityEvents={activityEvents} />
+            <KpiSummary kpis={data.kpis} />
           </div>
 
           <footer className="mt-10 pt-6 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
@@ -1040,58 +903,5 @@ export function Dashboard() {
         </main>
       </div>
     </div>
-  );
-}
-
-/* ----------------------------- Health Summary ----------------------------- */
-
-function HealthSummary({ kpis }: { kpis: KpiResult | null }) {
-  const items = kpis
-    ? [
-        { icon: Gauge,      label: "Peças hoje",   value: kpis.produced_today.toLocaleString("pt-BR") },
-        { icon: Target,     label: "Taxa defeito",  value: `${kpis.defect_rate.toFixed(1)}%` },
-        { icon: Activity,   label: "Total scans",  value: kpis.total_scans.toLocaleString("pt-BR") },
-        { icon: TrendingUp, label: "OPs ativas",   value: kpis.active_ops.toString() },
-      ]
-    : [
-        { icon: Gauge,      label: "OEE",        value: "87%" },
-        { icon: Target,     label: "Meta dia",   value: "87.7%" },
-        { icon: Activity,   label: "Ritmo",      value: "218/h" },
-        { icon: TrendingUp, label: "vs ontem",   value: "+6.2%" },
-      ];
-
-  return (
-    <Card className="lg:col-span-7">
-      <CardHeader eyebrow="Resumo" title="KPIs do turno" />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {items.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="rounded-xl border border-border/40 bg-secondary/30 p-4">
-            <Icon className="size-4 text-muted-foreground mb-3" />
-            <div className="font-display text-[22px] font-semibold tabular-nums">{value}</div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">{label}</div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 p-4 rounded-xl bg-secondary/30 border border-border/40">
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-2">
-          <Sparkles className="size-3" /> Insight automático
-        </div>
-        <p className="text-[13px] leading-relaxed text-foreground/90">
-          {kpis ? (
-            <>
-              Hoje foram registradas <span className="font-semibold">{kpis.produced_today.toLocaleString("pt-BR")} bipagens</span> com taxa de defeito de <span className="font-semibold">{kpis.defect_rate.toFixed(1)}%</span>.
-              {kpis.lots_by_stage.length > 0 && (
-                <> Existem <span className="font-semibold">{kpis.total_lots} lotes</span> distribuídos em {kpis.lots_by_stage.length} etapas.</>
-              )}
-            </>
-          ) : (
-            <>
-              Costura B está concentrando <span className="font-semibold">42% do gargalo</span> do turno.
-              Realocar 2 operadores de Acabamento pode recuperar até <span className="font-semibold">180 peças</span> até o fim do dia.
-            </>
-          )}
-        </p>
-      </div>
-    </Card>
   );
 }

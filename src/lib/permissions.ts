@@ -1,10 +1,11 @@
 /**
  * Role-based permission helper for LISION
  *
- * 3 perfis operacionais:
- *   admin    — acesso total
- *   gerente  — leitura + criação de OP
- *   operador — apenas bipagem + visualização
+ * 4 perfis operacionais:
+ *   ADMIN      — acesso total
+ *   GERENTE    — leitura + criação de OP + quality + factions
+ *   COORDENADOR — operação + quality:view
+ *   OPERADOR   — apenas bipagem + visualização
  */
 
 export type AppRole = "ADMIN" | "GERENTE" | "COORDENADOR" | "OPERADOR";
@@ -22,7 +23,12 @@ type Permission =
   | "rework:resolve"
   | "rework:view"
   | "users:manage"
-  | "settings:manage";
+  | "settings:manage"
+  | "quality:view"
+  | "quality:manage"
+  | "factions:view"
+  | "factions:manage"
+  | "reports:export";
 
 const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
   ADMIN: [
@@ -39,6 +45,11 @@ const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
     "rework:view",
     "users:manage",
     "settings:manage",
+    "quality:view",
+    "quality:manage",
+    "factions:view",
+    "factions:manage",
+    "reports:export",
   ],
   GERENTE: [
     "dashboard:view",
@@ -51,6 +62,11 @@ const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
     "rework:report",
     "rework:resolve",
     "rework:view",
+    "users:manage",
+    "quality:view",
+    "quality:manage",
+    "factions:view",
+    "factions:manage",
   ],
   COORDENADOR: [
     "dashboard:view",
@@ -62,6 +78,7 @@ const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
     "rework:report",
     "rework:resolve",
     "rework:view",
+    "quality:view",
   ],
   OPERADOR: [
     "scan:view",
@@ -109,3 +126,5 @@ const ROLE_LEVEL: Record<AppRole, number> = {
 export function hasMinRole(role: AppRole, minRole: AppRole): boolean {
   return (ROLE_LEVEL[role] ?? 0) >= (ROLE_LEVEL[minRole] ?? 0);
 }
+
+export type { Permission };
