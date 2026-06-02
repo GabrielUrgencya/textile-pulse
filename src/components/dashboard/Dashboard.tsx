@@ -12,28 +12,13 @@ import {
 } from "recharts";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange } from "@/hooks/use-dashboard-data";
-import { useUserProfile } from "@/hooks/use-user-profile";
+import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange, StaleLot, ActivityEvent, Targets } from "@/hooks/use-dashboard-data";
 import type { UserProfile } from "@/hooks/use-user-profile";
 import { humanizeEvent, relativeTimestamp, type ActivityEventRaw } from "@/lib/event-templates";
 
-/* ------------------------------ types ----------------------------------- */
+/* ------------------------------ types (re-exported from hook) ----------- */
 
-export interface StaleLot {
-  barcode: string;
-  lot_number: string;
-  op_number: string;
-  stage_name: string;
-  hours_stalled: number;
-}
-
-export interface ActivityEvent {
-  time: string;
-  operator_name: string;
-  action: string;
-  barcode: string;
-  stage_name: string;
-}
+export type { StaleLot, ActivityEvent } from "@/hooks/use-dashboard-data";
 
 /* ------------------------------ small atoms ------------------------------ */
 
@@ -196,26 +181,6 @@ function TopBar({ now, kpis, userProfile }: { now: Date; kpis: KpiResult | null;
 }
 
 /* ------------------------------ Targets ------------------------------ */
-
-interface Targets {
-  dailyPiecesTarget: number;
-  productivityTarget: number;
-  defectTolerance: number;
-  lotsTarget: number;
-  opsTarget: number;
-  shiftStart: string;
-  shiftEnd: string;
-}
-
-const DEFAULT_TARGETS: Targets = {
-  dailyPiecesTarget: 1000,
-  productivityTarget: 85,
-  defectTolerance: 3,
-  lotsTarget: 100,
-  opsTarget: 15,
-  shiftStart: "07:00",
-  shiftEnd: "17:00",
-};
 
 function parseTime(timeStr: string): { h: number; m: number } {
   const [h, m] = timeStr.split(":").map(Number);
@@ -777,60 +742,16 @@ export function Dashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const dateRange = getDateRange(period);
   const { data, isLoading } = useDashboardData(dateRange);
-  const { profile: userProfile } = useUserProfile();
-  const [staleLots, setStaleLots] = useState<StaleLot[]>([]);
-  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
-  const [targets, setTargets] = useState<Targets>(DEFAULT_TARGETS);
+
+  // Destructure consolidated data — 1 API call instead of 7
+  const userProfile = data.profile;
+  const staleLots = data.staleLots;
+  const activityEvents = data.activity;
+  const targets = data.targets;
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
-  }, []);
-
-  // Fetch targets from Settings
-  useEffect(() => {
-    async function fetchTargets() {
-      try {
-        const res = await fetch("/api/settings/targets", { credentials: "same-origin" });
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data) setTargets(json.data);
-        }
-      } catch { /* use defaults */ }
-    }
-    fetchTargets();
-  }, []);
-
-  // Fetch stale lots
-  useEffect(() => {
-    async function fetchStaleLots() {
-      try {
-        const res = await fetch("/api/dashboard/stale-lots", { credentials: "same-origin" });
-        if (res.ok) {
-          const json = await res.json();
-          setStaleLots(json.stale_lots || []);
-        }
-      } catch { /* silent */ }
-    }
-    fetchStaleLots();
-    const interval = setInterval(fetchStaleLots, 30_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Fetch activity
-  useEffect(() => {
-    async function fetchActivity() {
-      try {
-        const res = await fetch("/api/dashboard/activity?limit=10", { credentials: "same-origin" });
-        if (res.ok) {
-          const json = await res.json();
-          setActivityEvents(json.activity || []);
-        }
-      } catch { /* silent */ }
-    }
-    fetchActivity();
-    const interval = setInterval(fetchActivity, 15_000);
-    return () => clearInterval(interval);
   }, []);
 
   return (

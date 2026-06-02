@@ -5,26 +5,14 @@ import type { NextRequest } from "next/server";
 /** Session duration: 8 hours (factory shift) */
 const SESSION_MAX_AGE = 8 * 60 * 60; // 28800 seconds
 
-const PUBLIC_API_PREFIXES = [
-  "/api/auth/login",
-  "/api/auth/pin",
-  "/api/auth/logout",
-  "/api/kiosk/",
-  "/api/faction/",
-];
-
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
-  // --- Fast path: public API routes — no auth needed, skip Supabase entirely ---
+  // --- Fast path: ALL API routes skip middleware auth ---
+  // withAuth() in each route handler is the sole auth gate.
+  // This eliminates duplicate Supabase client + getSession() per request.
   if (path.startsWith("/api/")) {
-    const isPublicApi =
-      path === "/api/health" ||
-      PUBLIC_API_PREFIXES.some((prefix) => path.startsWith(prefix));
-
-    if (isPublicApi) {
-      return NextResponse.next();
-    }
+    return NextResponse.next();
   }
 
   // --- Fast path: portal has its own auth (faction tokens) ---
@@ -66,14 +54,6 @@ export async function middleware(request: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
   const user = session?.user ?? null;
-
-  // --- Protect API routes ---
-  if (path.startsWith("/api/")) {
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    return response;
-  }
 
   // --- Protect page routes ---
   const isLoginPage = path === "/login" || path.startsWith("/login/");

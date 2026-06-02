@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Lot not found" }, { status: 404 });
   }
 
-  // 2. Insert defect_record with previous_stage_id
+  // 2. Insert defect_record
   const { data: defect, error: insertError } = await supabase
     .from("defect_records")
     .insert({
@@ -72,10 +72,9 @@ export async function POST(request: Request) {
       quantity: qty,
       description: description || null,
       detected_by: user.id,
-      previous_stage_id: lot.current_stage_id,
       status: "PENDING",
     })
-    .select("id, lot_id, defect_type, severity, quantity, description, detected_at, status, previous_stage_id")
+    .select("id, lot_id, defect_type, severity, quantity, description, detected_at, status")
     .single();
 
   if (insertError) {
@@ -118,11 +117,11 @@ export async function GET(request: Request) {
     .from("defect_records")
     .select(`
       id, lot_id, defect_type, severity, quantity, description,
-      detected_at, resolved_at, status, previous_stage_id,
+      detected_at, resolved_at, status,
       detected_by, resolved_by,
-      lots!inner (
-        id, barcode, lot_number,
-        production_orders!inner ( id, op_number, product_name )
+      lots (
+        id, barcode, lot_number, po_id,
+        production_orders ( id, op_number, product_name )
       )
     `, { count: "exact" })
     .order("detected_at", { ascending: false })

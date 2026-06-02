@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { withAuth } from "@/lib/auth-middleware";
 import { checkRateLimitCustom } from "@/lib/rate-limiter";
 
 const SCAN_RATE_LIMIT = 100; // max requests
@@ -20,17 +20,9 @@ const STAGE_STATUS_MAP: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
-  const supabase = createSupabaseServerClient();
-
-  // Get authenticated user
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase, user } = auth;
 
   // Rate limit: 100 scans/min per user
   const rl = checkRateLimitCustom(`scan:${user.id}`, SCAN_RATE_LIMIT, SCAN_RATE_WINDOW);

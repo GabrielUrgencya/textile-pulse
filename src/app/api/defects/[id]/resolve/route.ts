@@ -32,7 +32,7 @@ export async function PATCH(
   // 1. Fetch defect record
   const { data: defect, error: defectError } = await supabase
     .from("defect_records")
-    .select("id, lot_id, status, previous_stage_id, quantity")
+    .select("id, lot_id, status, quantity")
     .eq("id", id)
     .single();
 
@@ -71,23 +71,21 @@ export async function PATCH(
     .eq("status", "PENDING")
     .neq("id", id);
 
-  // Only restore lot status if no other pending defects
-  if ((pendingCount ?? 0) === 0 && defect.previous_stage_id) {
-    // Get stage name to determine lot status
-    const { data: stage } = await supabase
-      .from("stages")
-      .select("name")
-      .eq("id", defect.previous_stage_id)
+  // 4. Restore lot status if no other pending defects
+  if ((pendingCount ?? 0) === 0) {
+    // Get lot's current stage to determine correct status
+    const { data: lot } = await supabase
+      .from("lots")
+      .select("current_stage_id, stages(name)")
+      .eq("id", defect.lot_id)
       .single();
 
+    const stage = lot?.stages as unknown as { name: string } | null;
     const newStatus = stage ? (STAGE_STATUS_MAP[stage.name] || "CREATED") : "CREATED";
 
     await supabase
       .from("lots")
-      .update({
-        status: newStatus,
-        current_stage_id: defect.previous_stage_id,
-      })
+      .update({ status: newStatus })
       .eq("id", defect.lot_id);
   }
 

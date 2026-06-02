@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 
   const [totalRes, criticalRes, resolvedRes] = await Promise.all([
     applyDateFilters(supabase.from("defect_records").select("id", { count: "exact", head: true })),
-    applyDateFilters(supabase.from("defect_records").select("id", { count: "exact", head: true }).eq("severity", "CRITICAL")),
+    applyDateFilters(supabase.from("defect_records").select("id", { count: "exact", head: true }).eq("severity", "GRAVE")),
     applyDateFilters(supabase.from("defect_records").select("id", { count: "exact", head: true }).eq("status", "RESOLVED")),
   ]);
 
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
 
     const [prevTotalRes, prevCriticalRes, prevResolvedRes] = await Promise.all([
       applyPrevDateFilters(supabase.from("defect_records").select("id", { count: "exact", head: true })),
-      applyPrevDateFilters(supabase.from("defect_records").select("id", { count: "exact", head: true }).eq("severity", "CRITICAL")),
+      applyPrevDateFilters(supabase.from("defect_records").select("id", { count: "exact", head: true }).eq("severity", "GRAVE")),
       applyPrevDateFilters(supabase.from("defect_records").select("id", { count: "exact", head: true }).eq("status", "RESOLVED")),
     ]);
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
 
 /**
@@ -8,16 +8,9 @@ import { hasPermission, type AppRole } from "@/lib/permissions";
  */
 
 export async function POST(request: Request) {
-  const supabase = createSupabaseServerClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase, user } = auth;
 
   // AC2: Only ADMIN can create tokens
   const role = user.app_metadata?.role;
@@ -60,16 +53,9 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const supabase = createSupabaseServerClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase, user } = auth;
 
   // AC3: Only ADMIN can list tokens
   const role = user.app_metadata?.role;

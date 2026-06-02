@@ -17,17 +17,19 @@ export async function GET(request: Request) {
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
 
+  // Join via lots → stages (current_stage_id) since previous_stage_id column doesn't exist yet
   let query = supabase
     .from("defect_records")
-    .select("defect_type, stage_id, stages(name)");
+    .select("defect_type, lots(stages(name))");
 
-  if (from) query = query.gte("created_at", from);
-  if (to) query = query.lte("created_at", to);
+  if (from) query = query.gte("detected_at", from);
+  if (to) query = query.lte("detected_at", to);
 
   const { data: records, error } = await query;
 
   if (error) {
-    return NextResponse.json({ error: "Failed to fetch defects by stage" }, { status: 500 });
+    console.error("[quality/by-stage]", error.message, error.details, error.hint);
+    return NextResponse.json({ error: "Failed to fetch defects by stage", details: error.message }, { status: 500 });
   }
 
   // Build matrix: stage x defect_type
@@ -35,8 +37,8 @@ export async function GET(request: Request) {
   const allTypes = new Set<string>();
 
   for (const r of records || []) {
-    const stagesRaw = r.stages as unknown;
-    const stageName = (stagesRaw as { name: string } | null)?.name || "Sem etapa";
+    const lot = r.lots as unknown as { stages: { name: string } | null } | null;
+    const stageName = lot?.stages?.name || "Sem etapa";
     allTypes.add(r.defect_type);
 
     const stageMap = stageTypes.get(stageName) || new Map();

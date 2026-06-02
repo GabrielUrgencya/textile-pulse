@@ -17,17 +17,19 @@ export async function GET(request: Request) {
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
 
+  // Join via lots → stages (current_stage_id) since previous_stage_id column doesn't exist yet
   let query = supabase
     .from("defect_records")
-    .select("defect_type, stage_id, stages(name)");
+    .select("defect_type, lots(stages(name))");
 
-  if (from) query = query.gte("created_at", from);
-  if (to) query = query.lte("created_at", to);
+  if (from) query = query.gte("detected_at", from);
+  if (to) query = query.lte("detected_at", to);
 
   const { data: records, error } = await query;
 
   if (error) {
-    return NextResponse.json({ error: "Failed to fetch defects by type" }, { status: 500 });
+    console.error("[quality/by-type]", error.message, error.details, error.hint);
+    return NextResponse.json({ error: "Failed to fetch defects by type", details: error.message }, { status: 500 });
   }
 
   // Group by type
@@ -36,8 +38,8 @@ export async function GET(request: Request) {
   for (const r of records || []) {
     const entry = typeMap.get(r.defect_type) || { count: 0, stages: new Map() };
     entry.count++;
-    const stagesRaw = r.stages as unknown;
-    const stageName = (stagesRaw as { name: string } | null)?.name || "Sem etapa";
+    const lot = r.lots as unknown as { stages: { name: string } | null } | null;
+    const stageName = lot?.stages?.name || "Sem etapa";
     entry.stages.set(stageName, (entry.stages.get(stageName) || 0) + 1);
     typeMap.set(r.defect_type, entry);
   }

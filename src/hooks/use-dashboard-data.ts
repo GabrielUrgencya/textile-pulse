@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { UserProfile } from "@/hooks/use-user-profile";
 
 /* ─────────────────── Types matching API responses ─────────────────── */
 
@@ -30,10 +31,40 @@ export interface ProductionOrder {
   created_at: string;
 }
 
+export interface Targets {
+  dailyPiecesTarget: number;
+  productivityTarget: number;
+  defectTolerance: number;
+  lotsTarget: number;
+  opsTarget: number;
+  shiftStart: string;
+  shiftEnd: string;
+}
+
+export interface StaleLot {
+  barcode: string;
+  lot_number: string;
+  op_number: string;
+  stage_name: string;
+  hours_stalled: number;
+}
+
+export interface ActivityEvent {
+  time: string;
+  operator_name: string;
+  action: string;
+  barcode: string;
+  stage_name: string;
+}
+
 export interface DashboardData {
   kpis: KpiResult | null;
   chart: ChartDataPoint[];
   orders: ProductionOrder[];
+  targets: Targets;
+  staleLots: StaleLot[];
+  activity: ActivityEvent[];
+  profile: UserProfile | null;
   isAuthenticated: boolean;
 }
 
@@ -44,27 +75,32 @@ export interface UseDashboardDataReturn {
   refetch: () => void;
 }
 
-const POLL_INTERVAL_MS = 30_000;
-
-async function fetchJson<T>(url: string): Promise<{ data: T; status: number }> {
-  const res = await fetch(url, { credentials: "same-origin" });
-  if (!res.ok) {
-    return { data: null as unknown as T, status: res.status };
-  }
-  const data = await res.json() as T;
-  return { data, status: res.status };
-}
-
 export interface DateRange {
   from: string;
   to: string;
 }
+
+const DEFAULT_TARGETS: Targets = {
+  dailyPiecesTarget: 1000,
+  productivityTarget: 85,
+  defectTolerance: 3,
+  lotsTarget: 100,
+  opsTarget: 15,
+  shiftStart: "07:00",
+  shiftEnd: "17:00",
+};
+
+const POLL_INTERVAL_MS = 30_000;
 
 export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn {
   const [data, setData] = useState<DashboardData>({
     kpis: null,
     chart: [],
     orders: [],
+    targets: DEFAULT_TARGETS,
+    staleLots: [],
+    activity: [],
+    profile: null,
     isAuthenticated: false,
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -72,7 +108,6 @@ export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const authFailedRef = useRef(false);
 
-  // Stabilize dateRange reference to avoid unnecessary re-renders
   const fromParam = dateRange?.from;
   const toParam = dateRange?.to;
 
@@ -84,7 +119,6 @@ export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn 
   }, []);
 
   const fetchAll = useCallback(async () => {
-    // Don't retry if auth already failed
     if (authFailedRef.current) return;
 
     try {
@@ -92,47 +126,38 @@ export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn 
       const from = fromParam || today;
       const to = toParam || today;
 
-      const [kpisRes, chartRes, ordersRes] = await Promise.all([
-        fetchJson<{ kpis: KpiResult }>(`/api/dashboard/kpis?from=${from}&to=${to}`),
-        fetchJson<{ chart: ChartDataPoint[] }>(`/api/dashboard/production-chart?from=${from}&to=${to}`),
-        fetchJson<{ orders: ProductionOrder[] }>(`/api/production/orders?limit=10`),
-      ]);
+      const res = await fetch(`/api/dashboard/all?from=${from}&to=${to}`, {
+        credentials: "same-origin",
+      });
 
-      // Check if any request returned 401 (not authenticated)
-      const anyUnauthorized =
-        kpisRes.status === 401 ||
-        chartRes.status === 401 ||
-        ordersRes.status === 401;
-
-      if (anyUnauthorized) {
-        // Stop polling — no point retrying without auth
+      if (res.status === 401) {
         authFailedRef.current = true;
         stopPolling();
-        setData({
-          kpis: null,
-          chart: [],
-          orders: [],
-          isAuthenticated: false,
-        });
+        setData((prev) => ({ ...prev, isAuthenticated: false }));
         setError("Não autenticado");
         setIsLoading(false);
         return;
       }
 
-      // Check for server errors (5xx)
-      const anyServerError =
-        kpisRes.status >= 500 ||
-        chartRes.status >= 500 ||
-        ordersRes.status >= 500;
+      if (!res.ok) {
+        setError("Erro no servidor ao carregar dados");
+        setIsLoading(false);
+        return;
+      }
+
+      const json = await res.json();
 
       setData({
-        kpis: kpisRes.status === 200 ? kpisRes.data.kpis : null,
-        chart: chartRes.status === 200 ? chartRes.data.chart : [],
-        orders: ordersRes.status === 200 ? ordersRes.data.orders : [],
+        kpis: json.kpis || null,
+        chart: json.chart || [],
+        orders: json.orders || [],
+        targets: json.targets || DEFAULT_TARGETS,
+        staleLots: json.staleLots || [],
+        activity: json.activity || [],
+        profile: json.profile || null,
         isAuthenticated: true,
       });
-
-      setError(anyServerError ? "Erro no servidor ao carregar alguns dados" : null);
+      setError(null);
     } catch {
       setError("Erro de conexão ao carregar dados");
     } finally {
@@ -141,7 +166,6 @@ export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn 
   }, [stopPolling, fromParam, toParam]);
 
   useEffect(() => {
-    // Show loading on period change
     setIsLoading(true);
     fetchAll();
     intervalRef.current = setInterval(fetchAll, POLL_INTERVAL_MS);

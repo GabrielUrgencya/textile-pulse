@@ -17,18 +17,17 @@ export async function GET(request: Request) {
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
 
-  // Get defects that have lot -> shipment -> faction relationship
+  // Get defects that have a direct shipment → faction relationship
   let query = supabase
     .from("defect_records")
-    .select("id, status, severity, lot_id, lots(shipment_lots(shipment_id, shipments(faction_id, factions(name))))");
+    .select("id, status, severity, shipment_id, faction_shipments(faction_id, factions(name))");
 
-  if (from) query = query.gte("created_at", from);
-  if (to) query = query.lte("created_at", to);
+  if (from) query = query.gte("detected_at", from);
+  if (to) query = query.lte("detected_at", to);
 
   const { data: records, error } = await query;
 
   if (error) {
-    // H5 FIX: Return proper error instead of silently returning empty data
     console.error("[quality/by-faction]", error);
     return NextResponse.json({ error: "Failed to fetch quality by faction" }, { status: 500 });
   }
@@ -37,12 +36,10 @@ export async function GET(request: Request) {
   const factionMap = new Map<string, { name: string; total: number; contested: number }>();
 
   for (const r of records || []) {
-    // Navigate the nested join
-    const lotsRaw = r.lots as unknown;
-    const lots = lotsRaw as { shipment_lots: Array<{ shipments: { faction_id: string; factions: { name: string } } }> } | null;
-    const shipmentLot = lots?.shipment_lots?.[0];
-    const faction = shipmentLot?.shipments?.factions;
-    const factionId = shipmentLot?.shipments?.faction_id;
+    // Navigate the join: defect_records → faction_shipments → factions
+    const shipment = r.faction_shipments as unknown as { faction_id: string; factions: { name: string } } | null;
+    const faction = shipment?.factions;
+    const factionId = shipment?.faction_id;
 
     if (!factionId || !faction) continue;
 
