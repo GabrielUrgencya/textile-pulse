@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError } from "@/lib/api-helpers";
 
 export async function GET(request: Request) {
   const auth = await withAuth();
@@ -28,9 +29,7 @@ export async function GET(request: Request) {
 
   const { data: records, error } = await query;
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch trend data" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/quality/trend", error);
 
   // Group by date interval
   const buckets = new Map<string, number>();

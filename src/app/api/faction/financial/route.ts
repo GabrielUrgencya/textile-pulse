@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateFactionSession } from "@/lib/faction-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * GET /api/faction/financial
@@ -24,9 +25,7 @@ export async function GET() {
     .eq("faction_id", session.factionId)
     .order("sent_at", { ascending: false });
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch financial data" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/faction/financial", error);
 
   // Group by month/year period
   const periods = new Map<string, {

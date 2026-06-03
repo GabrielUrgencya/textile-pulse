@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError, requireTenantId } from "@/lib/api-helpers";
 import { escapeLikePattern } from "@/lib/utils";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import bcrypt from "bcryptjs";
@@ -43,9 +44,7 @@ export async function GET(request: Request) {
 
   const { data: members, error } = await query;
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch members" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/team/members", error);
 
   return NextResponse.json({ data: members || [] });
 }
@@ -61,7 +60,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden: users:manage required" }, { status: 403 });
   }
 
-  const tenantId = user.app_metadata?.tenant_id;
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
   const body = await request.json().catch(() => null);
 
   if (!body?.name || !body?.role || !body?.sector) {
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     password: crypto.randomUUID(), // Random password for non-email users
     email_confirm: true,
     app_metadata: {
-      tenant_id: tenantId,
+      tenant_id: t.tenantId,
       role: body.role,
     },
   });
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     .from("profiles")
     .insert({
       id: authData.user.id,
-      tenant_id: tenantId,
+      tenant_id: t.tenantId,
       auth_user_id: authData.user.id,
       full_name: body.name,
       email: body.email || null,
@@ -121,9 +121,7 @@ export async function POST(request: Request) {
       pin_code: pinHash,
     });
 
-  if (profileError) {
-    return NextResponse.json({ error: "Failed to create profile" }, { status: 500 });
-  }
+  if (profileError) return dbError("POST /api/team/members", profileError);
 
   return NextResponse.json(
     { data: { id: authData.user.id, pin } },

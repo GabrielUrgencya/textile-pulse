@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * GET /api/dashboard/activity?limit=10
@@ -25,9 +26,7 @@ export async function GET(request: Request) {
     .order("scanned_at", { ascending: false })
     .limit(limit);
 
-  if (error) {
-    return NextResponse.json({ error: "Erro ao buscar atividade" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/dashboard/activity", error);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const activity = (events || []).map((ev: any) => {

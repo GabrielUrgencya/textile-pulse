@@ -34,7 +34,8 @@ export async function GET(request: Request) {
   const { data: factions, error } = await query;
 
   if (error) {
-    return NextResponse.json({ error: "Failed to fetch factions" }, { status: 500 });
+    console.error("[GET /api/factions] Supabase error:", error.message, error.code);
+    return NextResponse.json({ error: error.message || "Failed to fetch factions" }, { status: 500 });
   }
 
   // Get aggregate KPIs
@@ -128,6 +129,13 @@ export async function POST(request: Request) {
 
   const tenantId = user.app_metadata?.tenant_id;
 
+  if (!tenantId) {
+    return NextResponse.json(
+      { error: "Tenant não configurado para este usuário" },
+      { status: 400 },
+    );
+  }
+
   const { data, error } = await supabase
     .from("factions")
     .insert({
@@ -144,7 +152,11 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: "Failed to create faction" }, { status: 500 });
+    console.error("[POST /api/factions] Supabase error:", error.message, error.code);
+    return NextResponse.json(
+      { error: error.message || "Failed to create faction" },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ data }, { status: 201 });

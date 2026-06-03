@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -122,6 +123,9 @@ function FactionForm({ open, onOpenChange, faction, onSuccess }: FactionFormProp
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Editar Facção" : "Nova Facção"}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? "Atualize os dados da facção." : "Preencha os dados para cadastrar uma nova facção."}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-1.5">

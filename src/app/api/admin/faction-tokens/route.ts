@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError } from "@/lib/api-helpers";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -113,12 +114,7 @@ export async function GET() {
     .select("id, token, name, faction_id, is_active, last_accessed_at, created_at, factions!inner(name)")
     .order("created_at", { ascending: false });
 
-  if (error) {
-    return NextResponse.json(
-      { error: "Failed to fetch faction tokens" },
-      { status: 500 }
-    );
-  }
+  if (error) return dbError("GET /api/admin/faction-tokens", error);
 
   return NextResponse.json({ tokens: tokens || [] });
 }

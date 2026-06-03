@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { requireTenantId } from "@/lib/api-helpers";
 import { computeKpis, computeChartData } from "@/lib/kpi-queries";
 
 /**
@@ -20,7 +21,9 @@ export async function GET(request: Request) {
   const to = searchParams.get("to") || today;
 
   const groupBy = from === to ? "hour" : "day";
-  const tenantId = user.app_metadata?.tenant_id;
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
+  const tenantId = t.tenantId;
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
   // Run ALL queries in parallel — 1 withAuth() instead of 7

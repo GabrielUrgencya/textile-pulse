@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError, requireTenantId } from "@/lib/api-helpers";
 
 interface TenantTargets {
   dailyPiecesTarget: number;
@@ -27,12 +28,13 @@ export async function GET() {
   if (auth.error) return auth.error;
 
   const { supabase, user } = auth;
-  const tenantId = user.app_metadata?.tenant_id;
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
 
   const { data: tenant } = await supabase
     .from("tenants")
     .select("settings")
-    .eq("id", tenantId)
+    .eq("id", t.tenantId)
     .single();
 
   const settings = (tenant?.settings as Record<string, unknown>) || {};
@@ -61,7 +63,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Forbidden: settings:manage required" }, { status: 403 });
   }
 
-  const tenantId = user.app_metadata?.tenant_id;
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
+
   const body = await request.json().catch(() => null);
 
   if (!body) {
@@ -72,7 +76,7 @@ export async function PATCH(request: Request) {
   const { data: tenant } = await supabase
     .from("tenants")
     .select("settings")
-    .eq("id", tenantId)
+    .eq("id", t.tenantId)
     .single();
 
   const currentSettings = (tenant?.settings as Record<string, unknown>) || {};
@@ -91,11 +95,9 @@ export async function PATCH(request: Request) {
   const { error } = await supabase
     .from("tenants")
     .update({ settings: updatedSettings })
-    .eq("id", tenantId);
+    .eq("id", t.tenantId);
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to update targets" }, { status: 500 });
-  }
+  if (error) return dbError("PATCH /api/settings/targets", error);
 
   return NextResponse.json({ data: { success: true } });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateFactionSession } from "@/lib/faction-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * GET /api/faction/financial/[period]
@@ -41,9 +42,7 @@ export async function GET(
     .lte("sent_at", endDate)
     .order("sent_at", { ascending: true });
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch period data" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/faction/financial/[period]", error);
 
   const shipments = data || [];
 

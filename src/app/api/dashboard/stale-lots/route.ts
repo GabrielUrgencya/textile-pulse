@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * GET /api/dashboard/stale-lots
@@ -26,9 +27,7 @@ export async function GET() {
     .not("current_stage_id", "is", null)
     .limit(20);
 
-  if (error) {
-    return NextResponse.json({ error: "Erro ao buscar lotes parados" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/dashboard/stale-lots", error);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const staleLots = (lots || []).map((lot: any) => {

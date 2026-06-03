@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { useServerData } from "@/hooks/use-server-data";
 import { showToast } from "@/lib/toast";
@@ -221,6 +222,7 @@ function TokenManager() {
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
             <DialogTitle>Novo Token Kiosk</DialogTitle>
+            <DialogDescription>Gerencie tokens de acesso.</DialogDescription>
           </DialogHeader>
 
           {createdToken ? (

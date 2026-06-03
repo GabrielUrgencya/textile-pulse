@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 export async function GET() {
   const auth = await withAuth();
@@ -57,9 +58,7 @@ export async function PATCH(request: Request) {
     })
     .eq("id", user.id);
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
-  }
+  if (error) return dbError("PATCH /api/profile", error);
 
   return NextResponse.json({ data: { success: true } });
 }

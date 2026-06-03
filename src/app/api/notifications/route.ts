@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * GET /api/notifications?unread=true
@@ -32,9 +33,7 @@ export async function GET(request: Request) {
 
   const { data: notifications, error } = await query;
 
-  if (error) {
-    return NextResponse.json({ error: "Erro ao buscar notificações" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/notifications", error);
 
   const items = (notifications || []).map((n) => ({
     id: n.id,

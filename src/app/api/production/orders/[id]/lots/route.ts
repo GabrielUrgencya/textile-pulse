@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { hasPermission, type AppRole } from "@/lib/permissions";
 
 export async function POST(
   request: Request,
@@ -8,6 +9,11 @@ export async function POST(
   const auth = await withAuth();
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
+  const role = user.app_metadata?.role;
+
+  if (!hasPermission(role as AppRole, "orders:create")) {
+    return NextResponse.json({ error: "Forbidden: orders:create required" }, { status: 403 });
+  }
 
   const { id: poId } = params;
 

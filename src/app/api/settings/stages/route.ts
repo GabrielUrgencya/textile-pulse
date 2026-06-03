@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError, requireTenantId } from "@/lib/api-helpers";
 
 export async function GET() {
   const auth = await withAuth();
@@ -13,9 +14,7 @@ export async function GET() {
     .select("*")
     .order("order_index", { ascending: true });
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch stages" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/settings/stages", error);
 
   return NextResponse.json({ data: stages || [] });
 }
@@ -31,7 +30,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden: settings:manage required" }, { status: 403 });
   }
 
-  const tenantId = user.app_metadata?.tenant_id;
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
+
   const body = await request.json().catch(() => null);
 
   if (!body?.name) {
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
   const { data: stage, error } = await supabase
     .from("stages")
     .insert({
-      tenant_id: tenantId,
+      tenant_id: t.tenantId,
       name: body.name,
       color: body.color || null,
       order_index: nextIndex,
@@ -70,9 +71,7 @@ export async function POST(request: Request) {
     .select()
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to create stage" }, { status: 500 });
-  }
+  if (error) return dbError("POST /api/settings/stages", error);
 
   return NextResponse.json({ data: stage }, { status: 201 });
 }

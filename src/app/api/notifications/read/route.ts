@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * PATCH /api/notifications/read
@@ -30,9 +31,7 @@ export async function PATCH(request: Request) {
       .is("read_at", null)
       .eq("user_id", userId);
 
-    if (error) {
-      return NextResponse.json({ error: "Erro ao marcar notificações" }, { status: 500 });
-    }
+    if (error) return dbError("PATCH /api/notifications/read (all)", error);
 
     return NextResponse.json({ data: { success: true } });
   }
@@ -44,9 +43,7 @@ export async function PATCH(request: Request) {
       .in("id", body.ids)
       .is("read_at", null);
 
-    if (error) {
-      return NextResponse.json({ error: "Erro ao marcar notificações" }, { status: 500 });
-    }
+    if (error) return dbError("PATCH /api/notifications/read (ids)", error);
 
     return NextResponse.json({ data: { success: true } });
   }

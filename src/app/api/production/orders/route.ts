@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 export async function POST(request: Request) {
   const auth = await withAuth();
@@ -43,12 +44,7 @@ export async function POST(request: Request) {
     .select()
     .single();
 
-  if (insertError) {
-    return NextResponse.json(
-      { error: "Failed to create production order", details: insertError.message },
-      { status: 500 }
-    );
-  }
+  if (insertError) return dbError("POST /api/production/orders", insertError);
 
   return NextResponse.json({ order }, { status: 201 });
 }
@@ -70,12 +66,7 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  if (error) {
-    return NextResponse.json(
-      { error: "Failed to fetch production orders" },
-      { status: 500 }
-    );
-  }
+  if (error) return dbError("GET /api/production/orders", error);
 
   return NextResponse.json({
     orders: orders || [],

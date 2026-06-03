@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { dbError } from "@/lib/api-helpers";
 import bcrypt from "bcryptjs";
 import { randomInt } from "crypto";
 
@@ -30,9 +31,7 @@ export async function PATCH(
     .update({ pin_code: pinHash })
     .eq("id", id);
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to reset PIN" }, { status: 500 });
-  }
+  if (error) return dbError("PATCH /api/team/members/[id]/reset-pin", error);
 
   return NextResponse.json({ data: { pin } });
 }

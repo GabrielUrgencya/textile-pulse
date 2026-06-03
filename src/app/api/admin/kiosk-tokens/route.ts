@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * POST /api/admin/kiosk-tokens — Create kiosk token (ADMIN only)
@@ -68,12 +69,7 @@ export async function GET() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error) {
-    return NextResponse.json(
-      { error: "Failed to fetch kiosk tokens" },
-      { status: 500 }
-    );
-  }
+  if (error) return dbError("GET /api/admin/kiosk-tokens", error);
 
   return NextResponse.json({ tokens: tokens || [] });
 }

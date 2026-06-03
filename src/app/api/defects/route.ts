@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { hasPermission, type AppRole } from "@/lib/permissions";
 
 const VALID_DEFECT_TYPES = ["COSTURA", "TECIDO", "AVIAMENTO", "OUTRO"] as const;
 const VALID_SEVERITIES = ["LEVE", "MEDIO", "GRAVE"] as const;
@@ -8,6 +9,11 @@ export async function POST(request: Request) {
   const auth = await withAuth();
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
+  const role = user.app_metadata?.role;
+
+  if (!hasPermission(role as AppRole, "rework:report")) {
+    return NextResponse.json({ error: "Forbidden: rework:report required" }, { status: 403 });
+  }
 
   let body: {
     lot_id?: string;

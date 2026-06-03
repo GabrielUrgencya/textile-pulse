@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError, requireTenantId } from "@/lib/api-helpers";
 
 export async function POST(request: Request) {
   const auth = await withAuth();
@@ -22,7 +23,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const tenantId = user.app_metadata?.tenant_id;
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
 
   // Get lot quantities
   const { data: lots } = await supabase
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
   const { data: shipment, error } = await supabase
     .from("faction_shipments")
     .insert({
-      tenant_id: tenantId,
+      tenant_id: t.tenantId,
       faction_id: body.factionId,
       status: "SENT",
       total_quantity: totalQuantity,
@@ -47,9 +49,7 @@ export async function POST(request: Request) {
     .select("id")
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to create shipment" }, { status: 500 });
-  }
+  if (error) return dbError("POST /api/shipments", error);
 
   // Link lots to shipment
   if (shipment && lots) {

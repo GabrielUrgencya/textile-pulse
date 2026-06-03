@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateFactionSession } from "@/lib/faction-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * GET /api/faction/notifications?page=1&limit=20
@@ -32,9 +33,7 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/faction/notifications", error);
 
   return NextResponse.json({
     data: data || [],

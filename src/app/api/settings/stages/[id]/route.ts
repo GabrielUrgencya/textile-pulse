@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError } from "@/lib/api-helpers";
 
 export async function PATCH(
   request: Request,
@@ -32,9 +33,7 @@ export async function PATCH(
     .update(updates)
     .eq("id", id);
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to update stage" }, { status: 500 });
-  }
+  if (error) return dbError("PATCH /api/settings/stages/[id]", error);
 
   return NextResponse.json({ data: { success: true } });
 }
@@ -73,9 +72,7 @@ export async function DELETE(
     .delete()
     .eq("id", id);
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to delete stage" }, { status: 500 });
-  }
+  if (error) return dbError("DELETE /api/settings/stages/[id]", error);
 
   return NextResponse.json({ data: { success: true } });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateFactionSession } from "@/lib/faction-middleware";
+import { dbError } from "@/lib/api-helpers";
 
 /**
  * GET /api/faction/shipments?page=1&limit=20
@@ -34,9 +35,7 @@ export async function GET(request: Request) {
     .order("sent_at", { ascending: false })
     .range(from, to);
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch shipments" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/faction/shipments", error);
 
   return NextResponse.json({
     data: data || [],

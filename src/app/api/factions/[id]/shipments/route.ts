@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { dbError } from "@/lib/api-helpers";
 
 export async function GET(
   request: Request,
@@ -32,9 +33,7 @@ export async function GET(
 
   const { data: shipments, error } = await query;
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch shipments" }, { status: 500 });
-  }
+  if (error) return dbError("GET /api/factions/[id]/shipments", error);
 
   return NextResponse.json({ data: shipments || [] });
 }
