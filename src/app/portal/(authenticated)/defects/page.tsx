@@ -74,14 +74,41 @@ export default function PortalDefectsPage() {
     GRAVE: "text-red-400",
   };
 
+  const pendingResponse = defects.filter((d) => !d.faction_response).length;
+  const totalPieces = defects.reduce((sum, d) => sum + d.quantity, 0);
+
   return (
     <div className="space-y-4">
-      <h2 className="font-display text-lg font-semibold">Defeitos registrados</h2>
+      <h2 className="font-display text-[20px] font-semibold">Defeitos</h2>
+
+      {/* Summary KPIs — always visible */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-[12px] text-muted-foreground">Registros</p>
+          <p className="mt-1 font-display text-[24px] font-bold tabular-nums">{defects.length}</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-[12px] text-muted-foreground">Peças</p>
+          <p className="mt-1 font-display text-[24px] font-bold tabular-nums">{totalPieces}</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-[12px] text-muted-foreground">Pendentes</p>
+          <p className="mt-1 font-display text-[24px] font-bold tabular-nums text-amber-400">{pendingResponse}</p>
+        </div>
+      </div>
 
       {defects.length === 0 ? (
-        <p className="text-center text-sm text-muted-foreground py-8">
-          Nenhum defeito registrado.
-        </p>
+        <div className="rounded-2xl border border-dashed border-emerald-500/30 bg-emerald-500/5 p-8 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
+            <svg className="h-6 w-6 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          </div>
+          <p className="text-[15px] font-medium text-emerald-400">Tudo certo!</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Nenhum defeito registrado nos seus lotes. Continue assim!
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
           {defects.map((d) => (

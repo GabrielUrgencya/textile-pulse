@@ -67,8 +67,8 @@ export default function PortalNotificationsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-lg font-semibold">
-          Notificações
+        <h2 className="font-display text-[20px] font-semibold">
+          Avisos
           {unreadCount > 0 && (
             <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground">
               {unreadCount}
@@ -85,10 +85,30 @@ export default function PortalNotificationsPage() {
         )}
       </div>
 
+      {/* Summary KPIs — always visible */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-[13px] text-muted-foreground">Total</p>
+          <p className="mt-1 font-display text-[28px] font-bold tabular-nums">{notifications.length}</p>
+        </div>
+        <div className={`rounded-2xl border p-4 ${unreadCount > 0 ? "border-primary/30 bg-primary/5" : "border-border bg-card"}`}>
+          <p className="text-[13px] text-muted-foreground">Não lidas</p>
+          <p className={`mt-1 font-display text-[28px] font-bold tabular-nums ${unreadCount > 0 ? "text-primary" : ""}`}>{unreadCount}</p>
+        </div>
+      </div>
+
       {notifications.length === 0 ? (
-        <p className="text-center text-sm text-muted-foreground py-8">
-          Nenhuma notificação.
-        </p>
+        <div className="rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+            </svg>
+          </div>
+          <p className="text-[15px] font-medium">Nenhum aviso</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Avisos sobre suas remessas e prazos aparecerão aqui.
+          </p>
+        </div>
       ) : (
         <div className="space-y-2">
           {notifications.map((n) => (
