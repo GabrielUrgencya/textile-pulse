@@ -11,7 +11,9 @@ import crypto from "crypto";
  * Story 6.7 — AC1, AC2, AC3, AC4, AC6, AC7
  */
 
-const PORTAL_BASE_URL = "https://liserie.lision.app/portal";
+const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_APP_URL
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/portal`
+  : "https://lision.vercel.app/portal";
 
 export async function POST(request: Request) {
   const auth = await withAuth();
