@@ -23,7 +23,7 @@ export default function PortalReturnsPage() {
   useEffect(() => {
     fetch("/api/faction/returns")
       .then((r) => r.json())
-      .then((data) => setReturns(data.returns || data || []))
+      .then((data) => setReturns(data.data || []))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);

@@ -2,20 +2,19 @@
 
 import { useEffect, useState } from "react";
 
+interface PeriodData {
+  period: string;
+  totalPayment: number;
+  totalDeduction: number;
+  netAmount: number;
+  shipmentCount: number;
+  piecesProcessed: number;
+  isOpen: boolean;
+}
+
 interface FinancialData {
-  currentPeriod: {
-    period: string;
-    totalValue: number;
-    totalDeductions: number;
-    netValue: number;
-    shipmentCount: number;
-  } | null;
-  history: {
-    period: string;
-    totalValue: number;
-    totalDeductions: number;
-    netValue: number;
-  }[];
+  openPeriod: PeriodData | null;
+  history: PeriodData[];
 }
 
 export default function PortalFinancialPage() {
@@ -38,29 +37,29 @@ export default function PortalFinancialPage() {
       <h2 className="font-display text-lg font-semibold">Financeiro</h2>
 
       {/* Current period */}
-      {data.currentPeriod ? (
+      {data.openPeriod ? (
         <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <p className="text-xs text-muted-foreground">Período atual — {data.currentPeriod.period}</p>
+          <p className="text-xs text-muted-foreground">Período atual — {data.openPeriod.period}</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-xs text-muted-foreground">Valor bruto</p>
-              <p className="text-2xl font-bold">{formatCurrency(data.currentPeriod.totalValue)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(data.openPeriod.totalPayment)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Deduções</p>
               <p className="text-2xl font-bold text-red-400">
-                -{formatCurrency(data.currentPeriod.totalDeductions)}
+                -{formatCurrency(data.openPeriod.totalDeduction)}
               </p>
             </div>
           </div>
           <div className="border-t border-border pt-3">
             <p className="text-xs text-muted-foreground">Valor líquido</p>
             <p className="text-3xl font-bold text-emerald-400">
-              {formatCurrency(data.currentPeriod.netValue)}
+              {formatCurrency(data.openPeriod.netAmount)}
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
-            {data.currentPeriod.shipmentCount} lote{data.currentPeriod.shipmentCount !== 1 ? "s" : ""} neste período
+            {data.openPeriod.shipmentCount} lote{data.openPeriod.shipmentCount !== 1 ? "s" : ""} neste período
           </p>
         </div>
       ) : (
@@ -79,11 +78,11 @@ export default function PortalFinancialPage() {
               <div>
                 <p className="text-sm font-medium">{h.period}</p>
                 <p className="text-xs text-muted-foreground">
-                  Bruto: {formatCurrency(h.totalValue)} · Ded: -{formatCurrency(h.totalDeductions)}
+                  Bruto: {formatCurrency(h.totalPayment)} · Ded: -{formatCurrency(h.totalDeduction)}
                 </p>
               </div>
               <p className="text-sm font-semibold text-emerald-400">
-                {formatCurrency(h.netValue)}
+                {formatCurrency(h.netAmount)}
               </p>
             </div>
           ))}

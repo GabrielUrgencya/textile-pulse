@@ -39,7 +39,7 @@ export default function PortalShipmentsPage() {
   useEffect(() => {
     fetch("/api/faction/shipments")
       .then((r) => r.json())
-      .then((data) => setShipments(data.shipments || data || []))
+      .then((data) => setShipments(data.data || []))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
