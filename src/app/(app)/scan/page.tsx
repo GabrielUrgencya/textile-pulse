@@ -345,7 +345,7 @@ function ScanPage() {
   const selectedStage = stages.find((s) => s.id === selectedStageId);
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-[1600px] mx-auto px-6 lg:px-10 py-6 lg:py-8 space-y-4">
       {/* Header */}
       <PageHeader eyebrow="Bipagem" title="Scan de Lotes">
         <div className="flex items-center gap-2">

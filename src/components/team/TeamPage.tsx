@@ -231,7 +231,7 @@ function TeamPage() {
   ];
 
   return (
-    <>
+    <div className="max-w-[1600px] mx-auto px-6 lg:px-10 py-6 lg:py-8">
       <PageHeader eyebrow="Gestão" title="Equipe">
         <Button onClick={handleCreate} className="gap-2">
           <Plus className="size-4" />
@@ -365,7 +365,7 @@ function TeamPage() {
         variant="destructive"
         loading={deactivating}
       />
-    </>
+    </div>
   );
 }
 

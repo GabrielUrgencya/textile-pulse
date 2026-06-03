@@ -24,7 +24,7 @@ function SettingsPage() {
   const [activeTab, setActiveTab] = React.useState<TabId>("profile");
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-[1600px] mx-auto px-6 lg:px-10 py-6 lg:py-8 space-y-6">
       <PageHeader eyebrow="Sistema" title="Configurações" />
 
       <div className="flex flex-col md:flex-row gap-6">

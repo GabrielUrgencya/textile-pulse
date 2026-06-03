@@ -31,7 +31,7 @@ function QualityPage({ canViewFactions }: { canViewFactions: boolean }) {
   const factionQuality = useFactionQuality(range);
 
   return (
-    <>
+    <div className="max-w-[1600px] mx-auto px-6 lg:px-10 py-6 lg:py-8">
       <PageHeader eyebrow="Qualidade" title="Análise de Defeitos">
         <DateRangeFilter value={range} onChange={setRange} />
       </PageHeader>
@@ -54,7 +54,7 @@ function QualityPage({ canViewFactions }: { canViewFactions: boolean }) {
           <FactionQuality data={factionQuality.data} loading={factionQuality.isLoading} />
         )}
       </div>
-    </>
+    </div>
   );
 }
 

@@ -137,7 +137,7 @@ export default function ReworkPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-[1600px] mx-auto px-6 lg:px-10 py-6 lg:py-8 space-y-4">
       <PageHeader eyebrow="Qualidade" title="Gestão de Retrabalho">
         <div className="flex items-center gap-2">
           <button

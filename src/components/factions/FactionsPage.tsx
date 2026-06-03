@@ -115,7 +115,7 @@ function FactionsPage() {
   ];
 
   return (
-    <>
+    <div className="max-w-[1600px] mx-auto px-6 lg:px-10 py-6 lg:py-8">
       <PageHeader eyebrow="Terceirizados" title="Facções">
         <Button onClick={handleCreate} className="gap-2">
           <Plus className="size-4" />
@@ -192,7 +192,7 @@ function FactionsPage() {
         variant="destructive"
         loading={deactivating}
       />
-    </>
+    </div>
   );
 }
 
