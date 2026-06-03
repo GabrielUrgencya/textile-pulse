@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limiter";
 
 function getClientIp(request: Request): string {
@@ -105,8 +106,10 @@ export async function POST(request: Request) {
     );
   }
 
+  // Use the SSR server client to verify OTP — this automatically sets session cookies
+  const supabaseServer = createSupabaseServerClient();
   const { data: session, error: verifyError } =
-    await supabaseAdmin.auth.verifyOtp({
+    await supabaseServer.auth.verifyOtp({
       type: "magiclink",
       token_hash: linkData.properties.hashed_token,
     });
