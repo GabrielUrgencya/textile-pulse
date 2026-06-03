@@ -5,6 +5,7 @@ import { Dice5 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -188,6 +189,9 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
       <SheetContent className="w-full sm:max-w-[480px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{isEdit ? "Editar Membro" : "Novo Membro"}</SheetTitle>
+          <SheetDescription>
+            {isEdit ? "Atualize as informações do membro da equipe." : "Preencha os dados para cadastrar um novo membro."}
+          </SheetDescription>
         </SheetHeader>
 
         {createdPin ? (

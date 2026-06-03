@@ -112,7 +112,6 @@ export async function POST(request: Request) {
     .insert({
       id: authData.user.id,
       tenant_id: t.tenantId,
-      auth_user_id: authData.user.id,
       full_name: body.name,
       email: body.email || null,
       phone: body.phone || null,
