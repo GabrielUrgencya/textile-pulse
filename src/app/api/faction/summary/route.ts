@@ -17,7 +17,9 @@ export async function GET() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const [shipmentsResult, defectsResult] = await Promise.all([
+  const now = new Date().toISOString();
+
+  const [shipmentsResult, defectsResult, notificationsResult] = await Promise.all([
     // Active shipments (not fully returned)
     supabase
       .from("faction_shipments")
@@ -31,12 +33,19 @@ export async function GET() {
       .select("id, faction_shipments!inner(faction_id)", { count: "exact", head: true })
       .eq("faction_shipments.faction_id", session.factionId)
       .is("faction_response", null),
+
+    // Unread notifications
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("faction_id", session.factionId)
+      .eq("read", false),
   ]);
 
   const active = shipmentsResult.data || [];
 
-  const totalPieces = active.reduce(
-    (sum, s) => sum + (s.quantity_sent - s.quantity_returned),
+  const totalPiecesWithFaction = active.reduce(
+    (sum, s) => sum + ((s.quantity_sent || 0) - (s.quantity_returned || 0)),
     0
   );
 
@@ -46,21 +55,36 @@ export async function GET() {
       new Date(a.expected_return_at).getTime() - new Date(b.expected_return_at).getTime()
     )[0]?.expected_return_at || null;
 
-  const pendingConfirmation = active.filter(
+  // Shipments awaiting faction confirmation
+  const pendingConfirmationShipments = active.filter(
     (s) => s.status === "SENT" && !s.faction_confirmed_at
+  );
+
+  // Pending returns: shipments with status SENT or PENDING (not yet returned)
+  const pendingReturns = active.filter(
+    (s) => s.status === "SENT" || s.status === "PENDING"
   ).length;
 
-  const amountReceivable = active.reduce(
+  // Overdue: past expected_return_at and not returned
+  const overdueCount = active.filter(
+    (s) => s.expected_return_at && new Date(s.expected_return_at).toISOString() < now && s.status !== "RECEIVED"
+  ).length;
+
+  const currentPeriodValue = active.reduce(
     (sum, s) => sum + (Number(s.payment_value || 0) - Number(s.deduction_value || 0)),
     0
   );
 
   return NextResponse.json({
-    totalPieces,
-    nextDeadline,
-    amountReceivable: Math.round(amountReceivable * 100) / 100,
-    pendingConfirmation,
+    factionName: session.factionName,
+    totalPiecesWithFaction,
+    pendingReturns,
     pendingDefects: defectsResult.count ?? 0,
-    activeShipments: active.length,
+    currentPeriodValue: Math.round(currentPeriodValue * 100) / 100,
+    nextDeadline,
+    overdueCount,
+    unreadNotifications: notificationsResult.count ?? 0,
+    pendingConfirmation: pendingConfirmationShipments.length > 0,
+    pendingShipmentId: pendingConfirmationShipments[0]?.id || null,
   });
 }
