@@ -1,9 +1,7 @@
 "use client";
 
-import { use } from "react";
 import { FactionDetail } from "@/components/factions/FactionDetail";
 
-export default function Page({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  return <FactionDetail factionId={id} />;
+export default function Page({ params }: { params: { id: string } }) {
+  return <FactionDetail factionId={params.id} />;
 }

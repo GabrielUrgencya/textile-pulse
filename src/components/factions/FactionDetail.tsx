@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Plus, PackageCheck, Truck } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, PackageCheck, Truck, Key, Copy, Check } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FactionScoreCard } from "@/components/factions/FactionScoreCard";
@@ -39,6 +40,10 @@ function FactionDetail({ factionId }: FactionDetailProps) {
   const [deactivateOpen, setDeactivateOpen] = React.useState(false);
   const [deactivating, setDeactivating] = React.useState(false);
   const [shipmentTab, setShipmentTab] = React.useState<"active" | "history">("active");
+  const [tokenDialogOpen, setTokenDialogOpen] = React.useState(false);
+  const [generatingToken, setGeneratingToken] = React.useState(false);
+  const [generatedToken, setGeneratedToken] = React.useState<{ portalUrl: string; pin: string } | null>(null);
+  const [copiedField, setCopiedField] = React.useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -75,6 +80,35 @@ function FactionDetail({ factionId }: FactionDetailProps) {
     } finally {
       setDeactivating(false);
     }
+  };
+
+  const handleGenerateToken = async () => {
+    setGeneratingToken(true);
+    try {
+      const res = await fetch("/api/admin/faction-tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ faction_id: factionId, name: faction.name }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Erro ao gerar token");
+      }
+      const { pin, portalUrl } = await res.json();
+      setGeneratedToken({ portalUrl, pin });
+      setTokenDialogOpen(true);
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro inesperado");
+    } finally {
+      setGeneratingToken(false);
+    }
+  };
+
+  const handleCopy = async (text: string, field: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    showToast("success", "Copiado!");
+    setTimeout(() => setCopiedField(null), 2000);
   };
 
   const shipmentColumns: DataTableColumn<FactionShipment>[] = [
@@ -162,6 +196,15 @@ function FactionDetail({ factionId }: FactionDetailProps) {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="size-3.5 mr-1" /> Editar
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGenerateToken}
+            disabled={generatingToken}
+          >
+            <Key className="size-3.5 mr-1" />
+            {generatingToken ? "Gerando..." : "Gerar Token Portal"}
           </Button>
           <Button size="sm" onClick={() => setShipmentCreateOpen(true)}>
             <Plus className="size-3.5 mr-1" /> Nova Remessa
@@ -304,6 +347,52 @@ function FactionDetail({ factionId }: FactionDetailProps) {
         variant="destructive"
         loading={deactivating}
       />
+
+      <Dialog open={tokenDialogOpen} onOpenChange={(open) => { if (!open) setGeneratedToken(null); setTokenDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Token Portal Gerado</DialogTitle>
+            <DialogDescription>Credenciais de acesso ao portal da facção.</DialogDescription>
+          </DialogHeader>
+          {generatedToken && (
+            <div className="space-y-4 mt-2">
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground">URL do Portal</div>
+                <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
+                  <code className="text-sm font-mono flex-1 break-all">{generatedToken.portalUrl}</code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 shrink-0"
+                    onClick={() => handleCopy(generatedToken.portalUrl, "url")}
+                  >
+                    {copiedField === "url" ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground">PIN de Acesso</div>
+                <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
+                  <code className="text-2xl font-mono font-bold tracking-[0.3em] flex-1">{generatedToken.pin}</code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 shrink-0"
+                    onClick={() => handleCopy(generatedToken.pin, "pin")}
+                  >
+                    {copiedField === "pin" ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
+                Anote o PIN — ele não será exibido novamente.
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
