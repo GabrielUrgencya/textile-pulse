@@ -103,8 +103,8 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
     if (!isEdit && role !== "OPERADOR" && !email.trim()) {
       newErrors.email = "Email é obrigatório para este cargo";
     }
-    if (pin && (pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin))) {
-      newErrors.pin = "PIN deve ter 4-6 dígitos numéricos";
+    if (pin && (pin.length !== 6 || !/^\d+$/.test(pin))) {
+      newErrors.pin = "PIN deve ter exatamente 6 dígitos numéricos";
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -330,7 +330,7 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
             {/* PIN (somente criação + OPERADOR) */}
             {!isEdit && role === "OPERADOR" && (
               <div className="space-y-1.5">
-                <Label htmlFor="member-pin">PIN (4-6 dígitos)</Label>
+                <Label htmlFor="member-pin">PIN (6 dígitos)</Label>
                 <div className="flex gap-2">
                   <Input
                     id="member-pin"

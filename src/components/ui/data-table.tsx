@@ -107,9 +107,17 @@ function DataTable<T>({
               <TableRow
                 key={keyExtractor(row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onKeyDown={onRowClick ? (e: React.KeyboardEvent) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onRowClick(row);
+                  }
+                } : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                role={onRowClick ? "link" : undefined}
                 className={cn(
                   "border-border/40 hover:bg-secondary/30 transition-colors",
-                  onRowClick && "cursor-pointer",
+                  onRowClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 )}
               >
                 {columns.map((col) => (
@@ -130,7 +138,15 @@ function DataTable<T>({
             <div
               key={keyExtractor(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={cn(onRowClick && "cursor-pointer")}
+              onKeyDown={onRowClick ? (e: React.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onRowClick(row);
+                }
+              } : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              role={onRowClick ? "link" : undefined}
+              className={cn(onRowClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
             >
               {mobileCard(row)}
             </div>
@@ -138,9 +154,17 @@ function DataTable<T>({
             <div
               key={keyExtractor(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
+              onKeyDown={onRowClick ? (e: React.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onRowClick(row);
+                }
+              } : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              role={onRowClick ? "link" : undefined}
               className={cn(
                 "rounded-xl border border-border/40 bg-secondary/30 p-4 space-y-1",
-                onRowClick && "cursor-pointer active:bg-secondary/50",
+                onRowClick && "cursor-pointer active:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               )}
             >
               {columns.map((col) => (

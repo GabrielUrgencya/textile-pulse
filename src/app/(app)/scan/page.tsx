@@ -20,7 +20,6 @@ import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { MetricBox } from "@/components/ui/metric-box";
 import { DefectModal } from "@/components/defects/DefectModal";
-import { supabase } from "@/lib/supabase";
 
 /* ────────────── Types ────────────── */
 
@@ -143,26 +142,34 @@ function ScanPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<number>(0);
 
-  // T1: Load stages from DB
+  // T1: Load stages from API (authenticated via session cookies)
   useEffect(() => {
     async function loadStages() {
-      const { data, error } = await supabase
-        .from("stages")
-        .select("id, name, order_index")
-        .order("order_index", { ascending: true });
+      try {
+        const res = await fetch("/api/settings/stages");
+        if (!res.ok) {
+          setStagesError(true);
+          setLoading(false);
+          return;
+        }
+        const json = await res.json();
+        const data: Stage[] = json.data ?? [];
+        if (data.length === 0) {
+          setStagesError(true);
+          setLoading(false);
+          return;
+        }
+        setStages(data);
 
-      if (error || !data) {
+        // Restore saved stage from localStorage
+        const saved = localStorage.getItem("lision-scan-stage");
+        if (saved && data.some((s) => s.id === saved)) {
+          setSelectedStageId(saved);
+        } else if (data.length > 0) {
+          setSelectedStageId(data[0].id);
+        }
+      } catch {
         setStagesError(true);
-        setLoading(false);
-        return;
-      }
-      setStages(data);
-      // Restore saved stage from localStorage
-      const saved = localStorage.getItem("lision-scan-stage");
-      if (saved && data.some((s) => s.id === saved)) {
-        setSelectedStageId(saved);
-      } else if (data.length > 0) {
-        setSelectedStageId(data[0].id);
       }
       setLoading(false);
     }

@@ -29,8 +29,8 @@ async function main() {
   console.log(`Tenant: ${tenant.name} (${tenant.id})`);
 
   // 2. Profiles — Admin (Fabinho) + Operador (Rodrigo)
-  const adminPin = await bcrypt.hash("1234", 10);
-  const operadorPin = await bcrypt.hash("5678", 10);
+  const adminPin = await bcrypt.hash("123456", 10);
+  const operadorPin = await bcrypt.hash("567890", 10);
 
   const admin = await prisma.profile.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
@@ -45,7 +45,7 @@ async function main() {
       pinCode: adminPin,
     },
   });
-  console.log(`Admin: ${admin.fullName} (PIN: 1234)`);
+  console.log(`Admin: ${admin.fullName} (PIN: 123456)`);
 
   const operador = await prisma.profile.upsert({
     where: { id: "00000000-0000-0000-0000-000000000002" },
@@ -60,7 +60,7 @@ async function main() {
       pinCode: operadorPin,
     },
   });
-  console.log(`Operador: ${operador.fullName} (PIN: 5678)`);
+  console.log(`Operador: ${operador.fullName} (PIN: 567890)`);
 
   // 3. Stages — 8 etapas padrão da Liserie
   const stagesData = [
