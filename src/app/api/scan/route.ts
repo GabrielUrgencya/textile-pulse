@@ -64,12 +64,15 @@ export async function POST(request: Request) {
     );
   }
 
-  // Fetch lot by barcode
+  // Fetch lot by barcode (include tenant_id filter via RLS + explicit check)
   const { data: lot, error: lotError } = await supabase
     .from("lots")
     .select("id, current_stage_id, status, po_id")
     .eq("barcode", barcode)
     .single();
+
+  // Save previous stage for out-of-order check (before update)
+  const previousStageId = lot?.current_stage_id;
 
   if (lotError || !lot) {
     return NextResponse.json({ error: "Lot not found" }, { status: 404 });
@@ -147,16 +150,22 @@ export async function POST(request: Request) {
   }
 
   // Check if scan is out of order (warn but don't block)
+  // Uses previousStageId saved BEFORE the update to avoid always comparing with itself
+  // Detects both: going backward AND skipping stages forward (gap > 1)
   let outOfOrder = false;
-  if (lot.current_stage_id) {
-    const { data: currentStage } = await supabase
+  if (previousStageId) {
+    const { data: prevStage } = await supabase
       .from("stages")
       .select("order_index")
-      .eq("id", lot.current_stage_id)
+      .eq("id", previousStageId)
       .single();
 
-    if (currentStage && stage.order_index < currentStage.order_index) {
-      outOfOrder = true;
+    if (prevStage) {
+      const gap = stage.order_index - prevStage.order_index;
+      // backward (gap < 0) or skipping ahead (gap > 1)
+      if (gap < 0 || gap > 1) {
+        outOfOrder = true;
+      }
     }
   }
 

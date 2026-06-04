@@ -19,10 +19,14 @@ export async function GET(
   }
 
   // Verify lot exists (RLS will filter by tenant)
+  // Support both UUID and barcode as lotId parameter
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lotId);
+  const filterColumn = isUUID ? "id" : "barcode";
+
   const { data: lot, error: lotError } = await supabase
     .from("lots")
     .select("id, barcode, current_stage_id, status")
-    .eq("id", lotId)
+    .eq(filterColumn, lotId)
     .single();
 
   if (lotError || !lot) {
@@ -35,7 +39,7 @@ export async function GET(
     .select(
       "id, stage_id, user_id, event_type, scanned_at, device_info, metadata, quantity_scanned, quantity_ok, quantity_defect"
     )
-    .eq("lot_id", lotId)
+    .eq("lot_id", lot.id)
     .order("scanned_at", { ascending: true });
 
   if (historyError) {

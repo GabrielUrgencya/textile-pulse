@@ -22,5 +22,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "prisma.config.ts", "prisma/seed.ts", "supabase/functions"]
+  "exclude": ["node_modules", "prisma.config.ts", "prisma/seed.ts", "scripts", "supabase/functions"]
 }

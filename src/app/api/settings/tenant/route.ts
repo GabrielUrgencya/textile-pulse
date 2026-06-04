@@ -66,3 +66,5 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ data: { success: true } });
 }
+
+export { PATCH as PUT };

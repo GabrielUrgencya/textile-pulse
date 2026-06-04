@@ -2,6 +2,32 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
 
+export async function GET(
+  _request: Request,
+  { params }: { params: { id: string } }
+) {
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase } = auth;
+
+  const { id: poId } = params;
+
+  const { data: lots, error } = await supabase
+    .from("lots")
+    .select("id, barcode, lot_number, quantity, quantity_defect, current_stage_id, status, destination, created_at")
+    .eq("po_id", poId)
+    .order("lot_number", { ascending: true });
+
+  if (error) {
+    return NextResponse.json(
+      { error: "Failed to fetch lots", details: error.message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ data: lots || [] });
+}
+
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
