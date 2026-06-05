@@ -26,9 +26,12 @@ export default function PortalDefectsPage() {
 
   useEffect(() => {
     fetch("/api/faction/defects")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Fetch failed");
+        return r.json();
+      })
       .then((data) => setDefects(data.data || []))
-      .catch(console.error)
+      .catch(() => setDefects([]))
       .finally(() => setLoading(false));
   }, []);
 

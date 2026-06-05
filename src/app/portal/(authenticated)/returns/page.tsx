@@ -22,9 +22,12 @@ export default function PortalReturnsPage() {
 
   useEffect(() => {
     fetch("/api/faction/returns")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Fetch failed");
+        return r.json();
+      })
       .then((data) => setReturns(data.data || []))
-      .catch(console.error)
+      .catch(() => setReturns([]))
       .finally(() => setLoading(false));
   }, []);
 

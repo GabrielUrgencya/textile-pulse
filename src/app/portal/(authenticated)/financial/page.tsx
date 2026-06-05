@@ -23,9 +23,12 @@ export default function PortalFinancialPage() {
 
   useEffect(() => {
     fetch("/api/faction/financial")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Fetch failed");
+        return r.json();
+      })
       .then(setData)
-      .catch(console.error)
+      .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, []);
 

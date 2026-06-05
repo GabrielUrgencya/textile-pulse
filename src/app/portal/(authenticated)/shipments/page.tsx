@@ -38,9 +38,12 @@ export default function PortalShipmentsPage() {
 
   useEffect(() => {
     fetch("/api/faction/shipments")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Fetch failed");
+        return r.json();
+      })
       .then((data) => setShipments(data.data || []))
-      .catch(console.error)
+      .catch(() => setShipments([]))
       .finally(() => setLoading(false));
   }, []);
 

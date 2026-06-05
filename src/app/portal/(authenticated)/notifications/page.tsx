@@ -18,9 +18,12 @@ export default function PortalNotificationsPage() {
 
   useEffect(() => {
     fetch("/api/faction/notifications")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Fetch failed");
+        return r.json();
+      })
       .then((data) => setNotifications(data.data || []))
-      .catch(console.error)
+      .catch(() => setNotifications([]))
       .finally(() => setLoading(false));
   }, []);
 

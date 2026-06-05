@@ -27,9 +27,12 @@ export default function PortalDashboardPage() {
 
   useEffect(() => {
     fetch("/api/faction/summary")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Unauthorized");
+        return r.json();
+      })
       .then(setData)
-      .catch(console.error)
+      .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, []);
 

@@ -90,6 +90,61 @@
   --transition-smooth: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Light mode palette — applied when .dark is removed */
+:root:not(.dark) {
+  --background: oklch(0.97 0 0);
+  --foreground: oklch(0.13 0 0);
+
+  --surface: oklch(0.94 0 0);
+  --surface-elevated: oklch(0.97 0 0);
+
+  --card: oklch(1.00 0 0);
+  --card-foreground: oklch(0.13 0 0);
+
+  --popover: oklch(1.00 0 0);
+  --popover-foreground: oklch(0.13 0 0);
+
+  --primary: oklch(0.13 0 0);
+  --primary-foreground: oklch(0.98 0 0);
+
+  --secondary: oklch(0.92 0 0);
+  --secondary-foreground: oklch(0.20 0 0);
+
+  --muted: oklch(0.93 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+
+  --accent: oklch(0.90 0 0);
+  --accent-foreground: oklch(0.13 0 0);
+
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --success: oklch(0.55 0.18 145);
+  --warning: oklch(0.65 0.18 75);
+
+  --border: oklch(0.88 0 0);
+  --input: oklch(0.88 0 0);
+  --ring: oklch(0.55 0 0);
+
+  --gradient-radial: radial-gradient(ellipse at top, oklch(0.95 0 0) 0%, oklch(0.97 0 0) 60%);
+  --gradient-card: linear-gradient(180deg, oklch(1.00 0 0) 0%, oklch(0.98 0 0) 100%);
+  --gradient-highlight: linear-gradient(135deg, oklch(0.95 0 0) 0%, oklch(0.98 0 0) 100%);
+  --gradient-line: linear-gradient(90deg, transparent 0%, oklch(0.80 0 0) 50%, transparent 100%);
+
+  --shadow-elegant: 0 30px 60px -20px oklch(0 0 0 / 0.1), 0 1px 0 0 oklch(0 0 0 / 0.04) inset;
+  --shadow-glow: 0 0 80px 0 oklch(0 0 0 / 0.03);
+
+  --grid-pattern: linear-gradient(oklch(0 0 0 / 0.03) 1px, transparent 1px),
+                  linear-gradient(90deg, oklch(0 0 0 / 0.03) 1px, transparent 1px);
+}
+
+:root:not(.dark) ::selection {
+  background-color: oklch(0.13 0 0 / 0.15);
+  color: oklch(0.07 0 0);
+}
+
+:root:not(.dark) ::-webkit-scrollbar-thumb { background: oklch(0.82 0 0); border: 2px solid var(--color-background); }
+:root:not(.dark) ::-webkit-scrollbar-thumb:hover { background: oklch(0.72 0 0); }
+
 @layer base {
   * {
     border-color: var(--color-border);
