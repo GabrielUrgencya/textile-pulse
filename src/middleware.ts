@@ -20,6 +20,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // --- Fast path: kiosk/TV has its own auth (query string token) ---
+  if (path.startsWith("/tv")) {
+    return NextResponse.next();
+  }
+
   // --- Routes that need auth: create Supabase client and validate session ---
   const response = NextResponse.next();
 

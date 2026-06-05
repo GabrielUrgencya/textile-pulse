@@ -190,4 +190,22 @@
     to { transform: translateY(0); opacity: 1; }
   }
   .animate-tick { animation: tick 0.5s var(--transition-smooth); }
+
+  /* TV Dashboard ticker */
+  @keyframes ticker-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .ticker-track {
+    display: flex;
+    white-space: nowrap;
+    animation: ticker-scroll 30s linear infinite;
+    will-change: transform;
+  }
+
+  /* TV KPI box override for larger values */
+  .tv-kpi-box .font-display {
+    font-size: 34px;
+    line-height: 1;
+  }
 }
