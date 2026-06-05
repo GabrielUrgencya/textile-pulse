@@ -94,11 +94,11 @@ function Metric({ label, value, accent = false }: { label: string; value: string
   );
 }
 
-function SubMetric({ label, value }: { label: string; value: string }) {
+function SubMetric({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div>
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="font-mono text-sm tabular-nums mt-1">{value}</div>
+      <div className={`font-mono text-sm tabular-nums mt-1 ${accent || ""}`}>{value}</div>
     </div>
   );
 }
@@ -285,31 +285,67 @@ function GoalsRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets 
 
 /* ---------------------------- Hourly Production --------------------------- */
 
-function formatChartData(chart: ChartDataPoint[]) {
-  if (chart.length === 0) return [];
-  return chart.map((point) => {
+function buildShiftHours(shiftStart = "07:00", shiftEnd = "17:00") {
+  const start = parseInt(shiftStart.split(":")[0], 10);
+  const end = parseInt(shiftEnd.split(":")[0], 10);
+  const hours: string[] = [];
+  for (let h = start; h <= end; h++) {
+    hours.push(`${h.toString().padStart(2, "0")}h`);
+  }
+  return hours;
+}
+
+function formatChartData(chart: ChartDataPoint[], shiftStart?: string, shiftEnd?: string) {
+  const shiftHours = buildShiftHours(shiftStart, shiftEnd);
+  const dataMap = new Map<string, { value: number; defects: number }>();
+
+  for (const point of chart) {
     const hour = point.period.includes("T")
       ? `${new Date(point.period).getHours().toString().padStart(2, "0")}h`
       : point.period;
-    return { hour, value: point.scans, ideal: point.defects };
+    dataMap.set(hour, { value: point.scans, defects: point.defects });
+  }
+
+  // Always return all shift hours, filling gaps with zero
+  return shiftHours.map((hour) => {
+    const d = dataMap.get(hour);
+    return { hour, value: d?.value ?? 0, defects: d?.defects ?? 0 };
   });
 }
 
-function HourlyChart({ chart }: { chart: ChartDataPoint[] }) {
-  const chartData = formatChartData(chart);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  const scans = payload[0]?.value ?? 0;
+  const defects = payload[1]?.value ?? 0;
+  return (
+    <div className="rounded-lg border border-border/60 bg-card/95 backdrop-blur-sm px-3 py-2 shadow-lg">
+      <p className="text-[11px] font-medium text-muted-foreground mb-1">{label}</p>
+      <div className="flex items-center gap-2 text-[12px]">
+        <span className="size-2 rounded-sm bg-foreground" />
+        <span className="text-foreground font-semibold tabular-nums">{scans.toLocaleString("pt-BR")}</span>
+        <span className="text-muted-foreground">bipagens</span>
+      </div>
+      {defects > 0 && (
+        <div className="flex items-center gap-2 text-[12px] mt-0.5">
+          <span className="size-2 rounded-sm bg-red-400" />
+          <span className="text-red-400 font-semibold tabular-nums">{defects}</span>
+          <span className="text-muted-foreground">defeitos</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
-  if (chartData.length === 0) {
-    return (
-      <Card className="lg:col-span-8">
-        <CardHeader eyebrow="Produção por hora · turno atual" title="Bipagens registradas" />
-        <EmptyState message="Sem dados de produção para o período selecionado" />
-      </Card>
-    );
-  }
+function HourlyChart({ chart, shiftStart, shiftEnd }: { chart: ChartDataPoint[]; shiftStart?: string; shiftEnd?: string }) {
+  const chartData = formatChartData(chart, shiftStart, shiftEnd);
+  const hasData = chartData.some((d) => d.value > 0 || d.defects > 0);
 
-  const maxEntry = chartData.reduce((a, b) => (b.value > a.value ? b : a), chartData[0]);
-  const minEntry = chartData.reduce((a, b) => (b.value < a.value ? b : a), chartData[0]);
   const total = chartData.reduce((a, b) => a + b.value, 0);
+  const totalDefects = chartData.reduce((a, b) => a + b.defects, 0);
+  const maxEntry = hasData
+    ? chartData.reduce((a, b) => (b.value > a.value ? b : a), chartData[0])
+    : null;
 
   return (
     <Card className="lg:col-span-8">
@@ -318,42 +354,42 @@ function HourlyChart({ chart }: { chart: ChartDataPoint[] }) {
         title="Bipagens registradas"
         right={
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-foreground" /> bipado</span>
-            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-px border-t border-dashed border-muted-foreground" /> defeitos</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-foreground" /> bipagens</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-red-400/60" /> defeitos</span>
           </div>
         }
       />
-      <div className="h-[260px] -mx-2">
+      <div className="h-[260px] -mx-2 relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 10, right: 12, left: -10, bottom: 0 }}>
             <defs>
-              <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="oklch(0.98 0 0)" stopOpacity={0.25} />
-                <stop offset="100%" stopColor="oklch(0.98 0 0)" stopOpacity={0} />
+              <linearGradient id="scanGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="oklch(0.98 0 0)" stopOpacity={0.20} />
+                <stop offset="100%" stopColor="oklch(0.98 0 0)" stopOpacity={0.02} />
+              </linearGradient>
+              <linearGradient id="defectGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="oklch(0.65 0.20 25)" stopOpacity={0.15} />
+                <stop offset="100%" stopColor="oklch(0.65 0.20 25)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="oklch(0.18 0 0)" vertical={false} />
-            <XAxis dataKey="hour" tick={{ fill: "oklch(0.62 0 0)", fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "oklch(0.62 0 0)", fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
-            <Tooltip
-              cursor={{ fill: "oklch(0.18 0 0)", opacity: 0.3 }}
-              contentStyle={{
-                background: "oklch(0.10 0 0)",
-                border: "1px solid oklch(0.22 0 0)",
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-              labelStyle={{ color: "oklch(0.62 0 0)" }}
-            />
-            <Area type="monotone" dataKey="value" stroke="oklch(0.98 0 0)" strokeWidth={2} fill="url(#barGrad)" />
-            <Area type="monotone" dataKey="ideal" stroke="oklch(0.55 0 0)" strokeWidth={1.5} strokeDasharray="4 4" fill="transparent" />
+            <CartesianGrid stroke="oklch(0.18 0 0)" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="hour" tick={{ fill: "oklch(0.50 0 0)", fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "oklch(0.50 0 0)", fontSize: 11 }} axisLine={false} tickLine={false} width={40} allowDecimals={false} />
+            <Tooltip content={<ChartTooltip />} cursor={{ stroke: "oklch(0.40 0 0)", strokeDasharray: "4 4" }} />
+            <Area type="monotone" dataKey="value" name="Bipagens" stroke="oklch(0.90 0 0)" strokeWidth={2} fill="url(#scanGrad)" dot={hasData ? { r: 3, fill: "oklch(0.95 0 0)", strokeWidth: 0 } : false} activeDot={{ r: 5, fill: "oklch(0.98 0 0)", stroke: "oklch(0.98 0 0 / 0.3)", strokeWidth: 6 }} />
+            <Area type="monotone" dataKey="defects" name="Defeitos" stroke="oklch(0.65 0.20 25)" strokeWidth={1.5} fill="url(#defectGrad)" dot={false} />
           </AreaChart>
         </ResponsiveContainer>
+        {!hasData && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <p className="text-[13px] text-muted-foreground/50">Aguardando bipagens do turno</p>
+          </div>
+        )}
       </div>
       <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/40">
-        <SubMetric label="Maior produção" value={`${maxEntry.hour} · ${maxEntry.value}`} />
-        <SubMetric label="Menor produção" value={`${minEntry.hour} · ${minEntry.value}`} />
-        <SubMetric label="Total no turno" value={total.toLocaleString("pt-BR")} />
+        <SubMetric label="Pico" value={maxEntry ? `${maxEntry.hour} · ${maxEntry.value}` : "—"} />
+        <SubMetric label="Total bipagens" value={total.toLocaleString("pt-BR")} />
+        <SubMetric label="Defeitos" value={totalDefects > 0 ? totalDefects.toLocaleString("pt-BR") : "0"} accent={totalDefects > 0 ? "text-red-400" : undefined} />
       </div>
     </Card>
   );
@@ -761,7 +797,7 @@ export function Dashboard() {
               <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Produção</div>
               <div className="flex-1 h-px bg-border/40" />
             </div>
-            <HourlyChart chart={data.chart} />
+            <HourlyChart chart={data.chart} shiftStart={targets.shiftStart} shiftEnd={targets.shiftEnd} />
             <StalledCard staleLots={staleLots} />
 
             {/* Pipeline */}
