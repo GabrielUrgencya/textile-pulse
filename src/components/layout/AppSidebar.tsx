@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useUserProfile } from "@/hooks/use-user-profile";
 import {
   AlertTriangle,
+  ChevronsLeft,
   Factory,
   LayoutDashboard,
   LogOut,
@@ -48,7 +49,7 @@ const bottomItems = [
 
 export function AppSidebar() {
   const pathname = usePathname() ?? "/dashboard";
-  const { state } = useSidebar();
+  const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const [loggingOut, setLoggingOut] = useState(false);
   const { profile } = useUserProfile();
@@ -121,6 +122,25 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      {/* Collapse/Expand toggle */}
+      <div className="px-3 pb-1">
+        <button
+          onClick={toggleSidebar}
+          className="w-full h-8 flex items-center justify-center gap-2 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-secondary/60 transition-colors"
+          aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
+        >
+          <ChevronsLeft
+            className={cn(
+              "size-4 transition-transform duration-200",
+              collapsed && "rotate-180",
+            )}
+          />
+          {!collapsed && (
+            <span className="text-[11px] tracking-wide">Recolher</span>
+          )}
+        </button>
+      </div>
 
       <SidebarFooter className="p-3 border-t border-border/60">
         <div
