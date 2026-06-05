@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
-  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight,
-  Command, Gauge, Layers, Menu, MoveRight,
-  Sparkles, Target, TrendingUp, Users,
+  AlertTriangle, ArrowDownRight, ArrowUpRight,
+  Command, Layers, Menu, MoveRight, Users,
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
@@ -455,7 +454,7 @@ function formatStatus(status: string) {
 function OrdersCard({ orders }: { orders: ProductionOrder[] }) {
   if (orders.length === 0) {
     return (
-      <Card className="lg:col-span-8" pad={false}>
+      <Card className="lg:col-span-7" pad={false}>
         <div className="p-5 pb-3">
           <CardHeader eyebrow="Ordens de produção" title="OPs recentes" />
         </div>
@@ -465,7 +464,7 @@ function OrdersCard({ orders }: { orders: ProductionOrder[] }) {
   }
 
   return (
-    <Card className="lg:col-span-8" pad={false}>
+    <Card className="lg:col-span-7" pad={false}>
       <div className="p-5 pb-3">
         <CardHeader
           eyebrow="Ordens de produção"
@@ -604,7 +603,7 @@ function RankingCard({ kpis }: { kpis: KpiResult | null }) {
 
 function ActivityCard({ activityEvents }: { activityEvents: ActivityEvent[] }) {
   return (
-    <Card className="lg:col-span-7">
+    <Card className="lg:col-span-12">
       <CardHeader
         eyebrow="Live feed"
         title="Atividade recente"
@@ -617,7 +616,7 @@ function ActivityCard({ activityEvents }: { activityEvents: ActivityEvent[] }) {
       {activityEvents.length === 0 ? (
         <EmptyState message="Nenhuma atividade recente" />
       ) : (
-        <div className="relative max-h-[320px] overflow-y-auto pr-1 -mr-2 space-y-1">
+        <div className="relative max-h-[260px] overflow-y-auto pr-1 -mr-2 grid grid-cols-1 md:grid-cols-2 gap-x-6">
           {activityEvents.map((a, i) => {
             const raw: ActivityEventRaw = {
               time: a.time,
@@ -649,52 +648,6 @@ function ActivityCard({ activityEvents }: { activityEvents: ActivityEvent[] }) {
           })}
         </div>
       )}
-    </Card>
-  );
-}
-
-/* ----------------------------- KPI Summary ------------------------------- */
-
-function KpiSummary({ kpis }: { kpis: KpiResult | null }) {
-  if (!kpis) {
-    return (
-      <Card className="lg:col-span-5">
-        <CardHeader eyebrow="Resumo" title="KPIs do turno" />
-        <EmptyState message="Dados indisponíveis" />
-      </Card>
-    );
-  }
-
-  const items = [
-    { icon: Gauge,      label: "Peças hoje",  value: kpis.produced_today.toLocaleString("pt-BR") },
-    { icon: Target,     label: "Taxa defeito", value: `${kpis.defect_rate.toFixed(1)}%` },
-    { icon: Activity,   label: "Total scans",  value: kpis.total_scans.toLocaleString("pt-BR") },
-    { icon: TrendingUp, label: "OPs ativas",   value: kpis.active_ops.toString() },
-  ];
-
-  return (
-    <Card className="lg:col-span-5">
-      <CardHeader eyebrow="Resumo" title="KPIs do turno" />
-      <div className="grid grid-cols-2 gap-3">
-        {items.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="rounded-xl border border-border/40 bg-secondary/30 p-4">
-            <Icon className="size-4 text-muted-foreground mb-3" />
-            <div className="font-display text-[22px] font-semibold tabular-nums">{value}</div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">{label}</div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 p-4 rounded-xl bg-secondary/30 border border-border/40">
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-2">
-          <Sparkles className="size-3" /> Insight automático
-        </div>
-        <p className="text-[13px] leading-relaxed text-foreground/90">
-          Hoje foram registradas <span className="font-semibold">{kpis.produced_today.toLocaleString("pt-BR")} bipagens</span> com taxa de defeito de <span className="font-semibold">{kpis.defect_rate.toFixed(1)}%</span>.
-          {kpis.lots_by_stage.length > 0 && (
-            <> Existem <span className="font-semibold">{kpis.total_lots} lotes</span> distribuídos em {kpis.lots_by_stage.length} etapas.</>
-          )}
-        </p>
-      </div>
     </Card>
   );
 }
@@ -800,19 +753,39 @@ export function Dashboard() {
           )}
 
           <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 transition-opacity duration-300 ${isLoading && data.kpis ? "opacity-60" : "opacity-100"}`}>
+            {/* Metas */}
             <GoalsRow kpis={data.kpis} targets={targets} />
 
+            {/* Producao */}
+            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Produção</div>
+              <div className="flex-1 h-px bg-border/40" />
+            </div>
             <HourlyChart chart={data.chart} />
             <StalledCard staleLots={staleLots} />
 
+            {/* Pipeline */}
+            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Pipeline</div>
+              <div className="flex-1 h-px bg-border/40" />
+            </div>
             <StagesCard kpis={data.kpis} />
             <DefectsCard kpis={data.kpis} />
 
+            {/* Operacoes */}
+            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Operações</div>
+              <div className="flex-1 h-px bg-border/40" />
+            </div>
             <OrdersCard orders={data.orders} />
-
             <RankingCard kpis={data.kpis} />
+
+            {/* Atividade */}
+            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Atividade</div>
+              <div className="flex-1 h-px bg-border/40" />
+            </div>
             <ActivityCard activityEvents={activityEvents} />
-            <KpiSummary kpis={data.kpis} />
           </div>
 
           <footer className="mt-10 pt-6 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
