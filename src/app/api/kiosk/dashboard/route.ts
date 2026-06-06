@@ -423,7 +423,7 @@ export async function GET(request: Request) {
       });
     }
 
-    // Aggregate shipment data
+    // Aggregate shipment data (count ALL shipments, not just returned)
     for (const s of factionShipmentsResult.data) {
       const fId = s.faction_id as string;
       const data = factionMap.get(fId);
@@ -448,23 +448,27 @@ export async function GET(request: Request) {
       }
     }
 
-    // Find max returned for volume normalization
+    // Find max returned for volume normalization (use sent if no returns yet)
     let maxReturned = 0;
+    let maxSent = 0;
     for (const data of Array.from(factionMap.values())) {
       if (data.returned > maxReturned) maxReturned = data.returned;
+      if (data.sent > maxSent) maxSent = data.sent;
     }
+    const volumeBase = maxReturned > 0 ? maxReturned : maxSent;
 
-    // Calculate scores
+    // Calculate scores — include ALL active factions
     for (const [factionId, data] of Array.from(factionMap.entries())) {
-      // Skip factions with no deliveries
-      if (data.total === 0) continue;
-
       const punctuality = data.total > 0 ? (data.onTime / data.total) * 100 : 0;
       const quality = data.sent > 0 ? 100 - (data.defective / data.sent) * 100 : 100;
-      const volume = maxReturned > 0 ? (data.returned / maxReturned) * 100 : 0;
+      const volume = volumeBase > 0
+        ? ((data.returned > 0 ? data.returned : data.sent) / volumeBase) * 100
+        : 0;
 
-      const score =
-        Math.round((punctuality * 0.4 + quality * 0.35 + volume * 0.25) * 10) / 10;
+      // Factions with no completed deliveries: weight shifts to quality+volume
+      const score = data.total > 0
+        ? Math.round((punctuality * 0.4 + quality * 0.35 + volume * 0.25) * 10) / 10
+        : Math.round((quality * 0.6 + volume * 0.4) * 10) / 10;
 
       // Generate initials from faction name
       const words = data.name.split(/\s+/);

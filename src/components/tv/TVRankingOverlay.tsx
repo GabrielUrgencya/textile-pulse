@@ -65,8 +65,11 @@ export function TVRankingOverlay({
 
   useEffect(() => {
     if (ranking.length < 1) return;
+    // Fire first cycle after a short delay so the dashboard loads first
+    const initialTimer = setTimeout(startCycle, 5000);
     const interval = setInterval(startCycle, cycleInterval);
     return () => {
+      clearTimeout(initialTimer);
       clearInterval(interval);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
