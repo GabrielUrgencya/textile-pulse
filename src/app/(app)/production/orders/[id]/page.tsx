@@ -109,8 +109,10 @@ async function downloadLabels(lotIds: string[], format: "zpl" | "pdf") {
     throw new Error(data.error || `Erro ${res.status}`);
   }
 
-  const blob = await res.blob();
-  const ext = format === "pdf" ? "pdf" : "zpl";
+  const rawBlob = await res.blob();
+  const mimeType = format === "pdf" ? "application/pdf" : "text/plain";
+  const blob = new Blob([rawBlob], { type: mimeType });
+  const ext = format === "pdf" ? "pdf" : "txt";
   const filename = `etiquetas-${Date.now()}.${ext}`;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

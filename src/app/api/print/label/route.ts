@@ -105,8 +105,8 @@ export async function POST(request: Request) {
 
   return new Response(zpl, {
     headers: {
-      "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="labels-${Date.now()}.zpl"`,
+      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Disposition": `attachment; filename="labels-${Date.now()}.txt"`,
       "X-Label-Count": String(labelData.length),
     },
   });
