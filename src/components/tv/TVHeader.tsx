@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Trophy } from "lucide-react";
+import { ShiftIndicator } from "@/components/tv/ShiftIndicator";
 
 interface FactionMini {
   id: string;
@@ -14,6 +15,7 @@ interface TVHeaderProps {
   tokenName: string;
   shiftStart: string;
   shiftEnd: string;
+  activeShift?: string | null;
   recentActivity: Array<{
     barcode: string;
     stage_name: string;
@@ -27,6 +29,7 @@ export function TVHeader({
   tokenName,
   shiftStart,
   shiftEnd,
+  activeShift,
   recentActivity,
   factionRanking = [],
 }: TVHeaderProps) {
@@ -88,9 +91,13 @@ export function TVHeader({
           </div>
         )}
 
-        <span className="font-mono text-[10px] tabular-nums text-muted-foreground/50">
-          {shiftStart}–{shiftEnd}
-        </span>
+        {activeShift ? (
+          <ShiftIndicator shiftName={activeShift} />
+        ) : (
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground/50">
+            {shiftStart}–{shiftEnd}
+          </span>
+        )}
 
         <div className="flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-success animate-pulse-dot" />

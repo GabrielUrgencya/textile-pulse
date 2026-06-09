@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
 import { dbError, requireTenantId } from "@/lib/api-helpers";
+import { generateUniqueDeliveryCode } from "@/lib/delivery-code";
 
 export async function GET(request: Request) {
   const auth = await withAuth();
@@ -82,6 +83,17 @@ export async function POST(request: Request) {
 
   const totalQuantity = lots?.reduce((sum, l) => sum + (l.quantity || 0), 0) || 0;
 
+  // Story 8.2: Generate delivery code
+  let deliveryCode: string | null = null;
+  let deliveryCodeExpiresAt: string | null = null;
+  try {
+    const dc = await generateUniqueDeliveryCode(supabase);
+    deliveryCode = dc.code;
+    deliveryCodeExpiresAt = dc.expiresAt;
+  } catch {
+    // Non-blocking: shipment can proceed without delivery code
+  }
+
   // Create shipment
   const { data: shipment, error } = await supabase
     .from("faction_shipments")
@@ -93,8 +105,10 @@ export async function POST(request: Request) {
       sent_at: new Date().toISOString(),
       expected_return: body.expectedReturn,
       notes: body.notes || null,
+      delivery_code: deliveryCode,
+      delivery_code_expires_at: deliveryCodeExpiresAt,
     })
-    .select("id")
+    .select("id, delivery_code, delivery_code_expires_at")
     .single();
 
   if (error) return dbError("POST /api/shipments", error);

@@ -26,18 +26,24 @@ export async function GET(request: Request) {
   const tenantId = t.tenantId;
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
+  // Pre-fetch tenant settings to determine weighted meta mode (Story 8.1)
+  const tenantSettingsResult = tenantId
+    ? await supabase.from("tenants").select("settings").eq("id", tenantId).single()
+    : { data: null };
+  const tenantSettings = (tenantSettingsResult.data?.settings as Record<string, unknown>) || {};
+  const useWeightedMeta = tenantSettings.use_weighted_meta !== false; // default: true
+
   // Run ALL queries in parallel — 1 withAuth() instead of 7
   const [
     kpisResult,
     chartResult,
     ordersResult,
-    targetsResult,
     staleLotsResult,
     activityResult,
     profileResult,
   ] = await Promise.all([
     // 1. KPIs (uses RPCs internally — already optimized)
-    computeKpis(supabase, { from, to }).catch(() => null),
+    computeKpis(supabase, { from, to, useWeightedMeta }).catch(() => null),
 
     // 2. Chart data (uses RPC internally)
     computeChartData(supabase, { from, to }, groupBy).catch(() => []),
@@ -49,12 +55,7 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .limit(10),
 
-    // 4. Tenant targets
-    tenantId
-      ? supabase.from("tenants").select("settings").eq("id", tenantId).single()
-      : Promise.resolve({ data: null }),
-
-    // 5. Stale lots (> 2h in same stage)
+    // 4. Stale lots (> 2h in same stage)
     supabase
       .from("lots")
       .select(`
@@ -97,7 +98,8 @@ export async function GET(request: Request) {
     shiftStart: "07:00",
     shiftEnd: "17:00",
   };
-  const settings = (targetsResult.data?.settings as Record<string, unknown>) || {};
+  // Use pre-fetched tenant settings (already fetched for weighted meta check)
+  const settings = tenantSettings;
   const targets = {
     dailyPiecesTarget: (settings.dailyPiecesTarget as number) ?? DEFAULTS.dailyPiecesTarget,
     productivityTarget: (settings.productivityTarget as number) ?? DEFAULTS.productivityTarget,

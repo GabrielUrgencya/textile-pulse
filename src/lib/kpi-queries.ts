@@ -13,6 +13,10 @@ export interface KpiResult {
   top_producers: Array<{ user_id: string; full_name: string; scan_count: number }>;
   total_lots: number;
   total_scans: number;
+  /** When weighted meta is enabled, this holds the weighted points value */
+  weighted_points?: number;
+  /** Whether weighted meta is active for this result */
+  use_weighted_meta?: boolean;
 }
 
 export interface ChartDataPoint {
@@ -21,15 +25,24 @@ export interface ChartDataPoint {
   defects: number;
 }
 
+export interface ComputeKpisOptions extends DateRange {
+  /** Enable weighted meta calculation using meta_coefficient */
+  useWeightedMeta?: boolean;
+}
+
 /**
  * Compute production KPIs using server-side aggregation (RPCs).
  * RPCs perform GROUP BY in PostgreSQL — no full-table-scans.
+ *
+ * When useWeightedMeta is true, produced_today is replaced by
+ * SUM(quantity_scanned * COALESCE(meta_coefficient, 1.0)) — "weighted points".
  */
 export async function computeKpis(
   supabase: SupabaseClient,
-  dateRange: DateRange
+  dateRange: DateRange | ComputeKpisOptions
 ): Promise<KpiResult> {
   const { from, to } = dateRange;
+  const useWeightedMeta = "useWeightedMeta" in dateRange ? dateRange.useWeightedMeta : false;
   const toEnd = `${to}T23:59:59.999Z`;
   const fromStart = `${from}T00:00:00.000Z`;
 
@@ -98,14 +111,49 @@ export async function computeKpis(
   const totalDefects = defectsResult.count ?? 0;
   const defectRate = totalScans > 0 ? (totalDefects / totalScans) * 100 : 0;
 
+  // Weighted meta calculation: SUM(quantity_scanned * COALESCE(meta_coefficient, 1.0))
+  let weightedPoints: number | undefined;
+  if (useWeightedMeta) {
+    const { data: weightedData } = await supabase
+      .from("scan_events")
+      .select(`
+        quantity_scanned,
+        lots!inner (
+          production_orders!inner ( meta_coefficient )
+        )
+      `)
+      .gte("scanned_at", fromStart)
+      .lte("scanned_at", toEnd);
+
+    if (weightedData && weightedData.length > 0) {
+      weightedPoints = 0;
+      for (const scan of weightedData) {
+        const qty = (scan.quantity_scanned as number) || 1;
+        const lotRel = scan.lots as unknown;
+        const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as {
+          production_orders: { meta_coefficient: string | number | null } | { meta_coefficient: string | number | null }[];
+        } | null;
+        const poRel = lot?.production_orders;
+        const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { meta_coefficient: string | number | null } | null;
+        const coeff = Number(po?.meta_coefficient) || 1.0;
+        weightedPoints += qty * coeff;
+      }
+      weightedPoints = Math.round(weightedPoints * 10) / 10;
+    } else {
+      weightedPoints = 0;
+    }
+  }
+
   return {
-    produced_today: totalScans,
+    produced_today: useWeightedMeta && weightedPoints !== undefined ? weightedPoints : totalScans,
     defect_rate: Math.round(defectRate * 100) / 100,
     active_ops: activeOpsResult.count ?? 0,
     lots_by_stage: lotsByStage,
     top_producers: topProducers,
     total_lots: totalLotsResult.count ?? 0,
     total_scans: totalScans,
+    weighted_points: weightedPoints,
+    use_weighted_meta: useWeightedMeta,
   };
 }
 

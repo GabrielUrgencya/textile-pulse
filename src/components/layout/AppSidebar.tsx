@@ -7,6 +7,8 @@ import { useUserProfile } from "@/hooks/use-user-profile";
 import {
   AlertTriangle,
   ChevronsLeft,
+  ClipboardCheck,
+  Clock,
   Factory,
   LayoutDashboard,
   LogOut,
@@ -37,6 +39,8 @@ const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard className="size-4 shrink-0" /> },
   { title: "Produção", url: "/production/orders", icon: <Factory className="size-4 shrink-0" /> },
   { title: "Scan", url: "/scan", icon: <ScanLine className="size-4 shrink-0" /> },
+  { title: "Aduana", url: "/aduana", icon: <ClipboardCheck className="size-4 shrink-0" /> },
+  { title: "Expedição", url: "/expedition", icon: <Clock className="size-4 shrink-0" /> },
   { title: "Retrabalho", url: "/rework", icon: <AlertTriangle className="size-4 shrink-0" /> },
   { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" /> },
   { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" /> },

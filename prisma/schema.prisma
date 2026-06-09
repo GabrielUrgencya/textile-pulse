@@ -106,6 +106,7 @@ model Tenant {
   auditLogs        AuditLog[]
   kioskTokens      KioskToken[]
   factionTokens    FactionToken[]
+  opsClock         OpsClock[]
 
   @@map("tenants")
 }
@@ -310,6 +311,11 @@ model FactionShipment {
   rescheduleCount         Int       @default(0) @map("reschedule_count")
   lastRescheduledAt       DateTime? @map("last_rescheduled_at") @db.Timestamptz
 
+  /// Delivery code fields (Story 8.2)
+  deliveryCode            String?   @map("delivery_code") @db.VarChar(6)
+  deliveryCodeExpiresAt   DateTime? @map("delivery_code_expires_at") @db.Timestamptz
+  deliveryCodeAttempts    Int       @default(0) @map("delivery_code_attempts")
+
   faction    Faction       @relation(fields: [factionId], references: [id])
   lot        Lot           @relation(fields: [lotId], references: [id])
   driver     Driver?       @relation(fields: [driverId], references: [id])
@@ -492,13 +498,16 @@ model FactionToken {
 /// OpsClock (controle de motoristas na fábrica)
 model OpsClock {
   id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
   driverId         String    @map("driver_id") @db.Uuid
   arrivedAt        DateTime  @map("arrived_at") @db.Timestamptz
   loadingStartedAt DateTime? @map("loading_started_at") @db.Timestamptz
   loadingEndedAt   DateTime? @map("loading_ended_at") @db.Timestamptz
   departedAt       DateTime? @map("departed_at") @db.Timestamptz
+  registeredById   String?   @map("registered_by") @db.Uuid
 
-  driver Driver @relation(fields: [driverId], references: [id])
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  driver Driver  @relation(fields: [driverId], references: [id])
 
   @@map("ops_clock")
 }

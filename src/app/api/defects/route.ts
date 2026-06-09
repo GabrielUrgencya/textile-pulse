@@ -103,6 +103,54 @@ export async function POST(request: Request) {
     );
   }
 
+  // 4. Story 8.3: Auto-notification when defect on AT_FACTION lot
+  if (lot.status === "AT_FACTION") {
+    try {
+      // Find the active shipment for this lot
+      const { data: shipment } = await supabase
+        .from("faction_shipments")
+        .select("id, faction_id, factions!inner(tenant_id)")
+        .eq("lot_id", lot_id)
+        .in("status", ["SENT", "RECEIVED_BY_FACTION"])
+        .limit(1)
+        .single();
+
+      if (shipment) {
+        const factionRel = shipment.factions as unknown;
+        const faction = (Array.isArray(factionRel) ? factionRel[0] : factionRel) as { tenant_id: string } | null;
+        const tenantId = faction?.tenant_id;
+
+        if (tenantId) {
+          // Deduplication: check for existing notification in last 4 hours (REGRA 5)
+          const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+          const { data: existing } = await supabase
+            .from("notifications")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("type", "DEFECT_DETECTED")
+            .eq("faction_id", shipment.faction_id)
+            .is("read_at", null)
+            .gte("created_at", fourHoursAgo)
+            .limit(1);
+
+          if (!existing || existing.length === 0) {
+            const notifSeverity = severity === "GRAVE" ? "CRITICAL" : "WARNING";
+            await supabase.from("notifications").insert({
+              tenant_id: tenantId,
+              faction_id: shipment.faction_id,
+              type: "DEFECT_DETECTED",
+              title: `Defeito detectado — Lote ${lot_id.slice(0, 8)}`,
+              message: `${qty} peça(s) com defeito de ${defect_type}. Severidade: ${severity}.`,
+              severity: notifSeverity,
+            });
+          }
+        }
+      }
+    } catch {
+      // Non-blocking: notification failure should not affect defect creation
+    }
+  }
+
   return NextResponse.json({ defect, lot_status: "IN_REWORK" }, { status: 201 });
 }
 

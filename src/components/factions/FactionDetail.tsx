@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FactionScoreCard } from "@/components/factions/FactionScoreCard";
+import { ShipmentTimeline } from "@/components/shipments/ShipmentTimeline";
 import { FactionForm } from "@/components/factions/FactionForm";
 import { ShipmentCreate } from "@/components/factions/ShipmentCreate";
 import { ShipmentReceive } from "@/components/factions/ShipmentReceive";
@@ -113,6 +114,14 @@ function FactionDetail({ factionId }: FactionDetailProps) {
 
   const shipmentColumns: DataTableColumn<FactionShipment>[] = [
     {
+      key: "timeline",
+      header: "Progresso",
+      className: "min-w-[180px]",
+      render: (row) => (
+        <ShipmentTimeline status={row.status} expectedReturn={row.expected_return} />
+      ),
+    },
+    {
       key: "sent_at",
       header: "Data Envio",
       sortable: true,
@@ -131,11 +140,29 @@ function FactionDetail({ factionId }: FactionDetailProps) {
     {
       key: "status",
       header: "Status",
-      render: (row) => (
-        <StatusBadge status={SHIPMENT_STATUS_MAP[row.status] || "neutral"}>
-          {row.status}
-        </StatusBadge>
-      ),
+      render: (row) => {
+        const isUnconfirmed =
+          row.status === "SENT" &&
+          !row.faction_confirmed_at &&
+          new Date(row.sent_at).getTime() < Date.now() - 4 * 60 * 60 * 1000;
+
+        return (
+          <div className="space-y-1">
+            <StatusBadge status={SHIPMENT_STATUS_MAP[row.status] || "neutral"}>
+              {row.status}
+            </StatusBadge>
+            {isUnconfirmed && (
+              <div className="flex items-center gap-1 animate-pulse">
+                <span className="inline-block size-1.5 rounded-full bg-amber-500" />
+                <span className="text-[10px] text-amber-500 font-medium">
+                  Aguardando confirmação —{" "}
+                  {Math.round((Date.now() - new Date(row.sent_at).getTime()) / 3600000)}h
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "actions",

@@ -32,6 +32,7 @@ export interface FactionShipment {
   expected_return: string;
   received_at: string | null;
   notes: string | null;
+  faction_confirmed_at: string | null;
 }
 
 export interface FactionDetail {

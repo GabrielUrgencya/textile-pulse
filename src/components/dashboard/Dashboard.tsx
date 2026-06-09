@@ -10,6 +10,8 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
+import { AllowanceAlert } from "@/components/dashboard/AllowanceAlert";
+import { TeamRankingCard } from "@/components/dashboard/TeamRankingCard";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange, StaleLot, ActivityEvent, Targets } from "@/hooks/use-dashboard-data";
 import type { UserProfile } from "@/hooks/use-user-profile";
@@ -115,8 +117,13 @@ function EmptyState({ message }: { message: string }) {
 
 function buildTickers(kpis: KpiResult | null) {
   if (!kpis) return [];
+  const isWeighted = kpis.use_weighted_meta === true;
   return [
-    { label: "Peças hoje", value: kpis.produced_today.toLocaleString("pt-BR"), trend: 0 },
+    {
+      label: isWeighted ? "Pontos de Meta" : "Peças hoje",
+      value: kpis.produced_today.toLocaleString("pt-BR", { maximumFractionDigits: 1 }),
+      trend: 0,
+    },
     { label: "Taxa defeito", value: `${kpis.defect_rate.toFixed(1)}%`, trend: 0 },
     { label: "Lotes ativos", value: kpis.total_lots.toString(), trend: 0 },
     { label: "OPs ativas", value: kpis.active_ops.toString(), trend: 0 },
@@ -227,12 +234,22 @@ function GoalsRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets 
     );
   }
 
+  const isWeighted = kpis.use_weighted_meta === true;
   const projection = getProjection(kpis.produced_today, targets.shiftStart, targets.shiftEnd, targets.dailyPiecesTarget);
 
   const goals = [
-    { label: "Hoje", produced: kpis.produced_today, target: targets.dailyPiecesTarget, unit: "peças", showProjection: true },
-    { label: "Lotes", produced: kpis.total_lots, target: targets.lotsTarget, unit: "lotes", showProjection: false },
-    { label: "OPs ativas", produced: kpis.active_ops, target: targets.opsTarget, unit: "ordens", showProjection: false },
+    {
+      label: isWeighted ? "Pontos de Meta" : "Hoje",
+      produced: kpis.produced_today,
+      target: targets.dailyPiecesTarget,
+      unit: isWeighted ? "pontos" : "peças",
+      showProjection: true,
+      tooltip: isWeighted && kpis.total_scans > 0
+        ? `${kpis.total_scans} peças × coeficiente médio = ${kpis.produced_today.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} pontos`
+        : undefined,
+    },
+    { label: "Lotes", produced: kpis.total_lots, target: targets.lotsTarget, unit: "lotes", showProjection: false, tooltip: undefined },
+    { label: "OPs ativas", produced: kpis.active_ops, target: targets.opsTarget, unit: "ordens", showProjection: false, tooltip: undefined },
   ];
 
   return (
@@ -247,8 +264,10 @@ function GoalsRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets 
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Meta · {g.label}</div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="font-display text-[34px] font-semibold tabular-nums">{g.produced.toLocaleString("pt-BR")}</span>
+                <div className="mt-2 flex items-baseline gap-2" title={g.tooltip || undefined}>
+                  <span className="font-display text-[34px] font-semibold tabular-nums">
+                    {g.produced.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                  </span>
                   <span className="text-muted-foreground text-sm">/ {g.target.toLocaleString("pt-BR")}</span>
                 </div>
               </div>
@@ -468,7 +487,10 @@ function DefectsCard({ kpis }: { kpis: KpiResult | null }) {
       />
       <div className="grid grid-cols-2 gap-3 mb-5">
         <Metric label="Taxa defeito" value={`${kpis.defect_rate.toFixed(1)}%`} accent />
-        <Metric label="Peças hoje" value={kpis.produced_today.toLocaleString("pt-BR")} />
+        <Metric
+          label={kpis.use_weighted_meta ? "Pontos de Meta" : "Peças hoje"}
+          value={kpis.produced_today.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+        />
       </div>
       <p className="text-[12px] text-muted-foreground">
         Detalhes por tipo de defeito disponíveis no módulo <span className="font-medium text-foreground">Qualidade</span>.
@@ -789,6 +811,9 @@ export function Dashboard() {
           )}
 
           <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 transition-opacity duration-300 ${isLoading && data.kpis ? "opacity-60" : "opacity-100"}`}>
+            {/* Story 8.4: Allowance Alert */}
+            <AllowanceAlert />
+
             {/* Metas */}
             <GoalsRow kpis={data.kpis} targets={targets} />
 
@@ -815,6 +840,15 @@ export function Dashboard() {
             </div>
             <OrdersCard orders={data.orders} />
             <RankingCard kpis={data.kpis} />
+
+            {/* Equipe */}
+            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Equipe</div>
+              <div className="flex-1 h-px bg-border/40" />
+            </div>
+            <div className="lg:col-span-5">
+              <TeamRankingCard />
+            </div>
 
             {/* Atividade */}
             <div className="lg:col-span-12 flex items-center gap-3 mt-2">

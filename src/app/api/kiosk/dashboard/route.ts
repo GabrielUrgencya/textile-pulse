@@ -51,9 +51,50 @@ export async function GET(request: Request) {
 
   const tenantId = session.tenantId;
 
+  // ─── Fetch tenant settings first (needed for shift detection) ────
+  const tenantResult = await supabase
+    .from("tenants")
+    .select("settings")
+    .eq("id", tenantId)
+    .single();
+
+  const settings = (tenantResult.data?.settings as Record<string, unknown>) || {};
+  const dailyTarget = (settings.dailyPiecesTarget as number) || (settings.daily_target as number) || 500;
+  const opsTarget = (settings.opsTarget as number) || 15;
+  const lotsTarget = (settings.lotsTarget as number) || 100;
+  const defectTolerance = (settings.defectTolerance as number) || 3;
+  const shiftStart = (settings.shiftStart as string) || "07:00";
+  const shiftEnd = (settings.shiftEnd as string) || "17:00";
+  const useWeightedMeta = settings.use_weighted_meta !== false;
+
+  // ─── Shift detection (Story 8.12) ──────────────────────────────
+  interface ShiftConfig { name: string; start: string; end: string }
+  const shiftsConfig = (settings.shifts as ShiftConfig[]) || [];
+  const wantShift = searchParams.get("shift") === "current";
+
+  let activeShiftName: string | null = null;
+  let effectiveStart = fromStart;
+  let effectiveEnd = toEnd;
+
+  if (wantShift && shiftsConfig.length > 0) {
+    const nowHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const found = shiftsConfig.find((s) => nowHHMM >= s.start && nowHHMM < s.end);
+    if (found) {
+      activeShiftName = found.name;
+      const [sh, sm] = found.start.split(":").map(Number);
+      const [eh, em] = found.end.split(":").map(Number);
+      const shiftStartDate = new Date(now);
+      shiftStartDate.setHours(sh, sm, 0, 0);
+      const shiftEndDate = new Date(now);
+      shiftEndDate.setHours(eh, em, 0, 0);
+      effectiveStart = shiftStartDate.toISOString();
+      effectiveEnd = shiftEndDate.toISOString();
+    }
+    // If not found → between shifts → use full day (fromStart/toEnd)
+  }
+
   // ─── Parallel queries ─────────────────────────────────────────────
   const [
-    tenantResult,
     scansTodayResult,
     scansYesterdayResult,
     scansLastHourResult,
@@ -68,15 +109,9 @@ export async function GET(request: Request) {
     recentActivityResult,
     factionsResult,
     factionShipmentsResult,
+    weightedScansResult,
   ] = await Promise.all([
-    // Tenant settings
-    supabase
-      .from("tenants")
-      .select("settings")
-      .eq("id", tenantId)
-      .single(),
-
-    // Scans today (count)
+    // Scans today (count) — filtered by shift if active
     supabase
       .from("scan_events")
       .select("id, lots!inner(production_orders!inner(tenant_id))", {
@@ -84,8 +119,8 @@ export async function GET(request: Request) {
         head: true,
       })
       .eq("lots.production_orders.tenant_id", tenantId)
-      .gte("scanned_at", fromStart)
-      .lte("scanned_at", toEnd),
+      .gte("scanned_at", effectiveStart)
+      .lte("scanned_at", effectiveEnd),
 
     // Scans yesterday (count for trend)
     supabase
@@ -113,8 +148,8 @@ export async function GET(request: Request) {
       .from("scan_events")
       .select("scanned_at, lots!inner(production_orders!inner(tenant_id))")
       .eq("lots.production_orders.tenant_id", tenantId)
-      .gte("scanned_at", fromStart)
-      .lte("scanned_at", toEnd)
+      .gte("scanned_at", effectiveStart)
+      .lte("scanned_at", effectiveEnd)
       .order("scanned_at", { ascending: true }),
 
     // Active OPs count
@@ -221,19 +256,41 @@ export async function GET(request: Request) {
       )
       .eq("factions.tenant_id", tenantId)
       .gte("sent_at", thirtyDaysAgo),
+
+    // Weighted meta: scan_events with quantity + meta_coefficient (Story 8.1)
+    supabase
+      .from("scan_events")
+      .select(`
+        quantity_scanned,
+        lots!inner (
+          production_orders!inner ( meta_coefficient, tenant_id )
+        )
+      `)
+      .eq("lots.production_orders.tenant_id", tenantId)
+      .gte("scanned_at", effectiveStart)
+      .lte("scanned_at", effectiveEnd),
   ]);
 
-  // ─── Parse tenant settings ────────────────────────────────────────
-  const settings = (tenantResult.data?.settings as Record<string, unknown>) || {};
-  const dailyTarget = (settings.dailyPiecesTarget as number) || (settings.daily_target as number) || 500;
-  const opsTarget = (settings.opsTarget as number) || 15;
-  const lotsTarget = (settings.lotsTarget as number) || 100;
-  const defectTolerance = (settings.defectTolerance as number) || 3;
-  const shiftStart = (settings.shiftStart as string) || "07:00";
-  const shiftEnd = (settings.shiftEnd as string) || "17:00";
+  // ─── Weighted meta calculation (Story 8.1) ──────────────────────
+  let weightedPoints = 0;
+  if (useWeightedMeta && weightedScansResult.data && weightedScansResult.data.length > 0) {
+    for (const scan of weightedScansResult.data) {
+      const qty = (scan.quantity_scanned as number) || 1;
+      const lotRel = scan.lots as unknown;
+      const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as {
+        production_orders: { meta_coefficient: string | number | null } | { meta_coefficient: string | number | null }[];
+      } | null;
+      const poRel = lot?.production_orders;
+      const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { meta_coefficient: string | number | null } | null;
+      const coeff = Number(po?.meta_coefficient) || 1.0;
+      weightedPoints += qty * coeff;
+    }
+    weightedPoints = Math.round(weightedPoints * 10) / 10;
+  }
 
   // ─── Production calculations ──────────────────────────────────────
-  const producedToday = scansTodayResult.count ?? 0;
+  const rawProducedToday = scansTodayResult.count ?? 0;
+  const producedToday = useWeightedMeta ? weightedPoints : rawProducedToday;
   const percent = dailyTarget > 0 ? Math.round((producedToday / dailyTarget) * 100) : 0;
   const currentRate = scansLastHourResult.count ?? 0;
 
@@ -248,9 +305,15 @@ export async function GET(request: Request) {
     peakRate = Math.max(...Array.from(hourBuckets.values()), 0);
   }
 
-  // Projected end of shift
-  const [shiftStartH, shiftStartM] = shiftStart.split(":").map(Number);
-  const [shiftEndH, shiftEndM] = shiftEnd.split(":").map(Number);
+  // Projected end of shift (use active shift times if available)
+  const projShiftStart = activeShiftName
+    ? shiftsConfig.find((s) => s.name === activeShiftName)?.start || shiftStart
+    : shiftStart;
+  const projShiftEnd = activeShiftName
+    ? shiftsConfig.find((s) => s.name === activeShiftName)?.end || shiftEnd
+    : shiftEnd;
+  const [shiftStartH, shiftStartM] = projShiftStart.split(":").map(Number);
+  const [shiftEndH, shiftEndM] = projShiftEnd.split(":").map(Number);
   const shiftTotalMinutes = (shiftEndH * 60 + shiftEndM) - (shiftStartH * 60 + shiftStartM);
   const shiftStartToday = new Date(now);
   shiftStartToday.setHours(shiftStartH, shiftStartM, 0, 0);
@@ -504,6 +567,7 @@ export async function GET(request: Request) {
     shift: {
       start: shiftStart,
       end: shiftEnd,
+      active_shift: activeShiftName,
     },
     production: {
       produced_today: producedToday,
@@ -512,6 +576,7 @@ export async function GET(request: Request) {
       current_rate: currentRate,
       peak_rate: peakRate,
       projected_end: projectedEnd,
+      use_weighted_meta: useWeightedMeta,
     },
     kpis: {
       active_ops: activeOps,

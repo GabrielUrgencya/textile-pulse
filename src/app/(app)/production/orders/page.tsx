@@ -10,12 +10,14 @@ import {
   ChevronRight,
   Loader2,
   Factory,
+  Download,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { MetricBox } from "@/components/ui/metric-box";
+import { ExportModal } from "@/components/export/ExportModal";
 
 /* ────────────── Types ────────────── */
 
@@ -68,6 +70,7 @@ export default function ProductionOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);
 
   const fetchOrders = useCallback(async (page = 1) => {
     setLoading(true);
@@ -109,13 +112,22 @@ export default function ProductionOrdersPage() {
   return (
     <div className="max-w-[1600px] mx-auto px-6 lg:px-10 py-6 lg:py-8">
       <PageHeader eyebrow="Módulo de Produção" title="Ordens de Produção">
-        <button
-          onClick={() => router.push("/production/orders/new")}
-          className="h-9 px-4 rounded-lg bg-foreground text-background text-[13px] font-semibold hover:bg-foreground/90 transition flex items-center gap-2"
-        >
-          <Plus className="size-4" />
-          Nova OP
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setExportOpen(true)}
+            className="h-9 px-4 rounded-lg border border-border text-[13px] font-medium hover:bg-secondary/60 transition flex items-center gap-2"
+          >
+            <Download className="size-4" />
+            Exportar
+          </button>
+          <button
+            onClick={() => router.push("/production/orders/new")}
+            className="h-9 px-4 rounded-lg bg-foreground text-background text-[13px] font-semibold hover:bg-foreground/90 transition flex items-center gap-2"
+          >
+            <Plus className="size-4" />
+            Nova OP
+          </button>
+        </div>
       </PageHeader>
 
       {/* KPI Row */}
@@ -236,6 +248,8 @@ export default function ProductionOrdersPage() {
           </div>
         )}
       </LisionCard>
+
+      <ExportModal open={exportOpen} onOpenChange={setExportOpen} />
     </div>
   );
 }

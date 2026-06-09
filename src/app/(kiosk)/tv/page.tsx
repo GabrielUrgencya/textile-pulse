@@ -12,7 +12,7 @@ import { TVRankingOverlay } from "@/components/tv/TVRankingOverlay";
 // ─── Types matching API response shape ─────────────────────
 interface DashboardData {
   kiosk: { token_name: string; scope: string };
-  shift: { start: string; end: string };
+  shift: { start: string; end: string; active_shift: string | null };
   production: {
     produced_today: number;
     daily_target: number;
@@ -80,7 +80,7 @@ function TVDashboardContent() {
   const fetchData = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/kiosk/dashboard?token=${token}`);
+      const res = await fetch(`/api/kiosk/dashboard?token=${token}&shift=current`);
       if (!res.ok) {
         const err = await res.json();
         setError(err.error || "Falha ao carregar dashboard");
@@ -134,6 +134,7 @@ function TVDashboardContent() {
         tokenName={data.kiosk.token_name}
         shiftStart={data.shift.start}
         shiftEnd={data.shift.end}
+        activeShift={data.shift.active_shift}
         recentActivity={data.recent_activity}
         factionRanking={data.faction_ranking.slice(0, 3)}
       />
@@ -150,6 +151,7 @@ function TVDashboardContent() {
               currentRate={data.production.current_rate}
               peakRate={data.production.peak_rate}
               projectedEnd={data.production.projected_end}
+              activeShift={data.shift.active_shift}
             />
           </div>
           <div className="col-span-7">

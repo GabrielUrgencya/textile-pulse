@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { requireTenantId } from "@/lib/api-helpers";
 import { computeKpis } from "@/lib/kpi-queries";
 
 export async function GET(request: Request) {
   const auth = await withAuth();
   if (auth.error) return auth.error;
-  const { supabase } = auth;
+  const { supabase, user } = auth;
 
   const { searchParams } = new URL(request.url);
 
@@ -31,7 +32,20 @@ export async function GET(request: Request) {
   }
 
   try {
-    const kpis = await computeKpis(supabase, { from, to });
+    // Check tenant setting for weighted meta (Story 8.1)
+    const t = requireTenantId(user);
+    let useWeightedMeta = false;
+    if (!t.error) {
+      const { data: tenantData } = await supabase
+        .from("tenants")
+        .select("settings")
+        .eq("id", t.tenantId)
+        .single();
+      const settings = (tenantData?.settings as Record<string, unknown>) || {};
+      useWeightedMeta = settings.use_weighted_meta !== false; // default: true
+    }
+
+    const kpis = await computeKpis(supabase, { from, to, useWeightedMeta });
 
     return NextResponse.json({
       kpis,

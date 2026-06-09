@@ -13,6 +13,10 @@ export interface KpiResult {
   top_producers: Array<{ user_id: string; full_name: string; scan_count: number }>;
   total_lots: number;
   total_scans: number;
+  /** Weighted points value when meta ponderada is enabled */
+  weighted_points?: number;
+  /** Whether weighted meta is active */
+  use_weighted_meta?: boolean;
 }
 
 export interface ChartDataPoint {

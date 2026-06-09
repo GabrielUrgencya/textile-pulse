@@ -14,6 +14,7 @@ interface TVHeroProps {
   currentRate: number;
   peakRate: number;
   projectedEnd: number;
+  activeShift?: string | null;
 }
 
 /* ─── Animated counter ─── */
@@ -66,6 +67,7 @@ export function TVHero({
   currentRate,
   peakRate,
   projectedEnd,
+  activeShift,
 }: TVHeroProps) {
   const clamped = Math.min(percent, 100);
   const offset = ARC_LEN * (1 - clamped / 100);
@@ -86,7 +88,7 @@ export function TVHero({
         />
 
         <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium mb-2 z-10">
-          Produção Hoje
+          {activeShift ? `Produção (${activeShift})` : "Produção Hoje"}
         </div>
 
         {/* SVG Arc Gauge */}
