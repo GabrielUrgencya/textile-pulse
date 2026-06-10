@@ -56,6 +56,7 @@ interface MemberFormProps {
 interface FormErrors {
   name?: string;
   email?: string;
+  password?: string;
   role?: string;
   sector?: string;
   pin?: string;
@@ -69,6 +70,7 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
   const [phone, setPhone] = React.useState("");
   const [role, setRole] = React.useState("");
   const [sector, setSector] = React.useState("");
+  const [password, setPassword] = React.useState("");
   const [pin, setPin] = React.useState("");
   const [errors, setErrors] = React.useState<FormErrors>({});
   const [loading, setLoading] = React.useState(false);
@@ -88,12 +90,15 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
         setPhone("");
         setRole("");
         setSector("");
+        setPassword("");
       }
       setPin("");
       setErrors({});
       setCreatedPin(null);
     }
   }, [open, member]);
+
+  const needsPassword = !isEdit && role !== "OPERADOR";
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
@@ -102,6 +107,11 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
     if (!sector) newErrors.sector = "Setor é obrigatório";
     if (!isEdit && role !== "OPERADOR" && !email.trim()) {
       newErrors.email = "Email é obrigatório para este cargo";
+    }
+    if (needsPassword && !password) {
+      newErrors.password = "Senha é obrigatória para este cargo";
+    } else if (password && password.length < 6) {
+      newErrors.password = "Senha deve ter no mínimo 6 caracteres";
     }
     if (pin && (pin.length !== 6 || !/^\d+$/.test(pin))) {
       newErrors.pin = "PIN deve ter exatamente 6 dígitos numéricos";
@@ -150,6 +160,7 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
           role,
           sector,
         };
+        if (password) body.password = password;
         if (pin) body.pin = pin;
 
         const res = await fetch("/api/team/members", {
@@ -263,6 +274,34 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
               )}
             </div>
 
+            {/* Senha (somente criação) */}
+            {!isEdit && (
+              <div className="space-y-1.5">
+                <Label htmlFor="member-password">
+                  Senha {needsPassword ? "*" : "(opcional)"}
+                </Label>
+                <Input
+                  id="member-password"
+                  type="password"
+                  className="input-field"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errors.password) setErrors((p) => ({ ...p, password: undefined }));
+                  }}
+                  placeholder="Mínimo 6 caracteres"
+                />
+                {errors.password && (
+                  <p className="text-xs text-destructive">{errors.password}</p>
+                )}
+                {role === "OPERADOR" && (
+                  <p className="text-xs text-muted-foreground">
+                    Operadores usam PIN para acessar. Senha é opcional.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Telefone */}
             <div className="space-y-1.5">
               <Label htmlFor="member-phone">Telefone</Label>
@@ -327,8 +366,8 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
               )}
             </div>
 
-            {/* PIN (somente criação + OPERADOR) */}
-            {!isEdit && role === "OPERADOR" && (
+            {/* PIN (somente criação) */}
+            {!isEdit && (
               <div className="space-y-1.5">
                 <Label htmlFor="member-pin">PIN (6 dígitos)</Label>
                 <div className="flex gap-2">

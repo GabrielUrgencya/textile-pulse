@@ -80,10 +80,13 @@ export async function POST(request: Request) {
   // For operators, email is optional — use dummy if not provided
   const email = body.email || `operador-${crypto.randomUUID().slice(0, 8)}@lision.internal`;
 
+  // Use provided password or generate random for operators without one
+  const userPassword = body.password || crypto.randomUUID();
+
   // Create Supabase Auth user
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
-    password: crypto.randomUUID(), // Random password for non-email users
+    password: userPassword,
     email_confirm: true,
     app_metadata: {
       tenant_id: t.tenantId,
@@ -95,13 +98,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: authError.message }, { status: 500 });
   }
 
-  // Hash PIN if provided (for operators)
+  // Hash PIN — if provided use it, otherwise auto-generate for all roles
   let pinHash: string | null = null;
   let pin: string | undefined;
   if (body.pin) {
     pin = body.pin;
     pinHash = await bcrypt.hash(body.pin, 10);
-  } else if (body.role === "OPERADOR") {
+  } else {
     pin = String(randomInt(100000, 999999));
     pinHash = await bcrypt.hash(pin, 10);
   }
