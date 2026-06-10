@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { hasPermission, type AppRole } from "@/lib/permissions";
 import { dbError } from "@/lib/api-helpers";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -63,8 +64,8 @@ export async function POST(request: Request) {
   const pin = pinNum.toString();
   const pinHash = await bcrypt.hash(pin, 10);
 
-  // AC1: Insert token
-  const { data: token, error: insertError } = await supabase
+  // AC1: Insert token (use admin client to bypass RLS)
+  const { data: token, error: insertError } = await supabaseAdmin
     .from("faction_tokens")
     .insert({
       tenant_id: tenantId,
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
 export async function GET() {
   const auth = await withAuth();
   if (auth.error) return auth.error;
-  const { supabase, user } = auth;
+  const { user } = auth;
 
   // AC6: Only ADMIN or GERENTE
   const role = user.app_metadata?.role;
@@ -110,10 +111,11 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden: factions:manage required" }, { status: 403 });
   }
 
-  // AC4: List tokens without pin_hash
-  const { data: tokens, error } = await supabase
+  // AC4: List tokens without pin_hash (admin client bypasses RLS)
+  const { data: tokens, error } = await supabaseAdmin
     .from("faction_tokens")
     .select("id, token, name, faction_id, is_active, last_accessed_at, created_at, factions!inner(name)")
+    .eq("tenant_id", user.app_metadata?.tenant_id)
     .order("created_at", { ascending: false });
 
   if (error) return dbError("GET /api/admin/faction-tokens", error);

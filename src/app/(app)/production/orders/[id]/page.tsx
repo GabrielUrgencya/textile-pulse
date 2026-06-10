@@ -572,7 +572,7 @@ function LabelPreview({
             <div
               key={i}
               className="bg-black shrink-0"
-              style={{ width: `${w}px`, height: `${20 + (i % 5) * 3}px` }}
+              style={{ width: `${w}px`, height: "28px" }}
             />
           );
         })}
