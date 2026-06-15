@@ -54,6 +54,10 @@ export async function POST(request: Request) {
     device_info?: string;
   };
 
+  // Story 8.14: event_type opcional, default STAGE_IN (retrocompativel)
+  const eventType: "STAGE_IN" | "STAGE_OUT" =
+    body.event_type === "STAGE_OUT" ? "STAGE_OUT" : "STAGE_IN";
+
   // AC2: Validate barcode format
   if (!BARCODE_REGEX.test(barcode)) {
     return NextResponse.json(
@@ -89,34 +93,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Stage not found" }, { status: 404 });
   }
 
-  // AC4: Check for duplicate scan (same lot + same stage)
-  const { data: existingScan } = await supabase
+  // Story 8.14: estado da etapa por contagem de IN/OUT
+  // "IN aberto" = existe um STAGE_IN sem STAGE_OUT correspondente na mesma etapa.
+  const { data: stageScans } = await supabase
     .from("scan_events")
-    .select("id")
+    .select("id, event_type, scanned_at")
     .eq("lot_id", lot.id)
     .eq("stage_id", stage_id)
-    .eq("event_type", "STAGE_IN")
-    .limit(1)
-    .maybeSingle();
+    .in("event_type", ["STAGE_IN", "STAGE_OUT"]);
 
-  if (existingScan) {
+  const inCount = (stageScans || []).filter((s) => s.event_type === "STAGE_IN").length;
+  const outCount = (stageScans || []).filter((s) => s.event_type === "STAGE_OUT").length;
+  const hasOpenIn = inCount > outCount;
+
+  if (eventType === "STAGE_IN" && hasOpenIn) {
+    // AC5: ja existe um inicio aberto sem fim — evita duplicar inicio
     return NextResponse.json(
-      {
-        error: `Lot already scanned at stage ${stage.name}`,
-        scan_event_id: existingScan.id,
-      },
+      { error: `Lote já tem início em aberto na etapa ${stage.name}. Bipe o fim (STAGE_OUT) antes.` },
       { status: 409 }
     );
   }
 
-  // AC1, AC5: Create scan_event
+  if (eventType === "STAGE_OUT" && !hasOpenIn) {
+    // AC4: fim sem inicio previo aberto
+    return NextResponse.json(
+      { error: `Não há início em aberto na etapa ${stage.name} para registrar o fim.` },
+      { status: 409 }
+    );
+  }
+
+  // AC1, AC2: Create scan_event (IN ou OUT)
   const { data: scanEvent, error: scanError } = await supabase
     .from("scan_events")
     .insert({
       lot_id: lot.id,
       stage_id: stage_id,
       user_id: user.id,
-      event_type: "STAGE_IN",
+      event_type: eventType,
       device_info: device_info || null,
       metadata: {},
     })
@@ -130,23 +143,27 @@ export async function POST(request: Request) {
     );
   }
 
-  // AC3: Update lot status and current_stage_id
-  const newStatus = STAGE_STATUS_MAP[stage.name] || lot.status;
+  // AC3: Atualiza status/etapa SOMENTE no inicio (STAGE_IN).
+  // No fim (STAGE_OUT) a etapa fica fechada — nao regride status nem reseta o relogio da etapa.
+  let newStatus = lot.status;
+  if (eventType === "STAGE_IN") {
+    newStatus = STAGE_STATUS_MAP[stage.name] || lot.status;
 
-  const { error: updateError } = await supabase
-    .from("lots")
-    .update({
-      current_stage_id: stage_id,
-      status: newStatus,
-      entered_current_stage_at: new Date().toISOString(),
-    })
-    .eq("id", lot.id);
+    const { error: updateError } = await supabase
+      .from("lots")
+      .update({
+        current_stage_id: stage_id,
+        status: newStatus,
+        entered_current_stage_at: new Date().toISOString(),
+      })
+      .eq("id", lot.id);
 
-  if (updateError) {
-    return NextResponse.json(
-      { error: "Scan recorded but lot status update failed", scan_event: scanEvent },
-      { status: 207 }
-    );
+    if (updateError) {
+      return NextResponse.json(
+        { error: "Scan recorded but lot status update failed", scan_event: scanEvent },
+        { status: 207 }
+      );
+    }
   }
 
   // Check if scan is out of order (warn but don't block)
@@ -169,9 +186,24 @@ export async function POST(request: Request) {
     }
   }
 
+  // Story 8.14: no fim, calcula duracao da etapa (OUT - ultimo IN aberto)
+  let stageDurationHours: number | null = null;
+  if (eventType === "STAGE_OUT") {
+    const lastIn = (stageScans || [])
+      .filter((s) => s.event_type === "STAGE_IN")
+      .sort((a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime())[0];
+    if (lastIn) {
+      const ms =
+        new Date(scanEvent.scanned_at).getTime() - new Date(lastIn.scanned_at).getTime();
+      stageDurationHours = Math.round((ms / 3_600_000) * 100) / 100;
+    }
+  }
+
   return NextResponse.json({
     scan_event: scanEvent,
+    event_type: eventType,
     lot_status: newStatus,
+    ...(stageDurationHours !== null && { stage_duration_hours: stageDurationHours }),
     ...(outOfOrder && {
       warning: "Scan recorded out of expected stage order",
     }),

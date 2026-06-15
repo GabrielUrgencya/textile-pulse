@@ -107,8 +107,26 @@ model Tenant {
   kioskTokens      KioskToken[]
   factionTokens    FactionToken[]
   opsClock         OpsClock[]
+  referenceTargets ReferenceTarget[]
 
   @@map("tenants")
+}
+
+/// Story 8.13: coeficiente de meta por referência (peso por modelo).
+/// Fonte da verdade para production_orders.meta_coefficient (snapshot na criação da OP).
+model ReferenceTarget {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  reference       String
+  metaCoefficient Decimal  @default(1.0) @map("meta_coefficient") @db.Decimal(4, 2)
+  description     String?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, reference])
+  @@index([tenantId])
+  @@map("reference_targets")
 }
 
 /// Perfis de usuário (extends Supabase auth.users)

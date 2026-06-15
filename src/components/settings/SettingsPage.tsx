@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { User, Building, Layers, Target, Key } from "lucide-react";
+import { User, Building, Layers, Target, Key, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProfileEdit } from "./ProfileEdit";
 import { TenantSettings } from "./TenantSettings";
 import { StageManager } from "./StageManager";
 import { TargetsConfig } from "./TargetsConfig";
+import { ReferencesConfig } from "./ReferencesConfig";
 import { TokenManager } from "./TokenManager";
 
 const TABS = [
@@ -15,6 +16,7 @@ const TABS = [
   { id: "tenant", label: "Empresa", icon: Building },
   { id: "stages", label: "Etapas de Produção", icon: Layers },
   { id: "targets", label: "Metas", icon: Target },
+  { id: "references", label: "Referências", icon: Tag },
   { id: "tokens", label: "Tokens de Acesso", icon: Key },
 ] as const;
 
@@ -82,6 +84,7 @@ function SettingsPage() {
           {activeTab === "tenant" && <TenantSettings />}
           {activeTab === "stages" && <StageManager />}
           {activeTab === "targets" && <TargetsConfig />}
+          {activeTab === "references" && <ReferencesConfig />}
           {activeTab === "tokens" && <TokenManager />}
         </div>
       </div>

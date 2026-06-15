@@ -41,8 +41,28 @@ export async function GET(request: Request) {
 
   if (error) return dbError("GET /api/shipments", error);
 
+  // Story 8.14 (AC8): dias restantes / atraso ate o prazo de retorno da faccao
+  const MS_PER_DAY = 86_400_000;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const enriched = (shipments || []).map((s) => {
+    const rec = s as Record<string, unknown>;
+    const expected = rec.expected_return_at as string | null;
+    const settled = rec.actual_return_at != null;
+    let daysRemaining: number | null = null;
+    let isOverdue = false;
+    if (expected && !settled) {
+      const due = new Date(expected);
+      due.setHours(0, 0, 0, 0);
+      daysRemaining = Math.round((due.getTime() - startOfToday.getTime()) / MS_PER_DAY);
+      isOverdue = daysRemaining < 0;
+    }
+    return { ...s, days_remaining: daysRemaining, is_overdue: isOverdue };
+  });
+
   return NextResponse.json({
-    data: shipments || [],
+    data: enriched,
     pagination: {
       page,
       limit,

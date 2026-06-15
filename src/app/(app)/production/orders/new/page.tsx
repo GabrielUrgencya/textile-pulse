@@ -7,6 +7,14 @@ import { ArrowLeft, Loader2, Package, AlertTriangle } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
+import { useServerData } from "@/hooks/use-server-data";
+
+interface ReferenceTarget {
+  id: string;
+  reference: string;
+  meta_coefficient: number;
+  description: string | null;
+}
 
 /* ────────────── Helpers ────────────── */
 
@@ -35,6 +43,25 @@ export default function NewProductionOrderPage() {
   const [lotSize, setLotSize] = useState("");
   const [priority, setPriority] = useState("0");
   const [notes, setNotes] = useState("");
+  const [metaCoefficient, setMetaCoefficient] = useState("1");
+  const [coefAutoFilled, setCoefAutoFilled] = useState(false);
+
+  /* Story 8.13 — referências cadastradas para autofill do coeficiente */
+  const { data: references } =
+    useServerData<ReferenceTarget[]>("/api/settings/references");
+
+  function handleReferenceChange(value: string) {
+    setReference(value);
+    const match = (references || []).find(
+      (r) => r.reference.toLowerCase() === value.trim().toLowerCase(),
+    );
+    if (match) {
+      setMetaCoefficient(String(match.meta_coefficient));
+      setCoefAutoFilled(true);
+    } else {
+      setCoefAutoFilled(false);
+    }
+  }
 
   const qty = parseInt(totalQuantity) || 0;
   const size = parseInt(lotSize) || 0;
@@ -61,6 +88,7 @@ export default function NewProductionOrderPage() {
           reference: reference || null,
           description: description || null,
           total_quantity: qty,
+          meta_coefficient: Number(metaCoefficient) || 1.0,
           priority: parseInt(priority),
           notes: notes || null,
         }),
@@ -142,14 +170,44 @@ export default function NewProductionOrderPage() {
                 <Field label="Referência">
                   <input
                     type="text"
+                    list="references-list"
                     value={reference}
-                    onChange={(e) => setReference(e.target.value)}
-                    placeholder="Ex: REF-2841"
+                    onChange={(e) => handleReferenceChange(e.target.value)}
+                    placeholder="Ex: 1006"
                     disabled={loading}
                     className="input-field"
                   />
+                  <datalist id="references-list">
+                    {(references || []).map((r) => (
+                      <option key={r.id} value={r.reference}>
+                        coef {r.meta_coefficient}
+                        {r.description ? ` — ${r.description}` : ""}
+                      </option>
+                    ))}
+                  </datalist>
                 </Field>
               </div>
+
+              {/* Meta coefficient (Story 8.13) */}
+              <Field label="Coeficiente de Meta (peso da referência)">
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  value={metaCoefficient}
+                  onChange={(e) => {
+                    setMetaCoefficient(e.target.value);
+                    setCoefAutoFilled(false);
+                  }}
+                  disabled={loading}
+                  className="input-field tabular-nums"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {coefAutoFilled
+                    ? "✓ Preenchido automaticamente pela referência cadastrada (editável)"
+                    : "Padrão 1.0. Cadastre referências em Configurações → Referências para preencher automaticamente."}
+                </p>
+              </Field>
 
               {/* Description */}
               <Field label="Descrição">
