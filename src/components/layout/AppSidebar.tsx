@@ -16,8 +16,10 @@ import {
   Settings,
   ShieldCheck,
   Truck,
+  Tv,
   Users,
 } from "lucide-react";
+import { showToast } from "@/lib/toast";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 
 import {
@@ -56,7 +58,49 @@ export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const [loggingOut, setLoggingOut] = useState(false);
+  const [openingTv, setOpeningTv] = useState(false);
   const { profile } = useUserProfile();
+
+  // Story 8.17: abre a TV usando/gerando um token kiosk (ADMIN only)
+  const canOpenTv = profile?.role === "ADMIN";
+
+  async function handleOpenTv() {
+    if (openingTv) return;
+    setOpeningTv(true);
+    try {
+      let token: string | null = null;
+
+      // Reusa um token de dashboard ativo, se houver
+      const listRes = await fetch("/api/admin/kiosk-tokens");
+      if (listRes.ok) {
+        const { tokens } = await listRes.json();
+        const active = (tokens || []).find(
+          (t: { token: string; scope: string; is_active: boolean }) =>
+            t.is_active && t.scope === "dashboard",
+        );
+        if (active) token = active.token;
+      }
+
+      // Senão, cria um novo
+      if (!token) {
+        const createRes = await fetch("/api/admin/kiosk-tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "TV Painel", scope: "dashboard" }),
+        });
+        if (!createRes.ok) throw new Error();
+        const { token: created } = await createRes.json();
+        token = created.token;
+      }
+
+      if (!token) throw new Error();
+      window.open(`/tv?token=${token}`, "_blank", "noopener");
+    } catch {
+      showToast("error", "Não foi possível abrir a TV");
+    } finally {
+      setOpeningTv(false);
+    }
+  }
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -114,6 +158,19 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
+              {canOpenTv && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Abrir TV / Painel"
+                    onClick={handleOpenTv}
+                    disabled={openingTv}
+                    className="h-9 px-3 rounded-md text-[13px] transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                  >
+                    <Tv className="size-4 shrink-0" />
+                    {!collapsed && <span>{openingTv ? "Abrindo..." : "TV / Painel"}</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               {bottomItems.map((item) => (
                 <NavLink
                   key={item.url}

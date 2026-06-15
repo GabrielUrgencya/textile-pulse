@@ -16,6 +16,8 @@ import {
   Square,
   X,
   XCircle,
+  Scissors,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,6 +26,8 @@ import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { MetricBox } from "@/components/ui/metric-box";
 import { hasPermission, type AppRole } from "@/lib/permissions";
+import { SplitLotModal } from "@/components/production/SplitLotModal";
+import { CancelOpModal } from "@/components/production/CancelOpModal";
 
 /* ────────────── Types ────────────── */
 
@@ -143,6 +147,10 @@ export default function OrderDetailPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [downloading, setDownloading] = useState<"zpl" | "pdf" | null>(null);
 
+  // Story 8.15 / 8.16
+  const [splitLot, setSplitLot] = useState<Lot | null>(null);
+  const [showCancel, setShowCancel] = useState(false);
+
   const fetchOrder = useCallback(async () => {
     setLoading(true);
     try {
@@ -236,12 +244,24 @@ export default function OrderDetailPage() {
   const allSelected = selectedLots.size === lots.length && lots.length > 0;
   const selectedLotsData = lots.filter((l) => selectedLots.has(l.id));
   const canPrintLabels = userRole ? hasPermission(userRole, "labels:print") : false;
+  const canCancel = userRole ? hasPermission(userRole, "orders:delete") : false;
+  const canSplit = userRole ? hasPermission(userRole, "orders:create") : false;
+  const SPLITTABLE = ["CREATED", "IN_CUT"];
 
   return (
     <div className="max-w-[1600px] mx-auto px-6 lg:px-10 py-6 lg:py-8">
       <PageHeader eyebrow="Ordens de Produção" title={`OP-${order.op_number}`}>
         <div className="flex items-center gap-3">
           <StatusBadge status={st.variant} size="md">{st.label}</StatusBadge>
+          {canCancel && order.status !== "CANCELLED" && (
+            <button
+              onClick={() => setShowCancel(true)}
+              className="h-9 px-4 rounded-lg bg-destructive/10 border border-destructive/30 text-[13px] font-medium hover:bg-destructive/20 transition flex items-center gap-2 text-destructive"
+            >
+              <Ban className="size-4" />
+              Cancelar OP
+            </button>
+          )}
           <button
             onClick={() => router.push("/production/orders")}
             className="h-9 px-4 rounded-lg bg-secondary/60 border border-border/60 text-[13px] font-medium hover:bg-secondary transition flex items-center gap-2 text-muted-foreground hover:text-foreground"
@@ -381,8 +401,20 @@ export default function OrderDetailPage() {
                     <div className="col-span-2 flex justify-center">
                       <StatusBadge status={ls.variant}>{ls.label}</StatusBadge>
                     </div>
-                    <div className="col-span-3 text-right font-mono text-[11px] text-muted-foreground tabular-nums">
-                      {formatDate(lot.created_at)}
+                    <div className="col-span-3 flex items-center justify-end gap-2 font-mono text-[11px] text-muted-foreground tabular-nums">
+                      <span>{formatDate(lot.created_at)}</span>
+                      {canSplit && SPLITTABLE.includes(lot.status) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSplitLot(lot);
+                          }}
+                          className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition"
+                          title="Fracionar lote"
+                        >
+                          <Scissors className="size-3.5" />
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -428,6 +460,38 @@ export default function OrderDetailPage() {
             onDownloadZpl={() => { setShowPreview(false); handleDownload("zpl"); }}
             onDownloadPdf={() => { setShowPreview(false); handleDownload("pdf"); }}
             downloading={downloading}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Story 8.15: Split Lot Modal */}
+      <AnimatePresence>
+        {splitLot && (
+          <SplitLotModal
+            lotId={splitLot.id}
+            lotNumber={splitLot.lot_number}
+            lotQuantity={splitLot.quantity}
+            onClose={() => setSplitLot(null)}
+            onSplit={() => {
+              setSplitLot(null);
+              setSelectedLots(new Set());
+              fetchOrder();
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Story 8.16: Cancel OP Modal */}
+      <AnimatePresence>
+        {showCancel && (
+          <CancelOpModal
+            orderId={order.id}
+            opNumber={order.op_number}
+            onClose={() => setShowCancel(false)}
+            onCancelled={() => {
+              setShowCancel(false);
+              router.push("/production/orders");
+            }}
           />
         )}
       </AnimatePresence>

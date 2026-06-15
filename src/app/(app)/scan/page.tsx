@@ -128,6 +128,7 @@ function ScanPage() {
   // State
   const [stages, setStages] = useState<Stage[]>([]);
   const [selectedStageId, setSelectedStageId] = useState<string>("");
+  const [scanMode, setScanMode] = useState<"STAGE_IN" | "STAGE_OUT">("STAGE_IN");
   const [loading, setLoading] = useState(true);
   const [stagesError, setStagesError] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -228,6 +229,7 @@ function ScanPage() {
           body: JSON.stringify({
             barcode: scannedBarcode.trim(),
             stage_id: selectedStageId,
+            event_type: scanMode,
             device_info: station || undefined,
           }),
         });
@@ -242,9 +244,13 @@ function ScanPage() {
             barcode: scannedBarcode.trim(),
             stageName,
             status: "success",
-            message: data.warning
-              ? `Registrado com aviso: ${data.warning}`
-              : "Bipagem registrada com sucesso",
+            message: data.stage_duration_hours != null
+              ? `Fim registrado — etapa durou ${data.stage_duration_hours}h`
+              : data.warning
+                ? `Registrado com aviso: ${data.warning}`
+                : scanMode === "STAGE_OUT"
+                  ? "Fim de processo registrado"
+                  : "Início de processo registrado",
             lotId: data.scan_event?.lot_id,
             lotStatus: data.lot_status,
             warning: data.warning,
@@ -300,7 +306,7 @@ function ScanPage() {
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     },
-    [selectedStageId, scanning, stages, station, soundEnabled],
+    [selectedStageId, scanning, stages, station, soundEnabled, scanMode],
   );
 
   // T2: Handle key down (Enter to submit)
@@ -416,6 +422,32 @@ function ScanPage() {
         >
           <LisionCard>
             <LisionCardHeader eyebrow="Scanner" title="Bipagem de Código de Barras" />
+
+            {/* Story 8.14: toggle Início / Fim do processo */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setScanMode("STAGE_IN")}
+                className={`py-2.5 rounded-lg text-[13px] font-medium border transition-colors ${
+                  scanMode === "STAGE_IN"
+                    ? "bg-success/15 border-success/40 text-success"
+                    : "border-border/40 text-muted-foreground hover:bg-secondary/40"
+                }`}
+              >
+                ▶ Início do processo
+              </button>
+              <button
+                type="button"
+                onClick={() => setScanMode("STAGE_OUT")}
+                className={`py-2.5 rounded-lg text-[13px] font-medium border transition-colors ${
+                  scanMode === "STAGE_OUT"
+                    ? "bg-sky-500/15 border-sky-500/40 text-sky-500"
+                    : "border-border/40 text-muted-foreground hover:bg-secondary/40"
+                }`}
+              >
+                ■ Fim do processo
+              </button>
+            </div>
 
             {/* Barcode input */}
             <div className="relative mb-4">
