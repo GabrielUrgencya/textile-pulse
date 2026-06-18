@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
+import { hasPermission, type AppRole } from "@/lib/permissions";
+
+const EDITABLE_STATUSES = ["CREATED", "IN_CUT"];
 
 export async function GET(
   _request: Request,
@@ -45,6 +48,84 @@ export async function GET(
     defect_records: defects || [],
     stage_durations: stageDurations,
   });
+}
+
+/**
+ * Story 8.19 — Edição manual de lote (quantidade/identificação).
+ * Permitido apenas em etapas iniciais (CREATED/IN_CUT) para não corromper metas.
+ */
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase, user } = auth;
+  const role = user.app_metadata?.role;
+
+  if (!hasPermission(role as AppRole, "orders:create")) {
+    return NextResponse.json({ error: "Forbidden: orders:create required" }, { status: 403 });
+  }
+
+  const { id } = params;
+  const body = await request.json().catch(() => null);
+  if (!body) {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+
+  const { data: lot, error: lotError } = await supabase
+    .from("lots")
+    .select("id, status")
+    .eq("id", id)
+    .single();
+
+  if (lotError || !lot) {
+    return NextResponse.json({ error: "Lote não encontrado" }, { status: 404 });
+  }
+
+  if (!EDITABLE_STATUSES.includes(lot.status)) {
+    return NextResponse.json(
+      { error: `Lote só pode ser editado nas etapas iniciais (atual: ${lot.status})` },
+      { status: 409 }
+    );
+  }
+
+  const update: Record<string, unknown> = {};
+
+  if (body.quantity !== undefined) {
+    const qty = Math.trunc(Number(body.quantity));
+    if (Number.isNaN(qty) || qty < 1) {
+      return NextResponse.json(
+        { error: "quantity deve ser um inteiro >= 1" },
+        { status: 400 }
+      );
+    }
+    update.quantity = qty;
+  }
+
+  if (body.destination !== undefined) {
+    update.destination = body.destination?.toString().trim() || null;
+  }
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("lots")
+    .update(update)
+    .eq("id", id)
+    .select("id, barcode, lot_number, quantity, destination, status")
+    .single();
+
+  if (updateError) {
+    return NextResponse.json(
+      { error: "Falha ao atualizar lote", details: updateError.message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ data: updated });
 }
 
 interface ScanRow {

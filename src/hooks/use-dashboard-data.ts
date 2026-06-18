@@ -17,6 +17,13 @@ export interface KpiResult {
   weighted_points?: number;
   /** Whether weighted meta is active */
   use_weighted_meta?: boolean;
+  /** Story 8.18: tempo médio por etapa (pares STAGE_IN→STAGE_OUT) */
+  avg_stage_durations?: Array<{
+    stage_id: string;
+    stage_name: string;
+    avg_hours: number;
+    samples: number;
+  }>;
 }
 
 export interface ChartDataPoint {

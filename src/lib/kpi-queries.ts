@@ -17,6 +17,13 @@ export interface KpiResult {
   weighted_points?: number;
   /** Whether weighted meta is active for this result */
   use_weighted_meta?: boolean;
+  /** Story 8.18: tempo médio por etapa (pares STAGE_IN→STAGE_OUT) */
+  avg_stage_durations?: Array<{
+    stage_id: string;
+    stage_name: string;
+    avg_hours: number;
+    samples: number;
+  }>;
 }
 
 export interface ChartDataPoint {
@@ -54,11 +61,13 @@ export async function computeKpis(
     lotsByStageResult,
     topProducersResult,
     totalLotsResult,
+    avgStageDurationResult,
   ] = await Promise.all([
-    // Total scans in date range (HEAD count — no rows transferred)
+    // Total scans in date range — Story 8.18: só STAGE_IN conta produção
     supabase
       .from("scan_events")
       .select("id", { count: "exact", head: true })
+      .eq("event_type", "STAGE_IN")
       .gte("scanned_at", fromStart)
       .lte("scanned_at", toEnd),
 
@@ -88,6 +97,12 @@ export async function computeKpis(
     supabase
       .from("lots")
       .select("id", { count: "exact", head: true }),
+
+    // Story 8.18: tempo médio por etapa (pares IN→OUT, agregado no banco)
+    supabase.rpc("dashboard_avg_stage_duration", {
+      from_date: fromStart,
+      to_date: toEnd,
+    }),
   ]);
 
   // Map RPC results (already aggregated — no client-side processing needed)
@@ -111,41 +126,71 @@ export async function computeKpis(
   const totalDefects = defectsResult.count ?? 0;
   const defectRate = totalScans > 0 ? (totalDefects / totalScans) * 100 : 0;
 
-  // Weighted meta calculation: SUM(quantity_scanned * COALESCE(meta_coefficient, 1.0))
-  let weightedPoints: number | undefined;
-  if (useWeightedMeta) {
-    const { data: weightedData } = await supabase
+  // Story 8.18: tempo médio por etapa
+  const avgStageDurations = (
+    (avgStageDurationResult.data as Array<{
+      stage_id: string;
+      stage_name: string;
+      avg_hours: number | string;
+      samples: number | string;
+    }> | null) || []
+  ).map((row) => ({
+    stage_id: row.stage_id,
+    stage_name: row.stage_name,
+    avg_hours: Number(row.avg_hours) || 0,
+    samples: Number(row.samples) || 0,
+  }));
+
+  // Story 8.19: produção por PEÇA = peças dos lotes que ENTRARAM NO ESTOQUE no período.
+  // Conta cada lote uma única vez (na entrada do estoque), não por bipagem/etapa.
+  const { data: estoqueStages } = await supabase
+    .from("stages")
+    .select("id")
+    .eq("name", "ESTOQUE");
+  const estoqueIds = (estoqueStages || []).map((s) => s.id as string);
+
+  let producedPieces = 0;
+  let weightedPieces = 0;
+  if (estoqueIds.length > 0) {
+    const { data: stockScans } = await supabase
       .from("scan_events")
       .select(`
-        quantity_scanned,
+        lot_id,
         lots!inner (
+          quantity,
           production_orders!inner ( meta_coefficient )
         )
       `)
+      .eq("event_type", "STAGE_IN")
+      .in("stage_id", estoqueIds)
       .gte("scanned_at", fromStart)
       .lte("scanned_at", toEnd);
 
-    if (weightedData && weightedData.length > 0) {
-      weightedPoints = 0;
-      for (const scan of weightedData) {
-        const qty = (scan.quantity_scanned as number) || 1;
-        const lotRel = scan.lots as unknown;
-        const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as {
-          production_orders: { meta_coefficient: string | number | null } | { meta_coefficient: string | number | null }[];
-        } | null;
-        const poRel = lot?.production_orders;
-        const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { meta_coefficient: string | number | null } | null;
-        const coeff = Number(po?.meta_coefficient) || 1.0;
-        weightedPoints += qty * coeff;
-      }
-      weightedPoints = Math.round(weightedPoints * 10) / 10;
-    } else {
-      weightedPoints = 0;
+    const seenLots = new Set<string>();
+    for (const scan of stockScans || []) {
+      const lotId = scan.lot_id as string;
+      if (seenLots.has(lotId)) continue; // lote entra no estoque uma vez
+      seenLots.add(lotId);
+      const lotRel = scan.lots as unknown;
+      const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as {
+        quantity: number | string | null;
+        production_orders: { meta_coefficient: string | number | null } | { meta_coefficient: string | number | null }[];
+      } | null;
+      const qty = Number(lot?.quantity) || 0;
+      const poRel = lot?.production_orders;
+      const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { meta_coefficient: string | number | null } | null;
+      const coeff = Number(po?.meta_coefficient) || 1.0;
+      producedPieces += qty;
+      weightedPieces += qty * coeff;
     }
+    weightedPieces = Math.round(weightedPieces * 10) / 10;
   }
 
+  const weightedPoints: number | undefined = useWeightedMeta ? weightedPieces : undefined;
+  const producedToday = useWeightedMeta ? weightedPieces : producedPieces;
+
   return {
-    produced_today: useWeightedMeta && weightedPoints !== undefined ? weightedPoints : totalScans,
+    produced_today: producedToday,
     defect_rate: Math.round(defectRate * 100) / 100,
     active_ops: activeOpsResult.count ?? 0,
     lots_by_stage: lotsByStage,
@@ -154,6 +199,7 @@ export async function computeKpis(
     total_scans: totalScans,
     weighted_points: weightedPoints,
     use_weighted_meta: useWeightedMeta,
+    avg_stage_durations: avgStageDurations,
   };
 }
 
