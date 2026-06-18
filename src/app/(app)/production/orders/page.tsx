@@ -71,11 +71,13 @@ export default function ProductionOrdersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
+  const [tab, setTab] = useState<"active" | "completed">("active"); // Story 8.19
 
   const fetchOrders = useCallback(async (page = 1) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: "20" });
+      if (tab === "completed") params.set("status", "COMPLETED");
       const res = await fetch(`/api/production/orders?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -85,7 +87,7 @@ export default function ProductionOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tab]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -136,6 +138,26 @@ export default function ProductionOrdersPage() {
         <MetricBox label="Abertas" value={String(openCount)} />
         <MetricBox label="Em Produção" value={String(inProgressCount)} />
         <MetricBox label="Concluídas" value={String(completedCount)} />
+      </div>
+
+      {/* Story 8.19: abas Ativas / Concluídas */}
+      <div className="flex items-center gap-2 mb-4">
+        {([
+          { key: "active", label: "Ativas" },
+          { key: "completed", label: "Concluídas" },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`h-9 px-4 rounded-lg text-[13px] font-medium transition ${
+              tab === t.key
+                ? "bg-foreground text-background"
+                : "border border-border text-muted-foreground hover:bg-secondary/60"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Filters */}

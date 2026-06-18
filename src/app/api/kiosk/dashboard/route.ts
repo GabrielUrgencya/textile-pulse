@@ -95,7 +95,6 @@ export async function GET(request: Request) {
 
   // ─── Parallel queries ─────────────────────────────────────────────
   const [
-    scansTodayResult,
     scansYesterdayResult,
     scansLastHourResult,
     scansHourlyResult,
@@ -110,8 +109,9 @@ export async function GET(request: Request) {
     factionsResult,
     factionShipmentsResult,
     weightedScansResult,
+    stageEventsResult,
   ] = await Promise.all([
-    // Scans today (count) — filtered by shift if active
+    // Scans yesterday (count for trend). Story 8.18: só STAGE_IN
     supabase
       .from("scan_events")
       .select("id, lots!inner(production_orders!inner(tenant_id))", {
@@ -119,21 +119,11 @@ export async function GET(request: Request) {
         head: true,
       })
       .eq("lots.production_orders.tenant_id", tenantId)
-      .gte("scanned_at", effectiveStart)
-      .lte("scanned_at", effectiveEnd),
-
-    // Scans yesterday (count for trend)
-    supabase
-      .from("scan_events")
-      .select("id, lots!inner(production_orders!inner(tenant_id))", {
-        count: "exact",
-        head: true,
-      })
-      .eq("lots.production_orders.tenant_id", tenantId)
+      .eq("event_type", "STAGE_IN")
       .gte("scanned_at", yesterdayStart)
       .lte("scanned_at", yesterdayEnd),
 
-    // Scans in last hour (current rate)
+    // Scans in last hour (current rate). Story 8.18: só STAGE_IN
     supabase
       .from("scan_events")
       .select("id, lots!inner(production_orders!inner(tenant_id))", {
@@ -141,13 +131,15 @@ export async function GET(request: Request) {
         head: true,
       })
       .eq("lots.production_orders.tenant_id", tenantId)
+      .eq("event_type", "STAGE_IN")
       .gte("scanned_at", oneHourAgo),
 
-    // Scans today grouped by hour (for peak rate calculation)
+    // Scans today grouped by hour (for peak rate calculation). Story 8.18: só STAGE_IN
     supabase
       .from("scan_events")
       .select("scanned_at, lots!inner(production_orders!inner(tenant_id))")
       .eq("lots.production_orders.tenant_id", tenantId)
+      .eq("event_type", "STAGE_IN")
       .gte("scanned_at", effectiveStart)
       .lte("scanned_at", effectiveEnd)
       .order("scanned_at", { ascending: true }),
@@ -257,40 +249,61 @@ export async function GET(request: Request) {
       .eq("factions.tenant_id", tenantId)
       .gte("sent_at", thirtyDaysAgo),
 
-    // Weighted meta: scan_events with quantity + meta_coefficient (Story 8.1)
+    // Story 8.19: peças que ENTRARAM NO ESTOQUE no período (produção por peça, conta lote 1x)
     supabase
       .from("scan_events")
       .select(`
-        quantity_scanned,
+        lot_id,
+        stages!inner ( name ),
         lots!inner (
+          quantity,
           production_orders!inner ( meta_coefficient, tenant_id )
         )
       `)
       .eq("lots.production_orders.tenant_id", tenantId)
+      .eq("stages.name", "ESTOQUE")
+      .eq("event_type", "STAGE_IN")
       .gte("scanned_at", effectiveStart)
       .lte("scanned_at", effectiveEnd),
+
+    // Story 8.18: eventos IN/OUT (últimos 30d) p/ tempo médio por etapa na TV
+    supabase
+      .from("scan_events")
+      .select("lot_id, stage_id, event_type, scanned_at, lots!inner(production_orders!inner(tenant_id))")
+      .eq("lots.production_orders.tenant_id", tenantId)
+      .in("event_type", ["STAGE_IN", "STAGE_OUT"])
+      .not("stage_id", "is", null)
+      .gte("scanned_at", thirtyDaysAgo)
+      .order("scanned_at", { ascending: true }),
   ]);
 
-  // ─── Weighted meta calculation (Story 8.1) ──────────────────────
-  let weightedPoints = 0;
-  if (useWeightedMeta && weightedScansResult.data && weightedScansResult.data.length > 0) {
+  // ─── Produção por peça na entrada do estoque (Story 8.19) ───────
+  // Cada lote conta uma vez (dedupe por lot_id). weightedPieces aplica coeficiente.
+  let producedPieces = 0;
+  let weightedPieces = 0;
+  if (weightedScansResult.data && weightedScansResult.data.length > 0) {
+    const seenLots = new Set<string>();
     for (const scan of weightedScansResult.data) {
-      const qty = (scan.quantity_scanned as number) || 1;
+      const lotId = scan.lot_id as string;
+      if (seenLots.has(lotId)) continue;
+      seenLots.add(lotId);
       const lotRel = scan.lots as unknown;
       const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as {
+        quantity: number | string | null;
         production_orders: { meta_coefficient: string | number | null } | { meta_coefficient: string | number | null }[];
       } | null;
+      const qty = Number(lot?.quantity) || 0;
       const poRel = lot?.production_orders;
       const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { meta_coefficient: string | number | null } | null;
       const coeff = Number(po?.meta_coefficient) || 1.0;
-      weightedPoints += qty * coeff;
+      producedPieces += qty;
+      weightedPieces += qty * coeff;
     }
-    weightedPoints = Math.round(weightedPoints * 10) / 10;
+    weightedPieces = Math.round(weightedPieces * 10) / 10;
   }
 
   // ─── Production calculations ──────────────────────────────────────
-  const rawProducedToday = scansTodayResult.count ?? 0;
-  const producedToday = useWeightedMeta ? weightedPoints : rawProducedToday;
+  const producedToday = useWeightedMeta ? weightedPieces : producedPieces;
   const percent = dailyTarget > 0 ? Math.round((producedToday / dailyTarget) * 100) : 0;
   const currentRate = scansLastHourResult.count ?? 0;
 
@@ -558,6 +571,45 @@ export async function GET(request: Request) {
     factionRanking.splice(3);
   }
 
+  // ─── Tempo médio por etapa (Story 8.18) ──────────────────────────
+  // Pareia STAGE_IN→STAGE_OUT por lote+etapa (n-ésimo com n-ésimo) e calcula média.
+  interface StageEventRow { lot_id: string; stage_id: string; event_type: string; scanned_at: string }
+  const stageDurationAgg = new Map<string, { totalHours: number; samples: number }>();
+  if (stageEventsResult.data) {
+    const openByKey = new Map<string, string[]>(); // lot|stage -> queue de scanned_at de IN
+    for (const ev of stageEventsResult.data as unknown as StageEventRow[]) {
+      const key = `${ev.lot_id}|${ev.stage_id}`;
+      if (ev.event_type === "STAGE_IN") {
+        const q = openByKey.get(key) || [];
+        q.push(ev.scanned_at);
+        openByKey.set(key, q);
+      } else if (ev.event_type === "STAGE_OUT") {
+        const q = openByKey.get(key);
+        if (q && q.length > 0) {
+          const inAt = q.shift()!;
+          const hours = (new Date(ev.scanned_at).getTime() - new Date(inAt).getTime()) / 3_600_000;
+          if (hours >= 0) {
+            const agg = stageDurationAgg.get(ev.stage_id) || { totalHours: 0, samples: 0 };
+            agg.totalHours += hours;
+            agg.samples += 1;
+            stageDurationAgg.set(ev.stage_id, agg);
+          }
+        }
+      }
+    }
+  }
+  const stageNameById = new Map<string, string>(
+    (stagesResult.data || []).map((s) => [s.id as string, (s.display_name as string) || (s.name as string)])
+  );
+  const avgStageDurations = Array.from(stageDurationAgg.entries())
+    .map(([stageId, agg]) => ({
+      stage_id: stageId,
+      stage_name: stageNameById.get(stageId) || "—",
+      avg_hours: Math.round((agg.totalHours / agg.samples) * 100) / 100,
+      samples: agg.samples,
+    }))
+    .sort((a, b) => b.avg_hours - a.avg_hours);
+
   // ─── Response ─────────────────────────────────────────────────────
   return NextResponse.json({
     kiosk: {
@@ -589,6 +641,7 @@ export async function GET(request: Request) {
       scans_yesterday: scansYesterday,
     },
     lots_by_stage: lotsByStage,
+    avg_stage_durations: avgStageDurations,
     alerts: topAlerts,
     recent_activity: recentActivity,
     faction_ranking: factionRanking,

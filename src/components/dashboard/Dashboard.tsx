@@ -499,6 +499,69 @@ function DefectsCard({ kpis }: { kpis: KpiResult | null }) {
   );
 }
 
+/* --------------------------- Stage Duration Card -------------------------- */
+
+function formatHours(h: number): string {
+  if (h >= 1) return `${h.toFixed(1)}h`;
+  return `${Math.round(h * 60)}min`;
+}
+
+function StageDurationCard({ kpis }: { kpis: KpiResult | null }) {
+  const durations = kpis?.avg_stage_durations ?? [];
+
+  if (durations.length === 0) {
+    return (
+      <Card className="lg:col-span-12">
+        <CardHeader
+          eyebrow="Tempo de processo"
+          title="Tempo médio por etapa"
+          right={<Layers className="size-4 text-muted-foreground" />}
+        />
+        <EmptyState message="Sem pares de início/fim bipados ainda — bipe o fim dos processos para medir o tempo." />
+      </Card>
+    );
+  }
+
+  const maxHours = Math.max(...durations.map((d) => d.avg_hours), 0.01);
+
+  return (
+    <Card className="lg:col-span-12">
+      <CardHeader
+        eyebrow="Tempo de processo"
+        title="Tempo médio por etapa"
+        right={<Layers className="size-4 text-muted-foreground" />}
+      />
+      <div className="space-y-2.5">
+        {durations.map((d, i) => {
+          const w = (d.avg_hours / maxHours) * 100;
+          return (
+            <div key={d.stage_id} className="group">
+              <div className="flex items-center justify-between text-[12px] mb-1.5">
+                <span className="font-medium">{d.stage_name}</span>
+                <div className="font-mono tabular-nums text-muted-foreground">
+                  <span className="text-foreground">{formatHours(d.avg_hours)}</span>
+                  <span className="text-muted-foreground/60"> · {d.samples} {d.samples === 1 ? "amostra" : "amostras"}</span>
+                </div>
+              </div>
+              <div className="relative h-7 rounded-md bg-secondary/40 overflow-hidden border border-border/40">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.max(w, 2)}%` }}
+                  transition={{ duration: 1, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-foreground/80 to-foreground/20"
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-4 pt-3 border-t border-border/40 text-[11px] text-muted-foreground">
+        Calculado pelos pares de bipagem início → fim. Etapas sem fim bipado não entram na média.
+      </p>
+    </Card>
+  );
+}
+
 /* ----------------------------- Production Orders --------------------------- */
 
 function formatStatus(status: string) {
@@ -832,6 +895,7 @@ export function Dashboard() {
             </div>
             <StagesCard kpis={data.kpis} />
             <DefectsCard kpis={data.kpis} />
+            <StageDurationCard kpis={data.kpis} />
 
             {/* Operacoes */}
             <div className="lg:col-span-12 flex items-center gap-3 mt-2">

@@ -64,18 +64,25 @@ export async function GET(request: Request) {
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20")));
   const includeCancelled = searchParams.get("include_cancelled") === "true";
+  const statusFilter = searchParams.get("status"); // ex: COMPLETED (aba Concluídas)
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  // Story 8.16: oculta OPs canceladas por padrao (auditoria via include_cancelled=true)
   let query = supabase
     .from("production_orders")
     .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  if (!includeCancelled) {
-    query = query.neq("status", "CANCELLED");
+  if (statusFilter) {
+    // Filtro explícito por status (ex.: aba "Concluídas")
+    query = query.eq("status", statusFilter);
+  } else {
+    // Padrão: lista de ativas — oculta concluídas (8.19) e canceladas (8.16)
+    query = query.neq("status", "COMPLETED");
+    if (!includeCancelled) {
+      query = query.neq("status", "CANCELLED");
+    }
   }
 
   const { data: orders, error, count } = await query;

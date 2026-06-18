@@ -20,14 +20,33 @@ interface StageData {
   color: string;
 }
 
-interface TVStageFlowProps {
-  stages: StageData[];
+interface AvgStageDuration {
+  stage_id: string;
+  stage_name: string;
+  avg_hours: number;
+  samples: number;
 }
 
-export function TVStageFlow({ stages }: TVStageFlowProps) {
+interface TVStageFlowProps {
+  stages: StageData[];
+  avgStageDurations?: AvgStageDuration[];
+}
+
+/** Story 8.18: formata horas (>=1h em horas, senão minutos) */
+function fmtHours(h: number): string {
+  if (h >= 1) return `${h.toFixed(1)}h`;
+  return `${Math.round(h * 60)}min`;
+}
+
+export function TVStageFlow({ stages, avgStageDurations }: TVStageFlowProps) {
   const sorted = [...stages].sort((a, b) => a.order_index - b.order_index);
   const maxCount = Math.max(...sorted.map((s) => s.count), 1);
   const totalLots = sorted.reduce((sum, s) => sum + s.count, 0);
+
+  // Mapa nome-de-exibição -> média de horas (Story 8.18)
+  const avgByName = new Map<string, number>(
+    (avgStageDurations || []).map((d) => [fixStageName(d.stage_name), d.avg_hours]),
+  );
 
   return (
     <motion.div
@@ -116,6 +135,7 @@ export function TVStageFlow({ stages }: TVStageFlowProps) {
               const displayName = fixStageName(stage.display_name);
               const isBottleneck =
                 stage.count === maxCount && stage.count > 0;
+              const avgHours = avgByName.get(displayName);
               return (
                 <div
                   key={stage.stage_name}
@@ -134,6 +154,11 @@ export function TVStageFlow({ stages }: TVStageFlowProps) {
                   <span className="font-mono text-[10px] tabular-nums text-muted-foreground/35">
                     {stage.count}
                   </span>
+                  {avgHours !== undefined && (
+                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground/50">
+                      · {fmtHours(avgHours)}
+                    </span>
+                  )}
                 </div>
               );
             })}

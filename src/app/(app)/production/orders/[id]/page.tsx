@@ -18,6 +18,8 @@ import {
   XCircle,
   Scissors,
   Ban,
+  Clock,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,6 +30,8 @@ import { MetricBox } from "@/components/ui/metric-box";
 import { hasPermission, type AppRole } from "@/lib/permissions";
 import { SplitLotModal } from "@/components/production/SplitLotModal";
 import { CancelOpModal } from "@/components/production/CancelOpModal";
+import { LotTimelineModal } from "@/components/production/LotTimelineModal";
+import { EditLotModal } from "@/components/production/EditLotModal";
 
 /* ────────────── Types ────────────── */
 
@@ -147,9 +151,11 @@ export default function OrderDetailPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [downloading, setDownloading] = useState<"zpl" | "pdf" | null>(null);
 
-  // Story 8.15 / 8.16
+  // Story 8.15 / 8.16 / 8.18
   const [splitLot, setSplitLot] = useState<Lot | null>(null);
   const [showCancel, setShowCancel] = useState(false);
+  const [timelineLot, setTimelineLot] = useState<Lot | null>(null);
+  const [editLot, setEditLot] = useState<Lot | null>(null);
 
   const fetchOrder = useCallback(async () => {
     setLoading(true);
@@ -403,17 +409,39 @@ export default function OrderDetailPage() {
                     </div>
                     <div className="col-span-3 flex items-center justify-end gap-2 font-mono text-[11px] text-muted-foreground tabular-nums">
                       <span>{formatDate(lot.created_at)}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTimelineLot(lot);
+                        }}
+                        className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition"
+                        title="Ver tempos (início/fim)"
+                      >
+                        <Clock className="size-3.5" />
+                      </button>
                       {canSplit && SPLITTABLE.includes(lot.status) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSplitLot(lot);
-                          }}
-                          className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition"
-                          title="Fracionar lote"
-                        >
-                          <Scissors className="size-3.5" />
-                        </button>
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditLot(lot);
+                            }}
+                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition"
+                            title="Editar lote"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSplitLot(lot);
+                            }}
+                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition"
+                            title="Fracionar lote"
+                          >
+                            <Scissors className="size-3.5" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </motion.div>
@@ -491,6 +519,33 @@ export default function OrderDetailPage() {
             onCancelled={() => {
               setShowCancel(false);
               router.push("/production/orders");
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Story 8.18: Lot Timeline Modal */}
+      <AnimatePresence>
+        {timelineLot && (
+          <LotTimelineModal
+            lotId={timelineLot.id}
+            barcode={timelineLot.barcode}
+            onClose={() => setTimelineLot(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Story 8.19: Edit Lot Modal */}
+      <AnimatePresence>
+        {editLot && (
+          <EditLotModal
+            lotId={editLot.id}
+            lotNumber={editLot.lot_number}
+            currentQuantity={editLot.quantity}
+            onClose={() => setEditLot(null)}
+            onSaved={() => {
+              setEditLot(null);
+              fetchOrder();
             }}
           />
         )}

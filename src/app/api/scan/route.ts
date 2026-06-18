@@ -164,6 +164,27 @@ export async function POST(request: Request) {
         { status: 207 }
       );
     }
+
+    // Story 8.19: conclui a OP automaticamente quando TODOS os lotes entram no estoque
+    if (stage.name === "ESTOQUE" && lot.po_id) {
+      const { data: poLots } = await supabase
+        .from("lots")
+        .select("status")
+        .eq("po_id", lot.po_id);
+
+      const allStocked =
+        !!poLots &&
+        poLots.length > 0 &&
+        poLots.every((l) => l.status === "IN_STOCK");
+
+      if (allStocked) {
+        await supabase
+          .from("production_orders")
+          .update({ status: "COMPLETED", updated_at: new Date().toISOString() })
+          .eq("id", lot.po_id)
+          .in("status", ["OPEN", "IN_PROGRESS"]);
+      }
+    }
   }
 
   // Check if scan is out of order (warn but don't block)
