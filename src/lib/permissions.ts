@@ -30,7 +30,23 @@ type Permission =
   | "factions:manage"
   | "reports:export";
 
-const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
+/** Story 8.22: lista de todas as permissões (para a matriz do editor). */
+export const ALL_PERMISSIONS: Permission[] = [
+  "dashboard:view",
+  "orders:view", "orders:create", "orders:edit", "orders:delete",
+  "scan:view", "scan:execute",
+  "labels:print",
+  "rework:report", "rework:resolve", "rework:view",
+  "quality:view", "quality:manage",
+  "factions:view", "factions:manage",
+  "reports:export",
+  "users:manage", "settings:manage",
+];
+
+/** Story 8.22: permissões que o ADMIN nunca pode perder (anti-lockout). */
+export const ADMIN_LOCKED_PERMISSIONS: Permission[] = ["settings:manage", "users:manage"];
+
+export const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
   ADMIN: [
     "dashboard:view",
     "orders:view",

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 
 /**
  * DELETE /api/admin/faction-tokens/[id] — Revoke faction token (soft delete)
@@ -17,8 +17,7 @@ export async function DELETE(
   const { supabase, user } = auth;
 
   // AC6: Only ADMIN or GERENTE
-  const role = user.app_metadata?.role;
-  if (!hasPermission(role as AppRole, "factions:manage")) {
+  if (!can(user, "factions:manage")) {
     return NextResponse.json({ error: "Forbidden: factions:manage required" }, { status: 403 });
   }
 

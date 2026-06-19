@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { dbError, requireTenantId } from "@/lib/api-helpers";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 
 export async function GET(
   _request: Request,
@@ -101,9 +101,8 @@ export async function DELETE(
   const auth = await withAuth();
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "orders:delete")) {
+  if (!can(user, "orders:delete")) {
     return NextResponse.json(
       { error: "Forbidden: orders:delete required" },
       { status: 403 }

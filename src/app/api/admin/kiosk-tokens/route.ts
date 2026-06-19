@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 import { dbError } from "@/lib/api-helpers";
 
 /**
@@ -14,8 +14,7 @@ export async function POST(request: Request) {
   const { supabase, user } = auth;
 
   // AC2: Only ADMIN can create tokens
-  const role = user.app_metadata?.role;
-  if (!hasPermission(role as AppRole, "settings:manage")) {
+  if (!can(user, "settings:manage")) {
     return NextResponse.json({ error: "Forbidden: ADMIN role required" }, { status: 403 });
   }
 
@@ -59,8 +58,7 @@ export async function GET() {
   const { supabase, user } = auth;
 
   // AC3: Only ADMIN can list tokens
-  const role = user.app_metadata?.role;
-  if (!hasPermission(role as AppRole, "settings:manage")) {
+  if (!can(user, "settings:manage")) {
     return NextResponse.json({ error: "Forbidden: ADMIN role required" }, { status: 403 });
   }
 

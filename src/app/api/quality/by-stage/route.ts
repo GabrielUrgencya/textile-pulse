@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 
 export async function GET(request: Request) {
   const auth = await withAuth();
   if (auth.error) return auth.error;
 
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "quality:view")) {
+  if (!can(user, "quality:view")) {
     return NextResponse.json({ error: "Forbidden: quality:view required" }, { status: 403 });
   }
 

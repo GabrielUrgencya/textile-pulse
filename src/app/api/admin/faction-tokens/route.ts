@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 import { dbError } from "@/lib/api-helpers";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import bcrypt from "bcryptjs";
@@ -22,8 +22,7 @@ export async function POST(request: Request) {
   const { supabase, user } = auth;
 
   // AC6: Only ADMIN or GERENTE
-  const role = user.app_metadata?.role;
-  if (!hasPermission(role as AppRole, "factions:manage")) {
+  if (!can(user, "factions:manage")) {
     return NextResponse.json({ error: "Forbidden: factions:manage required" }, { status: 403 });
   }
 
@@ -106,8 +105,7 @@ export async function GET() {
   const { user } = auth;
 
   // AC6: Only ADMIN or GERENTE
-  const role = user.app_metadata?.role;
-  if (!hasPermission(role as AppRole, "factions:manage")) {
+  if (!can(user, "factions:manage")) {
     return NextResponse.json({ error: "Forbidden: factions:manage required" }, { status: 403 });
   }
 

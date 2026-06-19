@@ -27,7 +27,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { MetricBox } from "@/components/ui/metric-box";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/use-permissions";
 import { SplitLotModal } from "@/components/production/SplitLotModal";
 import { CancelOpModal } from "@/components/production/CancelOpModal";
 import { LotTimelineModal } from "@/components/production/LotTimelineModal";
@@ -144,7 +144,7 @@ export default function OrderDetailPage() {
   const [computed, setComputed] = useState<ComputedQuantities>({ produced: 0, stocked: 0, defect: 0, discarded: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [userRole, setUserRole] = useState<AppRole | null>(null);
+  const { can: hasPerm } = usePermissions();
 
   // T1: Label selection state
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
@@ -169,7 +169,7 @@ export default function OrderDetailPage() {
       setOrder(data.order);
       setLots(data.lots ?? []);
       setComputed(data.computed_quantities ?? { produced: 0, stocked: 0, defect: 0, discarded: 0 });
-      if (data.user_role) setUserRole(data.user_role as AppRole);
+      // user_role no longer needed — permissions from usePermissions hook
     } catch {
       setError("Erro ao carregar ordem");
     } finally {
@@ -249,9 +249,9 @@ export default function OrderDetailPage() {
   const progressPercent = totalLots > 0 ? Math.round((completedLots / totalLots) * 100) : 0;
   const allSelected = selectedLots.size === lots.length && lots.length > 0;
   const selectedLotsData = lots.filter((l) => selectedLots.has(l.id));
-  const canPrintLabels = userRole ? hasPermission(userRole, "labels:print") : false;
-  const canCancel = userRole ? hasPermission(userRole, "orders:delete") : false;
-  const canSplit = userRole ? hasPermission(userRole, "orders:create") : false;
+  const canPrintLabels = hasPerm("labels:print");
+  const canCancel = hasPerm("orders:delete");
+  const canSplit = hasPerm("orders:create");
   const SPLITTABLE = ["CREATED", "IN_CUT"];
 
   return (

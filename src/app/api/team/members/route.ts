@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 import { dbError, requireTenantId } from "@/lib/api-helpers";
 import { escapeLikePattern } from "@/lib/utils";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -12,9 +12,8 @@ export async function GET(request: Request) {
   if (auth.error) return auth.error;
 
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "users:manage")) {
+  if (!can(user, "users:manage")) {
     return NextResponse.json({ error: "Forbidden: users:manage required" }, { status: 403 });
   }
 
@@ -54,9 +53,8 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
 
   const { user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "users:manage")) {
+  if (!can(user, "users:manage")) {
     return NextResponse.json({ error: "Forbidden: users:manage required" }, { status: 403 });
   }
 

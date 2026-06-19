@@ -68,6 +68,15 @@ export interface ActivityEvent {
   stage_name: string;
 }
 
+export interface MyMeta {
+  stage_id: string;
+  stage_name: string;
+  target: number | null;
+  unit: string | null;
+  progress: number;
+  percent: number;
+}
+
 export interface DashboardData {
   kpis: KpiResult | null;
   chart: ChartDataPoint[];
@@ -76,6 +85,7 @@ export interface DashboardData {
   staleLots: StaleLot[];
   activity: ActivityEvent[];
   profile: UserProfile | null;
+  myMeta: MyMeta | null;
   isAuthenticated: boolean;
 }
 
@@ -112,6 +122,7 @@ export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn 
     staleLots: [],
     activity: [],
     profile: null,
+    myMeta: null,
     isAuthenticated: false,
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -166,6 +177,7 @@ export function useDashboardData(dateRange?: DateRange): UseDashboardDataReturn 
         staleLots: json.staleLots || [],
         activity: json.activity || [],
         profile: json.profile || null,
+        myMeta: json.my_meta || null,
         isAuthenticated: true,
       });
       setError(null);

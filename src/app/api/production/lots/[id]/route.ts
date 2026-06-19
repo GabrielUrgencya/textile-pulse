@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 
 const EDITABLE_STATUSES = ["CREATED", "IN_CUT"];
 
@@ -61,9 +61,8 @@ export async function PATCH(
   const auth = await withAuth();
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "orders:create")) {
+  if (!can(user, "orders:create")) {
     return NextResponse.json({ error: "Forbidden: orders:create required" }, { status: 403 });
   }
 

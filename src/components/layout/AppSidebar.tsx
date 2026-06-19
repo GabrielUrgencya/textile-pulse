@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { showToast } from "@/lib/toast";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { usePermissions } from "@/hooks/use-permissions";
 
 import {
   Sidebar,
@@ -38,19 +39,19 @@ import {
 import { cn } from "@/lib/utils";
 
 const mainItems = [
-  { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard className="size-4 shrink-0" /> },
-  { title: "Produção", url: "/production/orders", icon: <Factory className="size-4 shrink-0" /> },
-  { title: "Scan", url: "/scan", icon: <ScanLine className="size-4 shrink-0" /> },
-  { title: "Aduana", url: "/aduana", icon: <ClipboardCheck className="size-4 shrink-0" /> },
-  { title: "Expedição", url: "/expedition", icon: <Clock className="size-4 shrink-0" /> },
-  { title: "Retrabalho", url: "/rework", icon: <AlertTriangle className="size-4 shrink-0" /> },
-  { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" /> },
-  { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" /> },
-  { title: "Equipe", url: "/team", icon: <Users className="size-4 shrink-0" /> },
+  { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard className="size-4 shrink-0" />, permission: "dashboard:view" },
+  { title: "Produção", url: "/production/orders", icon: <Factory className="size-4 shrink-0" />, permission: "orders:view" },
+  { title: "Scan", url: "/scan", icon: <ScanLine className="size-4 shrink-0" />, permission: "scan:view" },
+  { title: "Aduana", url: "/aduana", icon: <ClipboardCheck className="size-4 shrink-0" />, permission: "scan:view" },
+  { title: "Expedição", url: "/expedition", icon: <Clock className="size-4 shrink-0" />, permission: "factions:view" },
+  { title: "Retrabalho", url: "/rework", icon: <AlertTriangle className="size-4 shrink-0" />, permission: "rework:view" },
+  { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" />, permission: "quality:view" },
+  { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" />, permission: "factions:view" },
+  { title: "Equipe", url: "/team", icon: <Users className="size-4 shrink-0" />, permission: "users:manage" },
 ];
 
 const bottomItems = [
-  { title: "Configurações", url: "/settings", icon: <Settings className="size-4 shrink-0" /> },
+  { title: "Configurações", url: "/settings", icon: <Settings className="size-4 shrink-0" />, permission: "settings:manage" },
 ];
 
 export function AppSidebar() {
@@ -60,9 +61,18 @@ export function AppSidebar() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [openingTv, setOpeningTv] = useState(false);
   const { profile } = useUserProfile();
+  const { can: hasPerm, isLoading: permsLoading } = usePermissions();
 
   // Story 8.17: abre a TV usando/gerando um token kiosk (ADMIN only)
   const canOpenTv = profile?.role === "ADMIN";
+
+  // Story 8.22: filter menu items by effective permissions
+  const visibleMainItems = permsLoading
+    ? mainItems
+    : mainItems.filter((item) => hasPerm(item.permission));
+  const visibleBottomItems = permsLoading
+    ? bottomItems
+    : bottomItems.filter((item) => hasPerm(item.permission));
 
   async function handleOpenTv() {
     if (openingTv) return;
@@ -141,7 +151,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
-              {mainItems.map((item) => (
+              {visibleMainItems.map((item) => (
                 <NavLink
                   key={item.url}
                   item={item}
@@ -171,7 +181,7 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
-              {bottomItems.map((item) => (
+              {visibleBottomItems.map((item) => (
                 <NavLink
                   key={item.url}
                   item={item}

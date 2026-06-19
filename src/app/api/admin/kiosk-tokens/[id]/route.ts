@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 
 /**
  * DELETE /api/admin/kiosk-tokens/:id — Revoke kiosk token (ADMIN only)
@@ -14,9 +14,7 @@ export async function DELETE(
   const auth = await withAuth();
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
-
-  const role = user.app_metadata?.role;
-  if (!hasPermission(role as AppRole, "settings:manage")) {
+  if (!can(user, "settings:manage")) {
     return NextResponse.json({ error: "Forbidden: ADMIN role required" }, { status: 403 });
   }
 

@@ -13,7 +13,7 @@ import {
 import { AllowanceAlert } from "@/components/dashboard/AllowanceAlert";
 import { TeamRankingCard } from "@/components/dashboard/TeamRankingCard";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange, StaleLot, ActivityEvent, Targets } from "@/hooks/use-dashboard-data";
+import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange, StaleLot, ActivityEvent, Targets, MyMeta } from "@/hooks/use-dashboard-data";
 import type { UserProfile } from "@/hooks/use-user-profile";
 import { humanizeEvent, relativeTimestamp, type ActivityEventRaw } from "@/lib/event-templates";
 
@@ -213,6 +213,49 @@ function getProjection(produced: number, shiftStart: string, shiftEnd: string, t
   const pct = target > 0 ? (projected / target) * 100 : 0;
 
   return { projected: Math.round(projected), pct };
+}
+
+/* --------------------------- Minha Meta (setor) -------------------------- */
+
+function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
+  if (!myMeta || myMeta.target == null) return null;
+  const unit = myMeta.unit || "un";
+  const pct = myMeta.percent;
+  const barColor = pct >= 100 ? "bg-success" : pct >= 80 ? "bg-foreground" : "bg-warning";
+
+  return (
+    <Card className="lg:col-span-12">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            Minha meta · {myMeta.stage_name}
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="font-display text-[34px] font-semibold tabular-nums">
+              {myMeta.progress.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+            </span>
+            <span className="text-muted-foreground text-sm">
+              / {myMeta.target.toLocaleString("pt-BR")} {unit}
+            </span>
+          </div>
+        </div>
+        <div className={`text-right font-mono text-sm tabular-nums ${pct >= 100 ? "text-success" : pct >= 80 ? "text-foreground" : "text-warning"}`}>
+          {pct.toFixed(1)}%
+        </div>
+      </div>
+      <div className="relative h-1.5 mt-4 rounded-full bg-secondary overflow-hidden">
+        <motion.div
+          className={`absolute inset-y-0 left-0 rounded-full ${barColor}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.min(100, pct)}%` }}
+          transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+        />
+      </div>
+      <div className="mt-3 text-[11px] text-muted-foreground">
+        Medido na sua etapa ({myMeta.stage_name}), em {unit}, ponderado pelo coeficiente da referência.
+      </div>
+    </Card>
+  );
 }
 
 /* ------------------------------ Goal Cards ------------------------------- */
@@ -876,6 +919,9 @@ export function Dashboard() {
           <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 transition-opacity duration-300 ${isLoading && data.kpis ? "opacity-60" : "opacity-100"}`}>
             {/* Story 8.4: Allowance Alert */}
             <AllowanceAlert />
+
+            {/* Story 8.21: Minha meta (por setor/etapa) */}
+            <MyMetaCard myMeta={data.myMeta} />
 
             {/* Metas */}
             <GoalsRow kpis={data.kpis} targets={targets} />

@@ -108,8 +108,29 @@ model Tenant {
   factionTokens    FactionToken[]
   opsClock         OpsClock[]
   referenceTargets ReferenceTarget[]
+  referenceStageTargets ReferenceStageTarget[]
+  sectorTargets    SectorTarget[]
+  userTargets      UserTarget[]
+  rolePermissions  RolePermission[]
 
   @@map("tenants")
+}
+
+/// Story 8.22: overrides de permissão por cargo (RBAC dinâmico).
+model RolePermission {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  role       String
+  permission String
+  allowed    Boolean
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, role, permission])
+  @@index([tenantId, role])
+  @@map("role_permissions")
 }
 
 /// Story 8.13: coeficiente de meta por referência (peso por modelo).
@@ -127,6 +148,61 @@ model ReferenceTarget {
   @@unique([tenantId, reference])
   @@index([tenantId])
   @@map("reference_targets")
+}
+
+/// Story 8.21: coeficiente de meta por referência × etapa (matriz).
+model ReferenceStageTarget {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  reference   String
+  stageId     String   @map("stage_id") @db.Uuid
+  coefficient Decimal  @default(1.0) @db.Decimal(6, 2)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stage  Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, reference, stageId])
+  @@index([tenantId])
+  @@index([stageId])
+  @@map("reference_stage_targets")
+}
+
+/// Story 8.21: meta diária por setor (etapa) com unidade.
+model SectorTarget {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  stageId     String   @map("stage_id") @db.Uuid
+  dailyTarget Int      @map("daily_target")
+  unit        String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stage  Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, stageId])
+  @@index([tenantId])
+  @@map("sector_targets")
+}
+
+/// Story 8.21: override de meta por usuário + etapa atribuída.
+model UserTarget {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  stageId     String   @map("stage_id") @db.Uuid
+  dailyTarget Int?     @map("daily_target")
+  unit        String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stage   Stage   @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("user_targets")
 }
 
 /// Perfis de usuário (extends Supabase auth.users)
@@ -157,6 +233,7 @@ model Profile {
   aduanaValidations   AduanaValidation[]
   notifications       Notification[]
   auditLogs           AuditLog[]
+  userTargets         UserTarget[]
 
   @@map("profiles")
 }
@@ -179,6 +256,9 @@ model Stage {
   lots          Lot[]
   scanEvents    ScanEvent[]
   defectRecords DefectRecord[]
+  referenceStageTargets ReferenceStageTarget[]
+  sectorTargets SectorTarget[]
+  userTargets   UserTarget[]
 
   @@unique([tenantId, orderIndex])
   @@map("stages")

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { requireTenantId } from "@/lib/api-helpers";
 import { computeKpis, computeChartData } from "@/lib/kpi-queries";
+import { computeUserMeta } from "@/lib/user-meta";
 
 /**
  * GET /api/dashboard/all?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -146,6 +147,9 @@ export async function GET(request: Request) {
     };
   });
 
+  // Story 8.21 — meta personalizada do usuário (por setor/etapa)
+  const myMeta = await computeUserMeta(supabase, user.id, from, to).catch(() => null);
+
   // --- Map profile ---
   const profileData = profileResult.data;
   const fullName = profileData?.full_name || user.email?.split("@")[0] || "Usuário";
@@ -163,6 +167,7 @@ export async function GET(request: Request) {
     chart: chartResult,
     orders: ordersResult.data || [],
     targets,
+    my_meta: myMeta,
     staleLots,
     activity,
     profile: {

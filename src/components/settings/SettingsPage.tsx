@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { User, Building, Layers, Target, Key, Tag } from "lucide-react";
+import { User, Building, Layers, Target, Key, Tag, Gauge, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProfileEdit } from "./ProfileEdit";
@@ -9,7 +9,9 @@ import { TenantSettings } from "./TenantSettings";
 import { StageManager } from "./StageManager";
 import { TargetsConfig } from "./TargetsConfig";
 import { ReferencesConfig } from "./ReferencesConfig";
+import { AdvancedTargetsConfig } from "./AdvancedTargetsConfig";
 import { TokenManager } from "./TokenManager";
+import { PermissionsEditor } from "./PermissionsEditor";
 
 const TABS = [
   { id: "profile", label: "Perfil", icon: User },
@@ -17,6 +19,8 @@ const TABS = [
   { id: "stages", label: "Etapas de Produção", icon: Layers },
   { id: "targets", label: "Metas", icon: Target },
   { id: "references", label: "Referências", icon: Tag },
+  { id: "advanced", label: "Metas Avançadas", icon: Gauge },
+  { id: "permissions", label: "Permissões", icon: Shield },
   { id: "tokens", label: "Tokens de Acesso", icon: Key },
 ] as const;
 
@@ -85,6 +89,8 @@ function SettingsPage() {
           {activeTab === "stages" && <StageManager />}
           {activeTab === "targets" && <TargetsConfig />}
           {activeTab === "references" && <ReferencesConfig />}
+          {activeTab === "advanced" && <AdvancedTargetsConfig />}
+          {activeTab === "permissions" && <PermissionsEditor />}
           {activeTab === "tokens" && <TokenManager />}
         </div>
       </div>

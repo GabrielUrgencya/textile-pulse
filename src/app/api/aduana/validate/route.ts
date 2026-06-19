@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 
 /**
  * POST /api/aduana/validate
@@ -13,9 +13,8 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
 
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "scan:execute")) {
+  if (!can(user, "scan:execute")) {
     return NextResponse.json(
       { error: "Forbidden: scan:execute required" },
       { status: 403 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "./supabase-server";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { loadUserPermissions } from "./effective-permissions";
 
 /**
  * Creates a Supabase client and validates the user in one step.
@@ -30,6 +31,8 @@ export async function withAuth(): Promise<
 
     if (role) {
       // JWT has role — trust it (fast path)
+      // Story 8.22: populate WeakMap for can() checks
+      await loadUserPermissions(supabase, session.user);
       return { supabase, user: session.user, error: null };
     }
 
@@ -48,6 +51,8 @@ export async function withAuth(): Promise<
       };
     }
 
+    // Story 8.22: populate WeakMap for can() checks
+    await loadUserPermissions(supabase, user);
     return { supabase, user, error: null };
   }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 import { escapeLikePattern } from "@/lib/utils";
 
 export async function GET(request: Request) {
@@ -8,9 +8,8 @@ export async function GET(request: Request) {
   if (auth.error) return auth.error;
 
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "factions:view")) {
+  if (!can(user, "factions:view")) {
     return NextResponse.json({ error: "Forbidden: factions:view required" }, { status: 403 });
   }
 
@@ -115,9 +114,8 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
 
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "factions:manage")) {
+  if (!can(user, "factions:manage")) {
     return NextResponse.json({ error: "Forbidden: factions:manage required" }, { status: 403 });
   }
 

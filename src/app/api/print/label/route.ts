@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 import { generateZPL } from "@/lib/zpl-generator";
 import type { LotLabelData } from "@/lib/zpl-generator";
 
@@ -12,8 +12,7 @@ export async function POST(request: Request) {
   const { supabase, user } = auth;
 
   // Permission check: only roles with labels:print can generate labels
-  const role = user.app_metadata?.role as AppRole | undefined;
-  if (!role || !hasPermission(role, "labels:print")) {
+  if (!can(user, "labels:print")) {
     return NextResponse.json(
       { error: "Forbidden: insufficient permissions for label printing" },
       { status: 403 }

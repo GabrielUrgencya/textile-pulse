@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 import { dbError } from "@/lib/api-helpers";
 
 export async function PATCH(
@@ -11,9 +11,8 @@ export async function PATCH(
   if (auth.error) return auth.error;
 
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "users:manage")) {
+  if (!can(user, "users:manage")) {
     return NextResponse.json({ error: "Forbidden: users:manage required" }, { status: 403 });
   }
 

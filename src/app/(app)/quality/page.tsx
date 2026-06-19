@@ -1,13 +1,11 @@
 "use client";
 
 import { QualityPage } from "@/components/quality/QualityPage";
-import { useUserProfile } from "@/hooks/use-user-profile";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function Page() {
-  const { profile } = useUserProfile();
-  const role = (profile?.role || "OPERADOR") as AppRole;
-  const canViewFactions = hasPermission(role, "factions:view");
+  const { can } = usePermissions();
+  const canViewFactions = can("factions:view");
 
   return <QualityPage canViewFactions={canViewFactions} />;
 }

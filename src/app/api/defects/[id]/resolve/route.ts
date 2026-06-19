@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 
 const STAGE_STATUS_MAP: Record<string, string> = {
   CORTE: "IN_CUT",
@@ -20,9 +20,8 @@ export async function PATCH(
   const auth = await withAuth();
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "rework:resolve")) {
+  if (!can(user, "rework:resolve")) {
     return NextResponse.json({ error: "Forbidden: rework:resolve required" }, { status: 403 });
   }
 

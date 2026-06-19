@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
-import { hasPermission, type AppRole } from "@/lib/permissions";
+import { can } from "@/lib/effective-permissions";
 import { dbError, requireTenantId } from "@/lib/api-helpers";
 
 interface TenantTargets {
@@ -57,9 +57,8 @@ export async function PATCH(request: Request) {
   if (auth.error) return auth.error;
 
   const { supabase, user } = auth;
-  const role = user.app_metadata?.role;
 
-  if (!hasPermission(role as AppRole, "settings:manage")) {
+  if (!can(user, "settings:manage")) {
     return NextResponse.json({ error: "Forbidden: settings:manage required" }, { status: 403 });
   }
 
