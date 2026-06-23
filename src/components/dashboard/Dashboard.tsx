@@ -219,7 +219,7 @@ function getProjection(produced: number, shiftStart: string, shiftEnd: string, t
 
 function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
   if (!myMeta || myMeta.target == null) return null;
-  const unit = myMeta.unit || "un";
+  const unit = (myMeta.unit || "").trim();
   const pct = myMeta.percent;
   const barColor = pct >= 100 ? "bg-success" : pct >= 80 ? "bg-foreground" : "bg-warning";
 
@@ -234,9 +234,12 @@ function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
             <span className="font-display text-[34px] font-semibold tabular-nums">
               {myMeta.progress.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
             </span>
-            <span className="text-muted-foreground text-sm">
-              / {myMeta.target.toLocaleString("pt-BR")} {unit}
+            <span className="text-muted-foreground text-sm tabular-nums">
+              / {myMeta.target.toLocaleString("pt-BR")}
             </span>
+            {unit && (
+              <span className="text-muted-foreground/70 text-[13px]">{unit}</span>
+            )}
           </div>
         </div>
         <div className={`text-right font-mono text-sm tabular-nums ${pct >= 100 ? "text-success" : pct >= 80 ? "text-foreground" : "text-warning"}`}>
@@ -252,7 +255,7 @@ function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
         />
       </div>
       <div className="mt-3 text-[11px] text-muted-foreground">
-        Medido na sua etapa ({myMeta.stage_name}), em {unit}, ponderado pelo coeficiente da referência.
+        Medido na sua etapa ({myMeta.stage_name}){unit ? `, em ${unit}` : ""}, ponderado pelo coeficiente da referência.
       </div>
     </Card>
   );

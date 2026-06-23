@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { useServerData } from "@/hooks/use-server-data";
 import { showToast } from "@/lib/toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SectorTargetsCard } from "./SectorTargetsCard";
 
 /* ───────────── Types ───────────── */
 interface Stage { id: string; name: string; display_name: string; order_index: number }
 interface Reference { id: string; reference: string }
 interface Member { id: string; full_name: string; sector: string | null; is_active: boolean }
-interface SectorTarget { stage_id: string; daily_target: number; unit: string | null }
 interface RefStageTarget { reference: string; stage_id: string; coefficient: number }
 interface UserTarget { user_id: string; stage_id: string; daily_target: number | null; unit: string | null }
 
@@ -19,7 +19,6 @@ function AdvancedTargetsConfig() {
   const { data: stages, isLoading: l1 } = useServerData<Stage[]>("/api/settings/stages");
   const { data: references } = useServerData<Reference[]>("/api/settings/references");
   const { data: members } = useServerData<Member[]>("/api/team/members");
-  const { data: sectorTargets, refetch: refetchSector } = useServerData<SectorTarget[]>("/api/settings/sector-targets");
   const { data: refStageTargets, refetch: refetchRST } = useServerData<RefStageTarget[]>("/api/settings/reference-stage-targets");
   const { data: userTargets, refetch: refetchUT } = useServerData<UserTarget[]>("/api/settings/user-targets");
 
@@ -39,60 +38,10 @@ function AdvancedTargetsConfig() {
 
   return (
     <div className="space-y-6">
-      <SectorTargetsEditor stages={sortedStages} sectorTargets={sectorTargets || []} onSaved={refetchSector} />
+      <SectorTargetsCard />
       <CoefficientGrid stages={sortedStages} references={references || []} refStageTargets={refStageTargets || []} onSaved={refetchRST} />
       <UserTargetsEditor stages={sortedStages} members={members || []} userTargets={userTargets || []} onSaved={refetchUT} />
     </div>
-  );
-}
-
-/* ───────────── 1) Metas por Setor ───────────── */
-function SectorTargetsEditor({ stages, sectorTargets, onSaved }: { stages: Stage[]; sectorTargets: SectorTarget[]; onSaved: () => void }) {
-  const map = new Map(sectorTargets.map((s) => [s.stage_id, s]));
-  const [draft, setDraft] = React.useState<Record<string, { target: string; unit: string }>>({});
-
-  function val(stageId: string) {
-    const d = draft[stageId];
-    if (d) return d;
-    const s = map.get(stageId);
-    return { target: s ? String(s.daily_target) : "", unit: s?.unit ?? "" };
-  }
-  function set(stageId: string, key: "target" | "unit", value: string) {
-    setDraft((p) => ({ ...p, [stageId]: { ...val(stageId), [key]: value } }));
-  }
-  async function save(stageId: string) {
-    const v = val(stageId);
-    const target = parseInt(v.target);
-    if (Number.isNaN(target) || target < 0) { showToast("error", "Meta inválida"); return; }
-    try {
-      const res = await fetch("/api/settings/sector-targets", {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage_id: stageId, daily_target: target, unit: v.unit.trim() || null }),
-      });
-      if (!res.ok) throw new Error();
-      showToast("success", "Meta do setor salva");
-      onSaved();
-    } catch { showToast("error", "Erro ao salvar"); }
-  }
-
-  return (
-    <LisionCard>
-      <LisionCardHeader eyebrow="Produtividade" title="Metas por Setor" />
-      <p className="text-xs text-muted-foreground/70 mb-4">Meta diária e unidade de cada etapa. Ex: Produção 180 conjuntos, Travete 2500 travetadas.</p>
-      <div className="space-y-2">
-        {stages.map((st) => {
-          const v = val(st.id);
-          return (
-            <div key={st.id} className="grid grid-cols-[1fr_120px_140px_auto] gap-2 items-center">
-              <span className="text-[13px] font-medium">{st.display_name}</span>
-              <input type="number" min={0} className="input-field tabular-nums" placeholder="Meta" value={v.target} onChange={(e) => set(st.id, "target", e.target.value)} />
-              <input className="input-field" placeholder="unidade" value={v.unit} onChange={(e) => set(st.id, "unit", e.target.value)} />
-              <Button onClick={() => save(st.id)} className="h-9">Salvar</Button>
-            </div>
-          );
-        })}
-      </div>
-    </LisionCard>
   );
 }
 

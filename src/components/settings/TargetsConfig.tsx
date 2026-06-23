@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useServerData } from "@/hooks/use-server-data";
 import { showToast } from "@/lib/toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SectorTargetsCard } from "./SectorTargetsCard";
 
 interface Targets {
   dailyPiecesTarget: number;
@@ -65,8 +66,9 @@ function TargetsConfig() {
   }
 
   return (
+    <div className="space-y-6">
     <LisionCard>
-      <LisionCardHeader eyebrow="Dashboard" title="Metas" />
+      <LisionCardHeader eyebrow="Dashboard" title="Meta geral" />
 
       <div className="space-y-4">
         <div>
@@ -144,6 +146,10 @@ function TargetsConfig() {
         </Button>
       </div>
     </LisionCard>
+
+    {/* Story 8.23: meta por processo na mesma aba "Metas" */}
+    <SectorTargetsCard />
+    </div>
   );
 }
 

@@ -65,3 +65,32 @@ export async function PUT(request: Request) {
   if (error) return dbError("PUT /api/settings/sector-targets", error);
   return NextResponse.json({ data });
 }
+
+// DELETE: remove a meta de um processo (?stage_id=...)
+export async function DELETE(request: Request) {
+  const auth = await withAuth();
+  if (auth.error) return auth.error;
+  const { supabase, user } = auth;
+
+  if (!can(user, "settings:manage")) {
+    return NextResponse.json({ error: "Forbidden: settings:manage required" }, { status: 403 });
+  }
+
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
+
+  const { searchParams } = new URL(request.url);
+  const stageId = searchParams.get("stage_id");
+  if (!stageId) {
+    return NextResponse.json({ error: "stage_id é obrigatório" }, { status: 400 });
+  }
+
+  const { error } = await supabase
+    .from("sector_targets")
+    .delete()
+    .eq("tenant_id", t.tenantId)
+    .eq("stage_id", stageId);
+
+  if (error) return dbError("DELETE /api/settings/sector-targets", error);
+  return NextResponse.json({ data: { success: true } });
+}
