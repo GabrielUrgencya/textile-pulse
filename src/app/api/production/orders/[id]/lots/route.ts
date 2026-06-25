@@ -2,6 +2,41 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { can } from "@/lib/effective-permissions";
 
+/**
+ * Story 8.25 — valida a grade de tamanhos (size_grid).
+ * Aceita objeto { [tamanho]: quantidade } com inteiros >= 0.
+ * Retorna { value: grade normalizada | null, sum, error? }.
+ * Ausência de grade é válida (retrocompat) → value=null.
+ */
+function validateSizeGrid(raw: unknown): {
+  value: Record<string, number> | null;
+  sum: number;
+  error?: string;
+} {
+  if (raw === undefined || raw === null) return { value: null, sum: 0 };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { value: null, sum: 0, error: "size_grid deve ser um objeto { tamanho: quantidade }" };
+  }
+  const entries = Object.entries(raw as Record<string, unknown>);
+  const normalized: Record<string, number> = {};
+  let sum = 0;
+  for (const [size, qtyRaw] of entries) {
+    const label = size.trim();
+    if (!label) continue;
+    const qty = Math.trunc(Number(qtyRaw));
+    if (Number.isNaN(qty) || qty < 0) {
+      return { value: null, sum: 0, error: `Quantidade inválida para o tamanho "${label}" (use inteiro >= 0)` };
+    }
+    if (qty === 0) continue; // omite tamanhos zerados da grade persistida
+    normalized[label] = qty;
+    sum += qty;
+  }
+  if (sum === 0) {
+    return { value: null, sum: 0, error: "A grade de tamanhos não pode ser toda zerada" };
+  }
+  return { value: normalized, sum };
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
@@ -14,7 +49,7 @@ export async function GET(
 
   const { data: lots, error } = await supabase
     .from("lots")
-    .select("id, barcode, lot_number, quantity, quantity_defect, current_stage_id, status, destination, created_at")
+    .select("id, barcode, lot_number, quantity, quantity_defect, current_stage_id, status, destination, color, size_grid, created_at")
     .eq("po_id", poId)
     .order("lot_number", { ascending: true });
 
@@ -77,6 +112,21 @@ export async function POST(
     );
   }
 
+  // Story 8.25 — grade cor×tamanho (opcional, retrocompatível).
+  // Quando size_grid é informado, valida conservação: quantity = soma(size_grid).
+  const grid = validateSizeGrid(body.size_grid);
+  if (grid.error) {
+    return NextResponse.json({ error: grid.error }, { status: 400 });
+  }
+  if (grid.value && grid.sum !== body.quantity) {
+    return NextResponse.json(
+      {
+        error: `A soma da grade de tamanhos (${grid.sum}) deve ser igual à quantidade do lote (${body.quantity})`,
+      },
+      { status: 400 }
+    );
+  }
+
   const order = orderResult.data;
   const lotSeq = (lotCountResult.count || 0) + 1;
   const barcode = `OP-${order.op_number}-L${String(lotSeq).padStart(3, "0")}`;
@@ -92,6 +142,8 @@ export async function POST(
       current_stage_id: stageResult.data?.id || null,
       status: "CREATED",
       destination: body.destination || null,
+      color: typeof body.color === "string" && body.color.trim() ? body.color.trim() : null,
+      size_grid: grid.value,
       created_by: user.id,
     })
     .select()

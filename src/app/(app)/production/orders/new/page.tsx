@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { ArrowLeft, Loader2, Package, AlertTriangle } from "lucide-react";
@@ -8,6 +8,7 @@ import { ArrowLeft, Loader2, Package, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { useServerData } from "@/hooks/use-server-data";
+import { GridLotBuilder, type GridLotState } from "@/components/production/GridLotBuilder";
 
 interface ReferenceTarget {
   id: string;
@@ -39,12 +40,14 @@ export default function NewProductionOrderPage() {
   const [productName, setProductName] = useState("");
   const [reference, setReference] = useState("");
   const [description, setDescription] = useState("");
-  const [totalQuantity, setTotalQuantity] = useState("");
-  const [lotSize, setLotSize] = useState("");
   const [priority, setPriority] = useState("0");
   const [notes, setNotes] = useState("");
   const [metaCoefficient, setMetaCoefficient] = useState("1");
   const [coefAutoFilled, setCoefAutoFilled] = useState(false);
+
+  /* Story 8.25 — grade cor×tamanho + divisão manual de lotes */
+  const [grid, setGrid] = useState<GridLotState>({ totalQuantity: 0, lots: [], valid: false });
+  const handleGridChange = useCallback((s: GridLotState) => setGrid(s), []);
 
   /* Story 8.13 — referências cadastradas para autofill do coeficiente */
   const { data: references } =
@@ -63,22 +66,20 @@ export default function NewProductionOrderPage() {
     }
   }
 
-  const qty = parseInt(totalQuantity) || 0;
-  const size = parseInt(lotSize) || 0;
-  const lotCount = size > 0 ? Math.ceil(qty / size) : 0;
-  const lastLotQty = size > 0 && qty > 0 ? qty - size * (lotCount - 1) : 0;
+  const canSubmit = !!productName && grid.totalQuantity > 0 && grid.valid;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (qty <= 0) { setError("Quantidade total deve ser maior que 0"); return; }
-    if (size <= 0) { setError("Tamanho do lote deve ser maior que 0"); return; }
+    if (!productName) { setError("Informe o produto"); return; }
+    if (grid.totalQuantity <= 0) { setError("Preencha a grade de cores/tamanhos"); return; }
+    if (!grid.valid) { setError("Ajuste a divisão dos lotes — a soma deve bater com a grade"); return; }
 
     setLoading(true);
     setError("");
     const opNumber = generateOpNumber();
 
     try {
-      /* 1. Create the production order */
+      /* 1. Cria a OP (total derivado da grade) */
       const res = await fetch("/api/production/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -87,7 +88,7 @@ export default function NewProductionOrderPage() {
           product_name: productName,
           reference: reference || null,
           description: description || null,
-          total_quantity: qty,
+          total_quantity: grid.totalQuantity,
           meta_coefficient: Number(metaCoefficient) || 1.0,
           priority: parseInt(priority),
           notes: notes || null,
@@ -102,21 +103,28 @@ export default function NewProductionOrderPage() {
 
       const { order } = await res.json();
 
-      /* 2. Generate sub-lots automatically */
-      setLotProgress({ current: 0, total: lotCount });
+      /* 2. Cria os lotes definidos manualmente (com cor + grade de tamanhos) */
+      setLotProgress({ current: 0, total: grid.lots.length });
 
-      for (let i = 0; i < lotCount; i++) {
-        const lotQty = i === lotCount - 1 ? lastLotQty : size;
-        setLotProgress({ current: i + 1, total: lotCount });
+      for (let i = 0; i < grid.lots.length; i++) {
+        const lot = grid.lots[i];
+        setLotProgress({ current: i + 1, total: grid.lots.length });
 
         const lotRes = await fetch(`/api/production/orders/${order.id}/lots`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quantity: lotQty }),
+          body: JSON.stringify({
+            quantity: lot.quantity,
+            color: lot.color || null,
+            size_grid: lot.sizeGrid,
+          }),
         });
 
         if (!lotRes.ok) {
-          setError(`Erro ao criar lote ${i + 1}. OP criada parcialmente.`);
+          const data = await lotRes.json().catch(() => null);
+          setError(
+            `Erro ao criar lote ${i + 1}${data?.error ? ` (${data.error})` : ""}. OP criada parcialmente.`,
+          );
           router.push(`/production/orders/${order.id}`);
           return;
         }
@@ -162,7 +170,7 @@ export default function NewProductionOrderPage() {
                     required
                     value={productName}
                     onChange={(e) => setProductName(e.target.value)}
-                    placeholder="Ex: Camisa Polo Classic"
+                    placeholder="Ex: Conjunto 9000"
                     disabled={loading}
                     className="input-field"
                   />
@@ -221,36 +229,13 @@ export default function NewProductionOrderPage() {
                 />
               </Field>
 
-              {/* Quantity + Lot Size */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Quantidade Total" required>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={totalQuantity}
-                    onChange={(e) => setTotalQuantity(e.target.value)}
-                    placeholder="Ex: 1000"
-                    disabled={loading}
-                    className="input-field tabular-nums"
-                  />
-                </Field>
-                <Field label="Tamanho do Lote" required>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={lotSize}
-                    onChange={(e) => setLotSize(e.target.value)}
-                    placeholder="Ex: 250"
-                    disabled={loading}
-                    className="input-field tabular-nums"
-                  />
-                </Field>
+              {/* Grade cor×tamanho + divisão manual de lotes (Story 8.25) */}
+              <div className="pt-2 border-t border-border/40">
+                <GridLotBuilder onChange={handleGridChange} disabled={loading} />
               </div>
 
               {/* Priority + Notes */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-border/40">
                 <Field label="Prioridade">
                   <select
                     value={priority}
@@ -290,7 +275,7 @@ export default function NewProductionOrderPage() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading || !productName || qty <= 0 || size <= 0}
+                disabled={loading || !canSubmit}
                 className="w-full h-10 rounded-lg bg-foreground text-background text-[13px] font-semibold hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
               >
                 {loading ? (
@@ -316,58 +301,65 @@ export default function NewProductionOrderPage() {
           transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
           <LisionCard>
-            <LisionCardHeader eyebrow="Preview" title="Sub-lotes" />
+            <LisionCardHeader eyebrow="Preview" title="Lotes" />
 
-            {qty > 0 && size > 0 ? (
+            {grid.lots.length > 0 ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3 text-[13px]">
                   <Package className="size-4 text-muted-foreground" />
                   <span>
                     <span className="font-display text-[22px] font-semibold tabular-nums">
-                      {lotCount}
+                      {grid.lots.length}
                     </span>{" "}
                     <span className="text-muted-foreground">
-                      {lotCount === 1 ? "lote" : "lotes"} serão gerados
+                      {grid.lots.length === 1 ? "lote" : "lotes"}
                     </span>
                   </span>
                 </div>
 
                 <div className="space-y-1.5">
-                  {Array.from({ length: Math.min(lotCount, 8) }).map((_, i) => {
-                    const lotQty = i === lotCount - 1 ? lastLotQty : size;
-                    return (
-                      <div
-                        key={i}
-                        className="flex items-center gap-3 p-2.5 rounded-lg bg-secondary/30 border border-border/40"
-                      >
-                        <div className="size-7 rounded-md bg-foreground text-background grid place-items-center text-[10px] font-mono font-bold shrink-0">
-                          L{String(i + 1).padStart(2, "0")}
+                  {grid.lots.slice(0, 10).map((lot, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 p-2.5 rounded-lg bg-secondary/30 border border-border/40"
+                    >
+                      <div className="size-7 rounded-md bg-foreground text-background grid place-items-center text-[10px] font-mono font-bold shrink-0">
+                        L{String(i + 1).padStart(2, "0")}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12px] font-medium truncate">
+                          {lot.color || "—"}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-mono text-[11px] text-muted-foreground">
-                            Lote {i + 1}
-                          </div>
-                        </div>
-                        <div className="font-mono text-[12px] tabular-nums">
-                          {lotQty.toLocaleString("pt-BR")} pç
+                        <div className="font-mono text-[10px] text-muted-foreground truncate">
+                          {Object.entries(lot.sizeGrid)
+                            .map(([s, q]) => `${s}:${q}`)
+                            .join("  ") || "—"}
                         </div>
                       </div>
-                    );
-                  })}
-                  {lotCount > 8 && (
+                      <div className="font-mono text-[12px] tabular-nums">
+                        {lot.quantity.toLocaleString("pt-BR")} pç
+                      </div>
+                    </div>
+                  ))}
+                  {grid.lots.length > 10 && (
                     <div className="text-center text-[11px] text-muted-foreground py-1">
-                      +{lotCount - 8} lotes adicionais
+                      +{grid.lots.length - 10} lotes adicionais
                     </div>
                   )}
                 </div>
 
                 <div className="pt-2 border-t border-border/40 text-[11px] text-muted-foreground">
-                  Total: {qty.toLocaleString("pt-BR")} peças em {lotCount} lotes
+                  Total: {grid.totalQuantity.toLocaleString("pt-BR")} peças em {grid.lots.length} lotes
+                  {!grid.valid && (
+                    <span className="block text-amber-600 mt-1">
+                      ⚠ Ajuste a divisão antes de criar.
+                    </span>
+                  )}
                 </div>
               </div>
             ) : (
               <div className="text-center py-8 text-[13px] text-muted-foreground">
-                Preencha quantidade e tamanho do lote para visualizar
+                Preencha a grade de cores e tamanhos para visualizar os lotes
               </div>
             )}
           </LisionCard>

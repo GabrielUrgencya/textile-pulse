@@ -306,6 +306,11 @@ model Lot {
   currentStageId        String?   @map("current_stage_id") @db.Uuid
   status                LotStatus @default(CREATED)
   destination           String?
+  /// Cor do lote (grade cor×tamanho — Story 8.25). Null em lotes legados.
+  color                 String?
+  /// Grade de tamanhos estruturada, ex: {"P":10,"M":20,"G":20,"GG":10} (Story 8.25).
+  /// quantity permanece como a soma da grade (conservação de peças).
+  sizeGrid              Json?     @map("size_grid")
   currentHolderId       String?   @map("current_holder_id") @db.Uuid
   enteredCurrentStageAt DateTime? @map("entered_current_stage_at") @db.Timestamptz
   createdById           String?   @map("created_by") @db.Uuid

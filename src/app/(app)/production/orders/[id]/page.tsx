@@ -20,6 +20,7 @@ import {
   Ban,
   Clock,
   Pencil,
+  Palette,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -56,6 +57,19 @@ interface Lot {
   status: string;
   current_stage_id: string | null;
   created_at: string;
+  // Story 8.26 — identificação do lote (grade cor×tamanho + rótulo livre)
+  color?: string | null;
+  size_grid?: Record<string, number> | null;
+  destination?: string | null;
+}
+
+/** Story 8.26 — formata a grade de tamanhos como "P:10 M:20 G:20" */
+function formatSizeGrid(grid?: Record<string, number> | null): string {
+  if (!grid || typeof grid !== "object") return "";
+  return Object.entries(grid)
+    .filter(([, q]) => Number(q) > 0)
+    .map(([s, q]) => `${s}:${q}`)
+    .join("  ");
 }
 
 interface ComputedQuantities {
@@ -364,7 +378,7 @@ export default function OrderDetailPage() {
                 )}
               </div>
               <div className="col-span-1">#</div>
-              <div className="col-span-3">Código de Barras</div>
+              <div className="col-span-3">Identificação / Código</div>
               <div className="col-span-2 text-right">Quantidade</div>
               <div className="col-span-2 text-center">Status</div>
               <div className="col-span-3 text-right">Criado em</div>
@@ -398,8 +412,31 @@ export default function OrderDetailPage() {
                         {lot.lot_number}
                       </div>
                     </div>
-                    <div className="col-span-3 font-mono text-[11px] text-muted-foreground">
-                      {lot.barcode}
+                    <div className="col-span-3 min-w-0">
+                      {/* Identificação (Story 8.26): cor · grade · rótulo */}
+                      {(lot.color || formatSizeGrid(lot.size_grid) || lot.destination) && (
+                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                          {lot.color && (
+                            <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-foreground">
+                              <Palette className="size-3 text-muted-foreground" />
+                              {lot.color}
+                            </span>
+                          )}
+                          {formatSizeGrid(lot.size_grid) && (
+                            <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                              {formatSizeGrid(lot.size_grid)}
+                            </span>
+                          )}
+                          {lot.destination && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-secondary/60 border border-border/50 text-[10px] text-muted-foreground">
+                              {lot.destination}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div className="font-mono text-[11px] text-muted-foreground/70 truncate">
+                        {lot.barcode}
+                      </div>
                     </div>
                     <div className="col-span-2 text-right font-mono tabular-nums">
                       {lot.quantity.toLocaleString("pt-BR")}
@@ -499,6 +536,8 @@ export default function OrderDetailPage() {
             lotId={splitLot.id}
             lotNumber={splitLot.lot_number}
             lotQuantity={splitLot.quantity}
+            lotColor={splitLot.color}
+            lotSizeGrid={splitLot.size_grid}
             onClose={() => setSplitLot(null)}
             onSplit={() => {
               setSplitLot(null);

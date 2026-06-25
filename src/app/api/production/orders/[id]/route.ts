@@ -22,7 +22,7 @@ export async function GET(
       .single(),
     supabase
       .from("lots")
-      .select("id, barcode, lot_number, quantity, current_stage_id, status, created_at")
+      .select("id, barcode, lot_number, quantity, current_stage_id, status, color, size_grid, destination, created_at")
       .eq("po_id", id)
       .order("lot_number", { ascending: true }),
     supabase
