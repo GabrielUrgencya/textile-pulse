@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("factions")
-    .select("id, name, type, contact_name, contact_phone, rating, is_active, price_per_piece, avg_delivery_days, created_at")
+    .select("id, name, type, contact_name, contact_phone, rating, is_active, price_per_piece, avg_delivery_days, photo_url, created_at")
     .order("name", { ascending: true });
 
   if (active) {
@@ -145,6 +145,7 @@ export async function POST(request: Request) {
       address: body.address || null,
       price_per_piece: body.pricePerPiece || null,
       avg_delivery_days: body.avgDeliveryDays || 7,
+      photo_url: body.photoUrl || null,
     })
     .select("id")
     .single();

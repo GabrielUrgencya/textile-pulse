@@ -44,6 +44,8 @@ function FactionForm({ open, onOpenChange, faction, onSuccess }: FactionFormProp
   const [address, setAddress] = React.useState("");
   const [pricePerPiece, setPricePerPiece] = React.useState("");
   const [avgDays, setAvgDays] = React.useState("");
+  const [photoUrl, setPhotoUrl] = React.useState<string | null>(null);
+  const [uploading, setUploading] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
@@ -56,6 +58,7 @@ function FactionForm({ open, onOpenChange, faction, onSuccess }: FactionFormProp
       setAddress((faction as Faction & { address?: string }).address || "");
       setPricePerPiece(faction.price_per_piece ? String(faction.price_per_piece) : "");
       setAvgDays(String(faction.avg_delivery_days || ""));
+      setPhotoUrl((faction as Faction & { photo_url?: string | null }).photo_url || null);
     } else if (open) {
       setName("");
       setType("");
@@ -64,9 +67,29 @@ function FactionForm({ open, onOpenChange, faction, onSuccess }: FactionFormProp
       setAddress("");
       setPricePerPiece("");
       setAvgDays("");
+      setPhotoUrl(null);
     }
     setErrors({});
   }, [open, faction]);
+
+  const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/factions/photo", { method: "POST", body: fd });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Falha no upload");
+      setPhotoUrl(body.url);
+      showToast("success", "Foto enviada");
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro no upload");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -92,6 +115,7 @@ function FactionForm({ open, onOpenChange, faction, onSuccess }: FactionFormProp
         address: address.trim() || null,
         pricePerPiece: pricePerPiece ? parseFloat(pricePerPiece) : null,
         avgDeliveryDays: avgDays ? parseInt(avgDays) : 7,
+        photoUrl: photoUrl,
       };
 
       const url = isEdit ? `/api/factions/${faction!.id}` : "/api/factions";
@@ -174,7 +198,39 @@ function FactionForm({ open, onOpenChange, faction, onSuccess }: FactionFormProp
             </div>
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full">
+          <div className="space-y-1.5">
+            <Label>Foto da Facção</Label>
+            <div className="flex items-center gap-3">
+              {photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoUrl} alt="Foto da facção" className="size-14 rounded-lg object-cover border border-border/50" />
+              ) : (
+                <div className="size-14 rounded-lg bg-secondary border border-border/50 grid place-items-center text-[10px] text-muted-foreground">
+                  sem foto
+                </div>
+              )}
+              <div className="flex-1">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhoto}
+                  disabled={uploading || loading}
+                  className="block w-full text-[12px] text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border/60 file:bg-secondary/60 file:text-foreground file:text-[12px] file:cursor-pointer"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {uploading ? "Enviando…" : "JPG, PNG ou WEBP (máx. 2MB) — opcional"}
+                </p>
+              </div>
+              {photoUrl && (
+                <button type="button" onClick={() => setPhotoUrl(null)} disabled={uploading || loading}
+                  className="text-[11px] text-muted-foreground hover:text-destructive">
+                  remover
+                </button>
+              )}
+            </div>
+          </div>
+
+          <Button type="submit" disabled={loading || uploading} className="w-full">
             {loading ? "Salvando..." : isEdit ? "Salvar" : "Criar Facção"}
           </Button>
         </form>

@@ -16,6 +16,7 @@ import {
   ScanLine,
   Settings,
   ShieldCheck,
+  Trophy,
   Truck,
   Tv,
   Users,
@@ -49,6 +50,7 @@ const mainItems = [
   { title: "Retrabalho", url: "/rework", icon: <AlertTriangle className="size-4 shrink-0" />, permission: "rework:view" },
   { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" />, permission: "quality:view" },
   { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" />, permission: "factions:view" },
+  { title: "Ranking", url: "/ranking", icon: <Trophy className="size-4 shrink-0" />, permission: "factions:view", adminOnly: true },
   { title: "Equipe", url: "/team", icon: <Users className="size-4 shrink-0" />, permission: "users:manage" },
 ];
 
@@ -69,9 +71,12 @@ export function AppSidebar() {
   const canOpenTv = profile?.role === "ADMIN";
 
   // Story 8.22: filter menu items by effective permissions
-  const visibleMainItems = permsLoading
-    ? mainItems
-    : mainItems.filter((item) => hasPerm(item.permission));
+  // Story 8.33: itens adminOnly só aparecem para ADMIN
+  const isAdmin = profile?.role === "ADMIN";
+  const visibleMainItems = mainItems.filter((item) => {
+    if ((item as { adminOnly?: boolean }).adminOnly) return isAdmin;
+    return permsLoading ? true : hasPerm(item.permission);
+  });
   const visibleBottomItems = permsLoading
     ? bottomItems
     : bottomItems.filter((item) => hasPerm(item.permission));

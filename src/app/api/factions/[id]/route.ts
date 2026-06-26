@@ -133,6 +133,7 @@ export async function PATCH(
   if (body.address !== undefined) updates.address = body.address;
   if (body.pricePerPiece !== undefined) updates.price_per_piece = body.pricePerPiece;
   if (body.avgDeliveryDays !== undefined) updates.avg_delivery_days = body.avgDeliveryDays;
+  if (body.photoUrl !== undefined) updates.photo_url = body.photoUrl;
   if (body.isActive !== undefined) updates.is_active = body.isActive;
 
   const { error } = await supabase

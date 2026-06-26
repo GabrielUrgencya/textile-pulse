@@ -7,7 +7,6 @@ import { TVHero } from "@/components/tv/TVHero";
 import { TVKpis } from "@/components/tv/TVKpis";
 import { TVStageFlow } from "@/components/tv/TVStageFlow";
 import { TVAlerts } from "@/components/tv/TVAlerts";
-import { TVRankingOverlay } from "@/components/tv/TVRankingOverlay";
 import { FullscreenButton } from "@/components/tv/FullscreenButton";
 
 // ─── Types matching API response shape ─────────────────────
@@ -145,7 +144,6 @@ function TVDashboardContent() {
         shiftEnd={data.shift.end}
         activeShift={data.shift.active_shift}
         recentActivity={data.recent_activity}
-        factionRanking={data.faction_ranking.slice(0, 3)}
       />
 
       {/* Dashboard content */}
@@ -191,15 +189,6 @@ function TVDashboardContent() {
           </div>
         </div>
       </div>
-
-      {/* Ranking overlay — appears every 120s for 15s */}
-      {data.faction_ranking.length >= 1 && (
-        <TVRankingOverlay
-          ranking={data.faction_ranking}
-          cycleInterval={55_000}
-          showDuration={15_000}
-        />
-      )}
     </div>
   );
 }
