@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { localDayStart, localDayEnd } from "@/lib/tz";
 
 export interface DateRange {
   from: string; // YYYY-MM-DD
@@ -50,8 +51,9 @@ export async function computeKpis(
 ): Promise<KpiResult> {
   const { from, to } = dateRange;
   const useWeightedMeta = "useWeightedMeta" in dateRange ? dateRange.useWeightedMeta : false;
-  const toEnd = `${to}T23:59:59.999Z`;
-  const fromStart = `${from}T00:00:00.000Z`;
+  // Story 8.29: limites do dia LOCAL (fuso do tenant), não UTC.
+  const toEnd = localDayEnd(to);
+  const fromStart = localDayStart(from);
 
   // Run all queries in parallel — 3 lightweight COUNTs + 2 RPCs + 1 COUNT
   const [

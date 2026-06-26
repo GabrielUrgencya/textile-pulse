@@ -112,8 +112,69 @@ model Tenant {
   sectorTargets    SectorTarget[]
   userTargets      UserTarget[]
   rolePermissions  RolePermission[]
+  dailyPlans       DailyPlan[]
 
   @@map("tenants")
+}
+
+/// Plano diário de produção (PARTE 2 — "hoje você precisa produzir X")
+model DailyPlan {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  planDate       DateTime @map("plan_date") @db.Date
+  /// Rótulo opcional do plano (ex.: "Plano Andiara")
+  name           String?
+  /// true = visível a todos; false = restrito aos membros em daily_plan_members
+  isGeneral      Boolean  @default(true) @map("is_general")
+  /// Meta do dia editada manualmente; se null, usa a soma dos itens
+  targetOverride Decimal? @map("target_override") @db.Decimal(10, 2)
+  notes          String?
+  createdById    String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items   DailyPlanItem[]
+  members DailyPlanMember[]
+
+  @@index([tenantId])
+  @@index([planDate])
+  @@map("daily_plans")
+}
+
+/// Membros atrelados a um plano restrito (is_general=false)
+model DailyPlanMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  planId    String   @map("plan_id") @db.Uuid
+  profileId String   @map("profile_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  plan    DailyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  profile Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, profileId])
+  @@index([planId])
+  @@index([profileId])
+  @@map("daily_plan_members")
+}
+
+/// Item do plano diário: referência + cor/tamanho + quantidade + contribuição de meta
+model DailyPlanItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  planId    String   @map("plan_id") @db.Uuid
+  reference String?
+  color     String?
+  /// Tamanho/escopo livre: "completo", "G", "2 cores", etc.
+  sizeLabel String?  @map("size_label")
+  quantity  Int?
+  metaValue Decimal? @map("meta_value") @db.Decimal(10, 2)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  plan DailyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+  @@map("daily_plan_items")
 }
 
 /// Story 8.22: overrides de permissão por cargo (RBAC dinâmico).
@@ -234,6 +295,7 @@ model Profile {
   notifications       Notification[]
   auditLogs           AuditLog[]
   userTargets         UserTarget[]
+  dailyPlanMemberships DailyPlanMember[]
 
   @@map("profiles")
 }

@@ -8,6 +8,7 @@ import { TVKpis } from "@/components/tv/TVKpis";
 import { TVStageFlow } from "@/components/tv/TVStageFlow";
 import { TVAlerts } from "@/components/tv/TVAlerts";
 import { TVRankingOverlay } from "@/components/tv/TVRankingOverlay";
+import { FullscreenButton } from "@/components/tv/FullscreenButton";
 
 // ─── Types matching API response shape ─────────────────────
 interface DashboardData {
@@ -135,6 +136,8 @@ function TVDashboardContent() {
 
   return (
     <div className="h-screen w-screen bg-background bg-radial bg-grid flex flex-col overflow-hidden">
+      {/* Story 8.31: botão de tela cheia */}
+      <FullscreenButton />
       {/* Header — top bar + white ticker */}
       <TVHeader
         tokenName={data.kiosk.token_name}

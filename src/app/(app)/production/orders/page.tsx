@@ -73,8 +73,8 @@ export default function ProductionOrdersPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [tab, setTab] = useState<"active" | "completed">("active"); // Story 8.19
 
-  const fetchOrders = useCallback(async (page = 1) => {
-    setLoading(true);
+  const fetchOrders = useCallback(async (page = 1, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: "20" });
       if (tab === "completed") params.set("status", "COMPLETED");
@@ -85,11 +85,18 @@ export default function ProductionOrdersPage() {
         setPagination(data.pagination ?? { page: 1, limit: 20, total: 0, pages: 0 });
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [tab]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  /* Story 8.28: auto-refresh — reflete mudanças de status (ex.: OPEN→IN_PROGRESS)
+     sem refresh manual. Refetch silencioso a cada 20s. */
+  useEffect(() => {
+    const id = setInterval(() => fetchOrders(1, true), 20000);
+    return () => clearInterval(id);
+  }, [fetchOrders]);
 
   /* Client-side filters */
   const filtered = orders.filter((o) => {

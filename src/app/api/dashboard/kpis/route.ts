@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { requireTenantId } from "@/lib/api-helpers";
 import { computeKpis } from "@/lib/kpi-queries";
+import { todayInTz } from "@/lib/tz";
 
 export async function GET(request: Request) {
   const auth = await withAuth();
@@ -10,8 +11,8 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
 
-  // AC6: Date range filter — defaults to today
-  const today = new Date().toISOString().slice(0, 10);
+  // AC6: Date range filter — defaults to today (Story 8.29: fuso do tenant, não UTC)
+  const today = todayInTz();
   const from = searchParams.get("from") || today;
   const to = searchParams.get("to") || today;
 

@@ -44,6 +44,8 @@ export interface ProductionOrder {
 
 export interface Targets {
   dailyPiecesTarget: number;
+  weeklyPointsTarget: number;
+  monthlyPointsTarget: number;
   productivityTarget: number;
   defectTolerance: number;
   lotsTarget: number;
@@ -103,6 +105,8 @@ export interface DateRange {
 
 const DEFAULT_TARGETS: Targets = {
   dailyPiecesTarget: 1000,
+  weeklyPointsTarget: 5000,
+  monthlyPointsTarget: 20000,
   productivityTarget: 85,
   defectTolerance: 3,
   lotsTarget: 100,

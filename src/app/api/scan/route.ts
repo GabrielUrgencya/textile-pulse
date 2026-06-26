@@ -165,6 +165,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // Story 8.28: ao avançar um lote, a OP sai de OPEN → IN_PROGRESS
+    // (só transita se ainda OPEN; não ressuscita OPs COMPLETED/CANCELLED).
+    if (lot.po_id) {
+      await supabase
+        .from("production_orders")
+        .update({ status: "IN_PROGRESS", updated_at: new Date().toISOString() })
+        .eq("id", lot.po_id)
+        .eq("status", "OPEN");
+    }
+
     // Story 8.19: conclui a OP automaticamente quando TODOS os lotes entram no estoque
     if (stage.name === "ESTOQUE" && lot.po_id) {
       const { data: poLots } = await supabase

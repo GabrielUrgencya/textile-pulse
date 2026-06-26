@@ -5,6 +5,8 @@ import { dbError, requireTenantId } from "@/lib/api-helpers";
 
 interface TenantTargets {
   dailyPiecesTarget: number;
+  weeklyPointsTarget: number;
+  monthlyPointsTarget: number;
   productivityTarget: number;
   defectTolerance: number;
   lotsTarget: number;
@@ -15,6 +17,9 @@ interface TenantTargets {
 
 const DEFAULTS: TenantTargets = {
   dailyPiecesTarget: 1000,
+  // Story 8.30: metas semanal/mensal INDEPENDENTES (não múltiplos da diária)
+  weeklyPointsTarget: 5000,
+  monthlyPointsTarget: 20000,
   productivityTarget: 85,
   defectTolerance: 3,
   lotsTarget: 100,
@@ -41,6 +46,8 @@ export async function GET() {
 
   const targets: TenantTargets = {
     dailyPiecesTarget: (settings.dailyPiecesTarget as number) ?? DEFAULTS.dailyPiecesTarget,
+    weeklyPointsTarget: (settings.weeklyPointsTarget as number) ?? DEFAULTS.weeklyPointsTarget,
+    monthlyPointsTarget: (settings.monthlyPointsTarget as number) ?? DEFAULTS.monthlyPointsTarget,
     productivityTarget: (settings.productivityTarget as number) ?? DEFAULTS.productivityTarget,
     defectTolerance: (settings.defectTolerance as number) ?? DEFAULTS.defectTolerance,
     lotsTarget: (settings.lotsTarget as number) ?? DEFAULTS.lotsTarget,
@@ -83,6 +90,8 @@ export async function PATCH(request: Request) {
   const updatedSettings = {
     ...currentSettings,
     ...(body.dailyPiecesTarget !== undefined && { dailyPiecesTarget: Number(body.dailyPiecesTarget) }),
+    ...(body.weeklyPointsTarget !== undefined && { weeklyPointsTarget: Number(body.weeklyPointsTarget) }),
+    ...(body.monthlyPointsTarget !== undefined && { monthlyPointsTarget: Number(body.monthlyPointsTarget) }),
     ...(body.productivityTarget !== undefined && { productivityTarget: Number(body.productivityTarget) }),
     ...(body.defectTolerance !== undefined && { defectTolerance: Number(body.defectTolerance) }),
     ...(body.lotsTarget !== undefined && { lotsTarget: Number(body.lotsTarget) }),

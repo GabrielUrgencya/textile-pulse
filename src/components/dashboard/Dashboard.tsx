@@ -16,6 +16,7 @@ import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange, StaleLot, ActivityEvent, Targets, MyMeta } from "@/hooks/use-dashboard-data";
 import type { UserProfile } from "@/hooks/use-user-profile";
 import { humanizeEvent, relativeTimestamp, type ActivityEventRaw } from "@/lib/event-templates";
+import { todayInTz } from "@/lib/tz";
 
 /* ------------------------------ types (re-exported from hook) ----------- */
 
@@ -110,6 +111,103 @@ function EmptyState({ message }: { message: string }) {
     <div className="flex items-center justify-center py-8 text-[13px] text-muted-foreground">
       {message}
     </div>
+  );
+}
+
+/* --------------------------- Plano do Dia (8.27) -------------------------- */
+
+interface DailyPlanItemView {
+  id: string;
+  reference: string | null;
+  color: string | null;
+  size_label: string | null;
+  quantity: number | null;
+}
+
+interface DailyPlanView {
+  id: string;
+  name: string | null;
+  meta: number;
+  items: DailyPlanItemView[];
+}
+
+function DailyPlanCard() {
+  const [plans, setPlans] = useState<DailyPlanView[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    fetch(`/api/production/daily-plan?date=${today}`)
+      .then((r) => r.json())
+      .then((d) => setPlans(Array.isArray(d?.plans) ? d.plans : []))
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  const totalMeta = plans.reduce((acc, p) => acc + (Number(p.meta) || 0), 0);
+  const hasContent = plans.some((p) => (p.items?.length ?? 0) > 0);
+
+  return (
+    <Card className="lg:col-span-12">
+      <CardHeader
+        eyebrow="Plano de produção"
+        title="Hoje você precisa produzir"
+        right={
+          hasContent ? (
+            <div className="text-right">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Meta do dia</div>
+              <div className="font-display text-[18px] font-semibold tabular-nums">
+                {totalMeta.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
+              </div>
+            </div>
+          ) : undefined
+        }
+      />
+      {!loaded ? (
+        <div className="h-16 rounded-xl bg-secondary/30 animate-pulse" />
+      ) : !hasContent ? (
+        <EmptyState message="Nenhum plano definido para hoje" />
+      ) : (
+        <div className="space-y-4">
+          {plans.map((plan) => (
+            <div key={plan.id}>
+              {plan.name ? (
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">{plan.name}</div>
+              ) : null}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {plan.items.map((it) => (
+                  <div
+                    key={it.id}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-secondary/30 border border-border/40"
+                  >
+                    <Layers className="size-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-medium truncate">
+                        {it.reference || "—"}
+                        {it.color ? <span className="text-muted-foreground"> · {it.color}</span> : null}
+                      </div>
+                      {it.size_label ? (
+                        <div className="text-[11px] text-muted-foreground truncate">{it.size_label}</div>
+                      ) : null}
+                    </div>
+                    {it.quantity != null ? (
+                      <span className="font-mono text-[13px] tabular-nums">
+                        {it.quantity.toLocaleString("pt-BR")}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -263,7 +361,7 @@ function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
 
 /* ------------------------------ Goal Cards ------------------------------- */
 
-function GoalsRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets }) {
+function GoalsRow({ kpis, targets, period }: { kpis: KpiResult | null; targets: Targets; period: Period }) {
   if (!kpis) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:col-span-12">
@@ -283,13 +381,20 @@ function GoalsRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets 
   const isWeighted = kpis.use_weighted_meta === true;
   const projection = getProjection(kpis.produced_today, targets.shiftStart, targets.shiftEnd, targets.dailyPiecesTarget);
 
+  // Story 8.30: alvo de pontos conforme o período do toggle (valores independentes)
+  const periodTarget =
+    (period === "week" ? targets.weeklyPointsTarget
+    : period === "month" ? targets.monthlyPointsTarget
+    : targets.dailyPiecesTarget) ?? targets.dailyPiecesTarget ?? 0;
+  const periodLabel = period === "week" ? "Semana" : period === "month" ? "Mês" : "Hoje";
+
   const goals = [
     {
-      label: isWeighted ? "Pontos de Meta" : "Hoje",
+      label: isWeighted ? `Pontos de Meta · ${periodLabel}` : periodLabel,
       produced: kpis.produced_today,
-      target: targets.dailyPiecesTarget,
+      target: periodTarget,
       unit: isWeighted ? "pontos" : "peças",
-      showProjection: true,
+      showProjection: period === "today",
       tooltip: isWeighted && kpis.total_scans > 0
         ? `${kpis.total_scans} peças × coeficiente médio = ${kpis.produced_today.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} pontos`
         : undefined,
@@ -312,9 +417,11 @@ function GoalsRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets 
                 <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Meta · {g.label}</div>
                 <div className="mt-2 flex items-baseline gap-2" title={g.tooltip || undefined}>
                   <span className="font-display text-[34px] font-semibold tabular-nums">
-                    {g.produced.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                    {(g.produced ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
                   </span>
-                  <span className="text-muted-foreground text-sm">/ {g.target.toLocaleString("pt-BR")}</span>
+                  <span className="text-muted-foreground text-sm">
+                    {g.target ? `/ ${g.target.toLocaleString("pt-BR")}` : "/ —"}
+                  </span>
                 </div>
               </div>
               <div className={`text-right font-mono text-sm tabular-nums ${pct >= 95 ? "text-success" : pct >= 80 ? "text-foreground" : "text-warning"}`}>
@@ -338,7 +445,7 @@ function GoalsRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets 
                   Projeção: {projection.projected.toLocaleString("pt-BR")} ({projection.pct.toFixed(0)}%)
                 </span>
               ) : (
-                <span>faltam {Math.max(0, g.target - g.produced).toLocaleString("pt-BR")}</span>
+                <span>faltam {Math.max(0, (g.target ?? 0) - (g.produced ?? 0)).toLocaleString("pt-BR")}</span>
               )}
             </div>
           </Card>
@@ -839,21 +946,26 @@ const PERIOD_LABELS: { key: Period; label: string }[] = [
 ];
 
 function getDateRange(period: Period): DateRange {
-  const today = new Date();
-  const to = today.toISOString().slice(0, 10);
+  // Story 8.29: "hoje" e intervalos no fuso do tenant (não UTC).
+  const to = todayInTz();
+  // Base ao meio-dia local do dia "to" para o cálculo de dias não cruzar fuso.
+  const base = new Date(`${to}T12:00:00`);
+  const shift = (days: number) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() - days);
+    return new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  };
   switch (period) {
     case "today":
       return { from: to, to };
-    case "week": {
-      const d = new Date(today);
-      d.setDate(d.getDate() - 7);
-      return { from: d.toISOString().slice(0, 10), to };
-    }
-    case "month": {
-      const d = new Date(today);
-      d.setDate(d.getDate() - 30);
-      return { from: d.toISOString().slice(0, 10), to };
-    }
+    case "week":
+      return { from: shift(7), to };
+    case "month":
+      return { from: shift(30), to };
   }
 }
 
@@ -923,11 +1035,14 @@ export function Dashboard() {
             {/* Story 8.4: Allowance Alert */}
             <AllowanceAlert />
 
+            {/* Story 8.27: Plano do dia ("hoje você precisa produzir") */}
+            <DailyPlanCard />
+
             {/* Story 8.21: Minha meta (por setor/etapa) */}
             <MyMetaCard myMeta={data.myMeta} />
 
             {/* Metas */}
-            <GoalsRow kpis={data.kpis} targets={targets} />
+            <GoalsRow kpis={data.kpis} targets={targets} period={period} />
 
             {/* Producao */}
             <div className="lg:col-span-12 flex items-center gap-3 mt-2">

@@ -10,6 +10,8 @@ import { SectorTargetsCard } from "./SectorTargetsCard";
 
 interface Targets {
   dailyPiecesTarget: number;
+  weeklyPointsTarget: number;
+  monthlyPointsTarget: number;
   productivityTarget: number;
   defectTolerance: number;
   shiftStart: string;
@@ -20,6 +22,8 @@ function TargetsConfig() {
   const { data, isLoading } = useServerData<Targets>("/api/settings/targets");
   const [form, setForm] = React.useState<Targets>({
     dailyPiecesTarget: 1000,
+    weeklyPointsTarget: 5000,
+    monthlyPointsTarget: 20000,
     productivityTarget: 85,
     defectTolerance: 3,
     shiftStart: "07:00",
@@ -71,18 +75,48 @@ function TargetsConfig() {
       <LisionCardHeader eyebrow="Dashboard" title="Meta geral" />
 
       <div className="space-y-4">
-        <div>
-          <label className="text-xs text-muted-foreground mb-1.5 block">
-            Meta diária de peças
-          </label>
-          <input
-            type="number"
-            className="input-field"
-            value={form.dailyPiecesTarget}
-            onChange={(e) => update("dailyPiecesTarget", Number(e.target.value))}
-            min={0}
-          />
+        {/* Story 8.30: metas independentes por período (pontos/peças) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">
+              Meta diária
+            </label>
+            <input
+              type="number"
+              className="input-field"
+              value={form.dailyPiecesTarget}
+              onChange={(e) => update("dailyPiecesTarget", Number(e.target.value))}
+              min={0}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">
+              Meta semanal
+            </label>
+            <input
+              type="number"
+              className="input-field"
+              value={form.weeklyPointsTarget}
+              onChange={(e) => update("weeklyPointsTarget", Number(e.target.value))}
+              min={0}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">
+              Meta mensal
+            </label>
+            <input
+              type="number"
+              className="input-field"
+              value={form.monthlyPointsTarget}
+              onChange={(e) => update("monthlyPointsTarget", Number(e.target.value))}
+              min={0}
+            />
+          </div>
         </div>
+        <p className="text-[11px] text-muted-foreground/60 -mt-2">
+          Valores independentes (a semanal e a mensal não são múltiplos da diária). Usadas no toggle Hoje/Semana/Mês do dashboard.
+        </p>
 
         <div>
           <label className="text-xs text-muted-foreground mb-1.5 block">

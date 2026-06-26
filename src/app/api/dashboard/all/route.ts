@@ -92,6 +92,8 @@ export async function GET(request: Request) {
   // --- Map targets ---
   const DEFAULTS = {
     dailyPiecesTarget: 1000,
+    weeklyPointsTarget: 5000,
+    monthlyPointsTarget: 20000,
     productivityTarget: 85,
     defectTolerance: 3,
     lotsTarget: 100,
@@ -103,6 +105,9 @@ export async function GET(request: Request) {
   const settings = tenantSettings;
   const targets = {
     dailyPiecesTarget: (settings.dailyPiecesTarget as number) ?? DEFAULTS.dailyPiecesTarget,
+    // Story 8.30 / hotfix: metas por período no payload do dashboard
+    weeklyPointsTarget: (settings.weeklyPointsTarget as number) ?? DEFAULTS.weeklyPointsTarget,
+    monthlyPointsTarget: (settings.monthlyPointsTarget as number) ?? DEFAULTS.monthlyPointsTarget,
     productivityTarget: (settings.productivityTarget as number) ?? DEFAULTS.productivityTarget,
     defectTolerance: (settings.defectTolerance as number) ?? DEFAULTS.defectTolerance,
     lotsTarget: (settings.lotsTarget as number) ?? DEFAULTS.lotsTarget,

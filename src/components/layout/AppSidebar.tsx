@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useUserProfile } from "@/hooks/use-user-profile";
 import {
   AlertTriangle,
+  CalendarDays,
   ChevronsLeft,
   ClipboardCheck,
   Clock,
@@ -41,6 +42,7 @@ import { cn } from "@/lib/utils";
 const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard className="size-4 shrink-0" />, permission: "dashboard:view" },
   { title: "Produção", url: "/production/orders", icon: <Factory className="size-4 shrink-0" />, permission: "orders:view" },
+  { title: "Plano do Dia", url: "/production/daily-plan", icon: <CalendarDays className="size-4 shrink-0" />, permission: "settings:manage" },
   { title: "Scan", url: "/scan", icon: <ScanLine className="size-4 shrink-0" />, permission: "scan:view" },
   { title: "Aduana", url: "/aduana", icon: <ClipboardCheck className="size-4 shrink-0" />, permission: "scan:view" },
   { title: "Expedição", url: "/expedition", icon: <Clock className="size-4 shrink-0" />, permission: "factions:view" },
