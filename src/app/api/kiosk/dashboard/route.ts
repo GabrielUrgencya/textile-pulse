@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateKioskToken } from "@/lib/kiosk-middleware";
+import { computeSectorKpis } from "@/lib/sector-kpis";
+import { listDayAchievements } from "@/lib/achievements";
+import { getSectorDashboardConfig } from "@/lib/dashboard-config";
 
 /**
  * GET /api/kiosk/dashboard?token=<uuid>
@@ -50,6 +53,9 @@ export async function GET(request: Request) {
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   const tenantId = session.tenantId;
+
+  // Épico Metas/KPIs por Setor: filtro opcional por setor (= stage). Sem stage_id → visão geral (retrocompatível).
+  const stageIdParam = searchParams.get("stage_id");
 
   // ─── Fetch tenant settings first (needed for shift detection) ────
   const tenantResult = await supabase
@@ -610,8 +616,40 @@ export async function GET(request: Request) {
     }))
     .sort((a, b) => b.avg_hours - a.avg_hours);
 
+  // ─── Setor ativo + KPIs por setor (Stories 8.34/8.35) ────────────
+  // Lista de stages p/ o seletor da TV (deriva do stagesResult já consultado).
+  const sectors = (stagesResult.data || []).map((s) => ({
+    id: s.id as string,
+    name: s.name as string,
+    display_name: (s.display_name as string) || (s.name as string),
+    order_index: s.order_index as number,
+  }));
+
+  // Valida stage_id pertencente ao tenant; se inválido/ausente → visão geral.
+  const activeStage = stageIdParam ? sectors.find((s) => s.id === stageIdParam) : undefined;
+  const activeSector = activeStage
+    ? { id: activeStage.id, name: activeStage.display_name }
+    : null;
+  const sectorKpis = activeStage
+    ? await computeSectorKpis(supabase, tenantId, activeStage.id).catch(() => null)
+    : null;
+
+  // Story 8.40: layout de widgets do setor (salvo|default) — 1 request por poll.
+  const dashboardConfig = activeStage
+    ? await getSectorDashboardConfig(supabase, tenantId, activeStage.id).catch(() => null)
+    : null;
+
+  // Celebrações do dia p/ a TV enfileirar (Story 8.36) — best-effort.
+  const achievementsToday = await listDayAchievements(supabase, tenantId).catch(() => []);
+
   // ─── Response ─────────────────────────────────────────────────────
   return NextResponse.json({
+    tenant_id: tenantId,
+    sectors,
+    active_sector: activeSector,
+    sector_kpis: sectorKpis,
+    dashboard_config: dashboardConfig,
+    achievements_today: achievementsToday,
     kiosk: {
       token_name: session.tokenName,
       scope: session.scope,

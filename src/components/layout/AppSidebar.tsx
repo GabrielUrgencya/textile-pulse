@@ -51,6 +51,7 @@ const mainItems = [
   { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" />, permission: "quality:view" },
   { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" />, permission: "factions:view" },
   { title: "Ranking", url: "/ranking", icon: <Trophy className="size-4 shrink-0" />, permission: "factions:view", adminOnly: true },
+  { title: "Config. da TV", url: "/sector-dashboard", icon: <Tv className="size-4 shrink-0" />, permission: "settings:manage", adminOnly: true },
   { title: "Equipe", url: "/team", icon: <Users className="size-4 shrink-0" />, permission: "users:manage" },
 ];
 

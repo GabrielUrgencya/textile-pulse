@@ -70,6 +70,12 @@ export interface ActivityEvent {
   stage_name: string;
 }
 
+export interface PeriodProgress {
+  target: number | null;
+  progress: number;
+  estimated: boolean;
+}
+
 export interface MyMeta {
   stage_id: string;
   stage_name: string;
@@ -77,6 +83,12 @@ export interface MyMeta {
   unit: string | null;
   progress: number;
   percent: number;
+  // Story 8.37
+  weekly: PeriodProgress;
+  monthly: PeriodProgress;
+  elapsed_since_first_scan_min: number | null;
+  avg_per_lot_min: number | null;
+  completed: boolean;
 }
 
 export interface DashboardData {

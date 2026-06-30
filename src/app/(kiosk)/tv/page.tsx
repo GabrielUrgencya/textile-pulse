@@ -1,13 +1,22 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { TVHeader } from "@/components/tv/TVHeader";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { TVHero } from "@/components/tv/TVHero";
 import { TVKpis } from "@/components/tv/TVKpis";
 import { TVStageFlow } from "@/components/tv/TVStageFlow";
 import { TVAlerts } from "@/components/tv/TVAlerts";
 import { FullscreenButton } from "@/components/tv/FullscreenButton";
+import { type SectorOption } from "@/components/tv/TVSectorSelector";
+import { TVCelebration, type CelebrationItem } from "@/components/tv/TVCelebration";
+import { TVHeaderV2 } from "@/components/tv/TVHeaderV2";
+import { BentoGrid, BentoCell } from "@/components/ui/bento-grid";
+import { WidgetRenderer } from "@/components/tv/widgets/WidgetRenderer";
+import { TVSectorDefault } from "@/components/tv/TVSectorDefault";
+import { subscribeToTvConfig } from "@/lib/realtime";
+import type { KPIWidget } from "@/lib/dashboard-config";
+import type { SectorKpis } from "@/lib/sector-kpis";
 
 // ─── Types matching API response shape ─────────────────────
 interface DashboardData {
@@ -72,6 +81,13 @@ interface DashboardData {
     volume: number;
     deliveries_count: number;
   }>;
+  // Épico Metas/KPIs por Setor (8.34/8.35/8.36) + Dashboards 2.0 (8.40)
+  tenant_id?: string;
+  sectors?: SectorOption[];
+  active_sector?: { id: string; name: string } | null;
+  sector_kpis?: SectorKpis | null;
+  dashboard_config?: { layout: KPIWidget[]; isDefault: boolean } | null;
+  achievements_today?: CelebrationItem[];
   timestamp: string;
 }
 
@@ -83,10 +99,43 @@ function TVDashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const initialLoad = useRef(true);
 
+  // Story 8.40 — estado da conexão realtime (broadcast de config)
+  const [connected, setConnected] = useState(false);
+
+  // Cliente anon p/ Realtime broadcast (não exige sessão — kiosk)
+  const realtimeClient = useMemo<SupabaseClient | null>(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return null;
+    return createClient(url, key);
+  }, []);
+
+  // Story 8.34 — setor selecionado (persistido por token; null = Visão Geral)
+  const [sectorId, setSectorId] = useState<string | null>(null);
+  const sectorKey = token ? `tv_sector_${token}` : "tv_sector";
+
+  // Carrega a seleção persistida no mount (não reseta no reload)
+  useEffect(() => {
+    if (!token) return;
+    try {
+      const saved = localStorage.getItem(`tv_sector_${token}`);
+      if (saved) setSectorId(saved);
+    } catch { /* ignore */ }
+  }, [token]);
+
+  const changeSector = useCallback((id: string | null) => {
+    setSectorId(id);
+    try {
+      if (id) localStorage.setItem(sectorKey, id);
+      else localStorage.removeItem(sectorKey);
+    } catch { /* ignore */ }
+  }, [sectorKey]);
+
   const fetchData = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/kiosk/dashboard?token=${token}&shift=current`);
+      const stageQS = sectorId ? `&stage_id=${sectorId}` : "";
+      const res = await fetch(`/api/kiosk/dashboard?token=${token}&shift=current${stageQS}`);
       if (!res.ok) {
         const err = await res.json();
         setError(err.error || "Falha ao carregar dashboard");
@@ -99,7 +148,7 @@ function TVDashboardContent() {
     } catch {
       setError("Erro de conexão");
     }
-  }, [token]);
+  }, [token, sectorId]);
 
   // Initial fetch + 15s silent refresh (no remount, just state update)
   useEffect(() => {
@@ -111,6 +160,34 @@ function TVDashboardContent() {
     const interval = setInterval(fetchData, 15_000);
     return () => clearInterval(interval);
   }, [token, fetchData]);
+
+  // Refs estáveis p/ o callback do realtime não re-assinar a cada poll/troca
+  const sectorIdRef = useRef(sectorId);
+  sectorIdRef.current = sectorId;
+  const fetchDataRef = useRef(fetchData);
+  fetchDataRef.current = fetchData;
+
+  // Story 8.40 — assina o canal de config da TV (broadcast). Ao publicar (8.41),
+  // recarrega a config do setor ativo em <2s, sem refresh.
+  const tenantId = data?.tenant_id;
+  useEffect(() => {
+    if (!realtimeClient || !tenantId) return;
+    const channel = subscribeToTvConfig(
+      realtimeClient,
+      tenantId,
+      (payload) => {
+        // recarrega se o publish é do setor ativo (ou geral sem stage)
+        if (!payload.stage_id || payload.stage_id === sectorIdRef.current) {
+          fetchDataRef.current();
+        }
+      },
+      (isConnected) => setConnected(isConnected),
+    );
+    return () => {
+      realtimeClient.removeChannel(channel);
+      setConnected(false);
+    };
+  }, [realtimeClient, tenantId]);
 
   // Error state
   if (error) {
@@ -133,61 +210,87 @@ function TVDashboardContent() {
     );
   }
 
+  const sectors = data.sectors || [];
+  const activeSector = data.active_sector || null;
+  const sectorKpis = data.sector_kpis || null;
+
   return (
     <div className="h-screen w-screen bg-background bg-radial bg-grid flex flex-col overflow-hidden">
       {/* Story 8.31: botão de tela cheia */}
       <FullscreenButton />
-      {/* Header — top bar + white ticker */}
-      <TVHeader
+      {/* Story 8.36: celebração ao bater meta (fila) */}
+      <TVCelebration achievements={data.achievements_today || []} storageKey={`tv_celebrated_${token}`} />
+      {/* Story 8.40 — Header redesenhado (nome do setor, pills, relógio, data, status) */}
+      <TVHeaderV2
         tokenName={data.kiosk.token_name}
-        shiftStart={data.shift.start}
-        shiftEnd={data.shift.end}
-        activeShift={data.shift.active_shift}
-        recentActivity={data.recent_activity}
+        sectors={sectors}
+        activeId={sectorId}
+        onSelect={changeSector}
+        activeName={activeSector ? activeSector.name : "Visão Geral"}
+        connected={connected}
       />
 
       {/* Dashboard content */}
-      <div className="flex-1 flex flex-col gap-2.5 px-5 pt-2.5 pb-3 overflow-hidden">
-        {/* Top row — Radial Gauge + 6 KPIs */}
-        <div className="grid grid-cols-12 gap-2.5">
-          <div className="col-span-5">
-            <TVHero
-              producedToday={data.production.produced_today}
-              dailyTarget={data.production.daily_target}
-              percent={data.production.percent}
-              currentRate={data.production.current_rate}
-              peakRate={data.production.peak_rate}
-              projectedEnd={data.production.projected_end}
-              activeShift={data.shift.active_shift}
-            />
-          </div>
-          <div className="col-span-7">
-            <TVKpis
-              activeOps={data.kpis.active_ops}
-              opsTarget={data.kpis.ops_target}
-              activeLots={data.kpis.active_lots}
-              lotsTarget={data.kpis.lots_target}
-              defectRate={data.kpis.defect_rate}
-              defectTolerance={data.kpis.defect_tolerance}
-              scansToday={data.kpis.scans_today}
-              scansYesterday={data.kpis.scans_yesterday}
-              currentRate={data.production.current_rate}
-              peakRate={data.production.peak_rate}
-              projectedEnd={data.production.projected_end}
-              dailyTarget={data.production.daily_target}
-            />
-          </div>
-        </div>
-
-        {/* Bottom row — Stage Flow + Alerts (stretch to fill) */}
-        <div className="grid grid-cols-12 gap-2.5 flex-1 min-h-0">
-          <div className="col-span-7 min-h-0">
-            <TVStageFlow stages={data.lots_by_stage} avgStageDurations={data.avg_stage_durations} />
-          </div>
-          <div className="col-span-5 min-h-0">
-            <TVAlerts alerts={data.alerts} />
-          </div>
-        </div>
+      <div className="flex-1 flex flex-col gap-4 px-6 pt-4 pb-6 overflow-hidden">
+        {activeSector ? (
+          /* ── Visão por SETOR ── */
+          data.dashboard_config && !data.dashboard_config.isDefault ? (
+            /* Config custom do admin (8.41) → bento dinâmico render-from-config */
+            <BentoGrid mode="tv" className="flex-1 min-h-0">
+              {(data.dashboard_config.layout || []).map((widget, i) => (
+                <BentoCell key={widget.id} size={widget.size}>
+                  <WidgetRenderer widget={widget} kpis={sectorKpis} index={i} />
+                </BentoCell>
+              ))}
+            </BentoGrid>
+          ) : (
+            /* Sem config própria → layout FIXO premium (áreas nomeadas) */
+            <div className="flex-1 min-h-0">
+              <TVSectorDefault kpis={sectorKpis} />
+            </div>
+          )
+        ) : (
+          /* ── Visão GERAL (retrocompatível) ── */
+          <>
+            <div className="grid grid-cols-12 gap-2.5">
+              <div className="col-span-5">
+                <TVHero
+                  producedToday={data.production.produced_today}
+                  dailyTarget={data.production.daily_target}
+                  percent={data.production.percent}
+                  currentRate={data.production.current_rate}
+                  peakRate={data.production.peak_rate}
+                  projectedEnd={data.production.projected_end}
+                  activeShift={data.shift.active_shift}
+                />
+              </div>
+              <div className="col-span-7">
+                <TVKpis
+                  activeOps={data.kpis.active_ops}
+                  opsTarget={data.kpis.ops_target}
+                  activeLots={data.kpis.active_lots}
+                  lotsTarget={data.kpis.lots_target}
+                  defectRate={data.kpis.defect_rate}
+                  defectTolerance={data.kpis.defect_tolerance}
+                  scansToday={data.kpis.scans_today}
+                  scansYesterday={data.kpis.scans_yesterday}
+                  currentRate={data.production.current_rate}
+                  peakRate={data.production.peak_rate}
+                  projectedEnd={data.production.projected_end}
+                  dailyTarget={data.production.daily_target}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-12 gap-2.5 flex-1 min-h-0">
+              <div className="col-span-7 min-h-0">
+                <TVStageFlow stages={data.lots_by_stage} avgStageDurations={data.avg_stage_durations} />
+              </div>
+              <div className="col-span-5 min-h-0">
+                <TVAlerts alerts={data.alerts} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

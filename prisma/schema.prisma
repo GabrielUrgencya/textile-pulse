@@ -113,6 +113,8 @@ model Tenant {
   userTargets      UserTarget[]
   rolePermissions  RolePermission[]
   dailyPlans       DailyPlan[]
+  dailyAchievements DailyAchievement[]
+  sectorDashboardConfigs SectorDashboardConfig[]
 
   @@map("tenants")
 }
@@ -229,14 +231,16 @@ model ReferenceStageTarget {
   @@map("reference_stage_targets")
 }
 
-/// Story 8.21: meta diária por setor (etapa) com unidade.
+/// Story 8.21 + Épico Metas/KPIs por Setor: meta diária/semanal/mensal por setor (etapa) com unidade.
 model SectorTarget {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  stageId     String   @map("stage_id") @db.Uuid
-  dailyTarget Int      @map("daily_target")
-  unit        String?
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  stageId       String   @map("stage_id") @db.Uuid
+  dailyTarget   Int      @map("daily_target")
+  weeklyTarget  Int?     @map("weekly_target")
+  monthlyTarget Int?     @map("monthly_target")
+  unit          String?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   stage  Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
@@ -244,6 +248,48 @@ model SectorTarget {
   @@unique([tenantId, stageId])
   @@index([tenantId])
   @@map("sector_targets")
+}
+
+/// Épico Dashboards 2.0: layout de KPIs (widgets) da TV por setor (= stage).
+model SectorDashboardConfig {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  stageId   String   @map("stage_id") @db.Uuid
+  layout    Json     @default("[]")
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stage   Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  updater Profile? @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, stageId])
+  @@index([tenantId])
+  @@index([tenantId, stageId])
+  @@map("sector_dashboard_configs")
+}
+
+/// Épico Metas/KPIs por Setor: feito do dia (meta batida) idempotente.
+/// scope=USER (colaborador, user_id preenchido) ou SECTOR (etapa, user_id nulo).
+model DailyAchievement {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  achievedDate     DateTime @map("achieved_date") @db.Date
+  scope            String
+  stageId          String   @map("stage_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
+  targetSnapshot   Int?     @map("target_snapshot")
+  progressSnapshot Decimal? @map("progress_snapshot") @db.Decimal(10, 2)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stage   Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, achievedDate])
+  @@index([tenantId, achievedDate, stageId])
+  @@map("daily_achievements")
 }
 
 /// Story 8.21: override de meta por usuário + etapa atribuída.
@@ -296,6 +342,8 @@ model Profile {
   auditLogs           AuditLog[]
   userTargets         UserTarget[]
   dailyPlanMemberships DailyPlanMember[]
+  dailyAchievements   DailyAchievement[]
+  sectorDashboardConfigs SectorDashboardConfig[]
 
   @@map("profiles")
 }
@@ -321,6 +369,8 @@ model Stage {
   referenceStageTargets ReferenceStageTarget[]
   sectorTargets SectorTarget[]
   userTargets   UserTarget[]
+  dailyAchievements DailyAchievement[]
+  sectorDashboardConfigs SectorDashboardConfig[]
 
   @@unique([tenantId, orderIndex])
   @@map("stages")

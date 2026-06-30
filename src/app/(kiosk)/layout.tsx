@@ -36,7 +36,7 @@ export default function KioskLayout({
       lang="pt-BR"
       className={`dark ${inter.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="antialiased" suppressHydrationWarning>
+      <body className="antialiased tv-premium" suppressHydrationWarning>
         {children}
       </body>
     </html>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { checkRateLimitCustom } from "@/lib/rate-limiter";
+import { evaluateAndRecordAchievements } from "@/lib/achievements";
 
 const SCAN_RATE_LIMIT = 100; // max requests
 const SCAN_RATE_WINDOW = 60 * 1000; // per 1 minute
@@ -193,6 +194,21 @@ export async function POST(request: Request) {
           .update({ status: "COMPLETED", updated_at: new Date().toISOString() })
           .eq("id", lot.po_id)
           .in("status", ["OPEN", "IN_PROGRESS"]);
+      }
+    }
+
+    // Story 8.36: registra "meta batida" (colaborador + setor) de forma idempotente.
+    // BEST-EFFORT — nunca deve quebrar a bipagem.
+    const achTenantId = user.app_metadata?.tenant_id as string | undefined;
+    if (achTenantId) {
+      try {
+        await evaluateAndRecordAchievements(supabase, {
+          tenantId: achTenantId,
+          userId: user.id,
+          stageId: stage_id,
+        });
+      } catch (e) {
+        console.warn("[scan] achievements best-effort falhou:", (e as Error)?.message);
       }
     }
   }

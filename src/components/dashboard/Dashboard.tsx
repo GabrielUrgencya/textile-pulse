@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
+import { cardEnter, cardEnterTransition } from "@/lib/motion";
+import { Skeleton } from "@/components/ui/data-states";
+import { CountUp } from "@/components/ui/count-up";
+import { KpiCard, KpiLabel, KpiValue, KpiSupport } from "@/components/ui/kpi-card";
+import { displayUnit } from "@/lib/utils";
 import {
   AlertTriangle, ArrowDownRight, ArrowUpRight,
   Command, Layers, Menu, MoveRight, Users,
+  CheckCircle2, Clock, TrendingUp,
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
@@ -28,16 +34,40 @@ function Card({
   children,
   className = "",
   pad = true,
+  index = 0,
 }: {
   children: React.ReactNode;
   className?: string;
   pad?: boolean;
+  index?: number;
 }) {
+  const reduce = useReducedMotion();
+  if (reduce) {
+    return (
+      <div className={`relative rounded-2xl bg-card-gradient border border-border/60 border-gradient shadow-elegant overflow-hidden ${pad ? "p-5" : ""} ${className}`}>
+        {children}
+      </div>
+    );
+  }
   return (
-    <div
+    <motion.div
+      variants={cardEnter}
+      initial="hidden"
+      animate="visible"
+      transition={{ ...cardEnterTransition, delay: Math.min(index * 0.05, 0.4) }}
       className={`relative rounded-2xl bg-card-gradient border border-border/60 border-gradient shadow-elegant overflow-hidden ${pad ? "p-5" : ""} ${className}`}
     >
       {children}
+    </motion.div>
+  );
+}
+
+/* Story 8.42 — section header consistente (label + divider). */
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="lg:col-span-12 flex items-center gap-3 mt-2">
+      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">{label}</div>
+      <div className="flex-1 h-px bg-border/40" />
     </div>
   );
 }
@@ -240,14 +270,6 @@ function TopBar({ now, kpis, userProfile }: { now: Date; kpis: KpiResult | null;
         <SidebarTrigger className="md:hidden -ml-2 size-9 rounded-lg bg-secondary/60 border border-border/60 text-muted-foreground hover:text-foreground">
           <Menu className="size-4" />
         </SidebarTrigger>
-        <div className="flex items-center gap-3">
-          <div className="leading-tight">
-            <div className="font-display text-xl">LISION</div>
-            <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground -mt-0.5">
-              Rastreamento Têxtil
-            </div>
-          </div>
-        </div>
 
         <div className="ml-auto flex items-center gap-3">
           <div className="hidden md:flex items-center gap-2 text-right leading-tight">
@@ -315,14 +337,41 @@ function getProjection(produced: number, shiftStart: string, shiftEnd: string, t
 
 /* --------------------------- Minha Meta (setor) -------------------------- */
 
+function fmtMetaMin(min: number | null): string {
+  if (min == null) return "—";
+  if (min < 60) return `${Math.round(min)}min`;
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return m > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+}
+
+function MetaPeriodChip({ label, kpi, unit }: { label: string; kpi: MyMeta["weekly"]; unit: string }) {
+  const pct = kpi.target && kpi.target > 0 ? Math.min(100, Math.round((kpi.progress / kpi.target) * 100)) : 0;
+  return (
+    <div className="rounded-lg bg-secondary/50 px-3 py-2">
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="flex items-center gap-1 text-muted-foreground"><TrendingUp className="size-3" /> {label}</span>
+        {kpi.estimated && <span className="text-[9px] uppercase text-muted-foreground/50">est.</span>}
+      </div>
+      <div className="mt-0.5 text-[13px] tabular-nums">
+        {kpi.progress.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} / {kpi.target != null ? kpi.target.toLocaleString("pt-BR") : "—"}{unit ? ` ${unit}` : ""}
+      </div>
+      <div className="mt-1 h-1.5 rounded-full bg-background/70 overflow-hidden">
+        <div className="h-full rounded-full bg-muted-foreground/40" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
   if (!myMeta || myMeta.target == null) return null;
-  const unit = (myMeta.unit || "").trim();
+  const unit = displayUnit(myMeta.unit);
   const pct = myMeta.percent;
-  const barColor = pct >= 100 ? "bg-success" : pct >= 80 ? "bg-foreground" : "bg-warning";
+  const completed = myMeta.completed;
+  const barColor = completed ? "bg-success" : pct >= 80 ? "bg-foreground" : "bg-warning";
 
   return (
-    <Card className="lg:col-span-12">
+    <Card className={`lg:col-span-12 ${completed ? "border-success/40 bg-success/5" : ""}`}>
       <div className="flex items-start justify-between">
         <div>
           <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -335,15 +384,14 @@ function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
             <span className="text-muted-foreground text-sm tabular-nums">
               / {myMeta.target.toLocaleString("pt-BR")}
             </span>
-            {unit && (
-              <span className="text-muted-foreground/70 text-[13px]">{unit}</span>
-            )}
+            {unit && <span className="text-muted-foreground/70 text-[13px]">{unit}</span>}
           </div>
         </div>
-        <div className={`text-right font-mono text-sm tabular-nums ${pct >= 100 ? "text-success" : pct >= 80 ? "text-foreground" : "text-warning"}`}>
+        <div className={`text-right font-mono text-sm tabular-nums ${completed ? "text-success" : pct >= 80 ? "text-foreground" : "text-warning"}`}>
           {pct.toFixed(1)}%
         </div>
       </div>
+
       <div className="relative h-1.5 mt-4 rounded-full bg-secondary overflow-hidden">
         <motion.div
           className={`absolute inset-y-0 left-0 rounded-full ${barColor}`}
@@ -352,10 +400,71 @@ function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
           transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
         />
       </div>
+
+      {/* Story 8.37 — estado "Meta Concluída" */}
+      {completed && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-success">
+          <CheckCircle2 className="size-4" />
+          <span className="text-[13px] font-medium">🎉 Meta concluída! Parabéns pelo dia.</span>
+        </div>
+      )}
+
+      {/* Story 8.37 — metas semanal/mensal (secundárias) */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <MetaPeriodChip label="Semana" kpi={myMeta.weekly} unit={unit} />
+        <MetaPeriodChip label="Mês" kpi={myMeta.monthly} unit={unit} />
+      </div>
+
+      {/* Story 8.37 — tempo de processo do dia */}
+      <div className="mt-3 flex items-center gap-4 text-[12px] text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <Clock className="size-3.5" /> Decorrido hoje: <span className="text-foreground tabular-nums">{fmtMetaMin(myMeta.elapsed_since_first_scan_min)}</span>
+        </span>
+        <span className="tabular-nums">Médio/lote: {fmtMetaMin(myMeta.avg_per_lot_min)}</span>
+      </div>
+
       <div className="mt-3 text-[11px] text-muted-foreground">
         Medido na sua etapa ({myMeta.stage_name}){unit ? `, em ${unit}` : ""}, ponderado pelo coeficiente da referência.
       </div>
     </Card>
+  );
+}
+
+/* --------------------- KPIs primários (região superior 8.43) --------------------- */
+
+function PrimaryKpisRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets }) {
+  if (!kpis) {
+    return (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:col-span-12">
+        {[0, 1, 2, 3].map((i) => (
+          <KpiCard key={i} index={i} className="min-h-[132px]"><Skeleton className="h-20" rounded="rounded-xl" /></KpiCard>
+        ))}
+      </div>
+    );
+  }
+  const dailyTarget = targets.dailyPiecesTarget || 0;
+  const pct = dailyTarget > 0 ? (kpis.produced_today / dailyTarget) * 100 : 0;
+  const pctColor = pct >= 95 ? "text-success" : pct >= 80 ? "text-foreground" : "text-warning";
+
+  const items = [
+    { label: "Produção do dia", value: kpis.produced_today, decimals: kpis.use_weighted_meta ? 1 : 0, support: `/ ${dailyTarget.toLocaleString("pt-BR")}`, highlight: true, valueClass: "" },
+    { label: "Lotes ativos", value: kpis.total_lots, decimals: 0, support: `meta ${targets.lotsTarget}`, highlight: false, valueClass: "" },
+    { label: "% da meta", value: pct, decimals: 1, suffix: "%", support: "do dia", highlight: false, valueClass: pctColor },
+    { label: "OPs ativas", value: kpis.active_ops, decimals: 0, support: `meta ${targets.opsTarget}`, highlight: false, valueClass: "" },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:col-span-12">
+      {items.map((it, i) => (
+        <KpiCard key={it.label} highlight={it.highlight} interactive index={i} className="flex flex-col justify-between min-h-[132px]">
+          <KpiLabel>{it.label}</KpiLabel>
+          <KpiValue className={`text-[clamp(2rem,3vw,2.75rem)] ${it.valueClass}`}>
+            <CountUp value={it.value} decimals={it.decimals} />{it.suffix ?? ""}
+          </KpiValue>
+          <KpiSupport>{it.support}</KpiSupport>
+        </KpiCard>
+      ))}
+    </div>
   );
 }
 
@@ -366,11 +475,11 @@ function GoalsRow({ kpis, targets, period }: { kpis: KpiResult | null; targets: 
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:col-span-12">
         {[1, 2, 3].map((i) => (
-          <Card key={i}>
-            <div className="animate-pulse space-y-3">
-              <div className="h-3 w-20 bg-secondary rounded" />
-              <div className="h-8 w-32 bg-secondary rounded" />
-              <div className="h-1.5 bg-secondary rounded-full" />
+          <Card key={i} index={i}>
+            <div className="space-y-3">
+              <Skeleton className="h-3 w-20" rounded="rounded" />
+              <Skeleton className="h-8 w-32" rounded="rounded" />
+              <Skeleton className="h-1.5 w-full" rounded="rounded-full" />
             </div>
           </Card>
         ))}
@@ -411,13 +520,13 @@ function GoalsRow({ kpis, targets, period }: { kpis: KpiResult | null; targets: 
           ? projection.pct >= 80 ? "bg-success" : "bg-warning"
           : "bg-foreground";
         return (
-          <Card key={g.label} className="group">
+          <Card key={g.label} className="group" index={i}>
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Meta · {g.label}</div>
                 <div className="mt-2 flex items-baseline gap-2" title={g.tooltip || undefined}>
                   <span className="font-display text-[34px] font-semibold tabular-nums">
-                    {(g.produced ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                    <CountUp value={g.produced ?? 0} decimals={isWeighted ? 1 : 0} />
                   </span>
                   <span className="text-muted-foreground text-sm">
                     {g.target ? `/ ${g.target.toLocaleString("pt-BR")}` : "/ —"}
@@ -1032,6 +1141,10 @@ export function Dashboard() {
           )}
 
           <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 transition-opacity duration-300 ${isLoading && data.kpis ? "opacity-60" : "opacity-100"}`}>
+            {/* Story 8.43: KPIs primários (região superior) */}
+            <SectionHeader label="Hoje" />
+            <PrimaryKpisRow kpis={data.kpis} targets={targets} />
+
             {/* Story 8.4: Allowance Alert */}
             <AllowanceAlert />
 
@@ -1045,44 +1158,29 @@ export function Dashboard() {
             <GoalsRow kpis={data.kpis} targets={targets} period={period} />
 
             {/* Producao */}
-            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Produção</div>
-              <div className="flex-1 h-px bg-border/40" />
-            </div>
+            <SectionHeader label="Produção" />
             <HourlyChart chart={data.chart} shiftStart={targets.shiftStart} shiftEnd={targets.shiftEnd} />
             <StalledCard staleLots={staleLots} />
 
             {/* Pipeline */}
-            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Pipeline</div>
-              <div className="flex-1 h-px bg-border/40" />
-            </div>
+            <SectionHeader label="Pipeline" />
             <StagesCard kpis={data.kpis} />
             <DefectsCard kpis={data.kpis} />
             <StageDurationCard kpis={data.kpis} />
 
             {/* Operacoes */}
-            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Operações</div>
-              <div className="flex-1 h-px bg-border/40" />
-            </div>
+            <SectionHeader label="Operações" />
             <OrdersCard orders={data.orders} />
             <RankingCard kpis={data.kpis} />
 
             {/* Equipe */}
-            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Equipe</div>
-              <div className="flex-1 h-px bg-border/40" />
-            </div>
+            <SectionHeader label="Equipe" />
             <div className="lg:col-span-5">
               <TeamRankingCard />
             </div>
 
             {/* Atividade */}
-            <div className="lg:col-span-12 flex items-center gap-3 mt-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium whitespace-nowrap">Atividade</div>
-              <div className="flex-1 h-px bg-border/40" />
-            </div>
+            <SectionHeader label="Atividade" />
             <ActivityCard activityEvents={activityEvents} />
           </div>
 

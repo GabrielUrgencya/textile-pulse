@@ -264,3 +264,45 @@
     line-height: 1;
   }
 }
+
+/* ───────────────────────────────────────────────────────────
+   Premium Dark Mode — escopo exclusivo da TV/kiosk (.tv-premium)
+   Refina a escala monocromática para a paleta "zinc":
+   bg #09090b · card #18181b · borda #27272a · label #a1a1aa
+   Semânticas vivas SÓ no status: emerald #10b981 / red #ef4444.
+   Reskina todos os LisionCard/KpiCard sem tocar componente a componente.
+   ─────────────────────────────────────────────────────────── */
+.tv-premium {
+  /* superfícies */
+  --background: oklch(0.09 0.003 286);          /* ≈ #09090b */
+  --surface: oklch(0.14 0.004 286);
+  --surface-elevated: oklch(0.18 0.004 286);
+  --card: oklch(0.165 0.004 286);               /* ≈ #18181b — elevação por cor, não por sombra */
+  --popover: oklch(0.185 0.005 286);
+  --secondary: oklch(0.21 0.005 286);
+
+  /* texto */
+  --foreground: oklch(0.985 0 0);               /* ≈ #fafafa */
+  --muted-foreground: oklch(0.705 0.007 286);   /* ≈ #a1a1aa — labels silenciados */
+
+  /* bordas sutis de 1px */
+  --border: oklch(0.27 0.005 286);              /* ≈ #27272a */
+  --input: oklch(0.27 0.005 286);
+
+  /* cores semânticas restritas */
+  --success: oklch(0.70 0.15 162);              /* ≈ #10b981 emerald */
+  --destructive: oklch(0.63 0.21 25);           /* ≈ #ef4444 red */
+  --warning: oklch(0.80 0.15 75);               /* amber (gargalo intermediário) */
+
+  /* gradientes/sombra: elevação plana, sem drop-shadow pesado */
+  --gradient-radial: radial-gradient(ellipse at top, oklch(0.13 0.004 286) 0%, oklch(0.09 0.003 286) 60%);
+  --gradient-card: linear-gradient(180deg, oklch(0.175 0.004 286) 0%, oklch(0.155 0.004 286) 100%);
+  --gradient-highlight: linear-gradient(135deg, oklch(0.21 0.005 286) 0%, oklch(0.165 0.004 286) 100%);
+  --shadow-elegant: 0 1px 0 0 oklch(1 0 0 / 0.03) inset, 0 10px 30px -18px oklch(0 0 0 / 0.55);
+
+  --grid-pattern: linear-gradient(oklch(1 0 0 / 0.018) 1px, transparent 1px),
+                  linear-gradient(90deg, oklch(1 0 0 / 0.018) 1px, transparent 1px);
+}
+
+/* Cantos 12px (rounded-xl) para os cards do kiosk, conforme spec premium */
+.tv-premium .rounded-2xl { border-radius: 0.875rem; }

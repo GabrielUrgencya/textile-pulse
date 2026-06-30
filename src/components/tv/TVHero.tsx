@@ -55,9 +55,9 @@ const ARC_LEN = (ARC_DEG / 360) * C;
 const ROT = 135;
 
 function arcColor(pct: number) {
-  if (pct >= 80) return "oklch(0.75 0.16 145)";
-  if (pct >= 50) return "oklch(0.80 0.15 75)";
-  return "oklch(0.65 0.20 25)";
+  if (pct >= 80) return "var(--success)";
+  if (pct >= 50) return "var(--warning)";
+  return "var(--destructive)";
 }
 
 export function TVHero({
@@ -80,12 +80,14 @@ export function TVHero({
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.8, ease: EASE }}
     >
-      <LisionCard className="h-full flex flex-col items-center justify-center p-4 relative overflow-hidden">
-        {/* Glow behind gauge */}
-        <div
-          className="absolute rounded-full blur-[60px] opacity-15 pointer-events-none"
-          style={{ width: 160, height: 160, background: color }}
-        />
+      <LisionCard className="h-full flex flex-col items-center justify-center p-4 relative">
+        {/* Glow behind gauge — camada própria que se auto-clipa (não clipa o card) */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+          <div
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[60px] opacity-15"
+            style={{ width: 160, height: 160, background: color }}
+          />
+        </div>
 
         <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60 font-medium mb-2 z-10">
           {activeShift ? `Produção (${activeShift})` : "Produção Hoje"}

@@ -121,7 +121,7 @@ export function TVKpis({
       suffix: "",
       sub: `meta: ${opsTarget}`,
       ring: opsTarget > 0 ? Math.min((activeOps / opsTarget) * 100, 100) : 0,
-      ringColor: activeOps >= opsTarget ? "oklch(0.75 0.16 145)" : "oklch(0.55 0 0)",
+      ringColor: activeOps >= opsTarget ? "var(--success)" : "oklch(0.55 0 0)",
       trend: undefined,
       warning: false,
     },
@@ -131,7 +131,7 @@ export function TVKpis({
       suffix: "",
       sub: `meta: ${lotsTarget}`,
       ring: lotsTarget > 0 ? Math.min((activeLots / lotsTarget) * 100, 100) : 0,
-      ringColor: activeLots >= lotsTarget ? "oklch(0.75 0.16 145)" : "oklch(0.55 0 0)",
+      ringColor: activeLots >= lotsTarget ? "var(--success)" : "oklch(0.55 0 0)",
       trend: undefined,
       warning: false,
     },
@@ -146,8 +146,8 @@ export function TVKpis({
           : 0,
       ringColor:
         defectRate <= defectTolerance
-          ? "oklch(0.75 0.16 145)"
-          : "oklch(0.65 0.20 25)",
+          ? "var(--success)"
+          : "var(--destructive)",
       trend: undefined,
       warning: defectRate > defectTolerance,
     },
@@ -169,10 +169,10 @@ export function TVKpis({
       ring: efficiency,
       ringColor:
         efficiency >= 80
-          ? "oklch(0.75 0.16 145)"
+          ? "var(--success)"
           : efficiency >= 50
-            ? "oklch(0.80 0.15 75)"
-            : "oklch(0.65 0.20 25)",
+            ? "var(--warning)"
+            : "var(--destructive)",
       trend: undefined,
       warning: efficiency < 50,
     },
@@ -184,17 +184,17 @@ export function TVKpis({
       ring: projPercent,
       ringColor:
         projPercent >= 80
-          ? "oklch(0.75 0.16 145)"
+          ? "var(--success)"
           : projPercent >= 50
-            ? "oklch(0.80 0.15 75)"
-            : "oklch(0.65 0.20 25)",
+            ? "var(--warning)"
+            : "var(--destructive)",
       trend: undefined,
       warning: projPercent < 50,
     },
   ];
 
   return (
-    <div className="grid grid-cols-3 grid-rows-2 gap-2 h-full">
+    <div className="grid grid-cols-3 grid-rows-2 gap-3 h-full">
       {kpis.map((kpi, i) => (
         <motion.div
           key={kpi.label}
@@ -206,23 +206,23 @@ export function TVKpis({
             className={`h-full ${kpi.warning ? "border-destructive/40" : ""}`}
             pad={false}
           >
-            <div className="p-3 h-full flex flex-col justify-center">
-              <div className="flex items-start justify-between">
+            <div className="p-5 h-full flex flex-col justify-center">
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-1">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground font-semibold mb-2 truncate">
                     {kpi.label}
                   </div>
-                  <div className="font-display text-[28px] font-semibold tabular-nums leading-none">
+                  <div className="font-display text-[clamp(2rem,2.8vw,2.75rem)] font-bold tabular-nums leading-[1.1] pb-[0.04em] whitespace-nowrap">
                     <AnimVal value={kpi.value} suffix={kpi.suffix} />
                   </div>
-                  <div className="flex items-center gap-1 mt-1.5">
+                  <div className="flex items-center gap-1 mt-1.5 min-w-0">
                     {kpi.trend !== undefined &&
                       (kpi.trend ? (
-                        <ArrowUp className="size-3 text-success" />
+                        <ArrowUp className="size-3 text-success shrink-0" />
                       ) : (
-                        <ArrowDown className="size-3 text-destructive" />
+                        <ArrowDown className="size-3 text-destructive shrink-0" />
                       ))}
-                    <span className="text-[10px] text-muted-foreground/50">
+                    <span className="text-[12px] text-muted-foreground/70 truncate">
                       {kpi.sub}
                     </span>
                   </div>

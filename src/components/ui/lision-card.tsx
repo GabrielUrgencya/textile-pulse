@@ -12,7 +12,9 @@ const LisionCard = React.forwardRef<HTMLDivElement, LisionCardProps>(
     <div
       ref={ref}
       className={cn(
-        "relative rounded-2xl bg-card-gradient border border-border/60 border-gradient shadow-elegant overflow-hidden",
+        // SEM overflow-hidden: nunca clipar conteúdo (números display). Decoração interna
+        // que precise clipar deve usar uma camada própria com overflow-hidden + rounded-[inherit].
+        "relative rounded-2xl bg-card-gradient border border-border/60 border-gradient shadow-elegant",
         pad && "p-5",
         className,
       )}
