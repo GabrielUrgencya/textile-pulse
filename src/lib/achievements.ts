@@ -32,6 +32,7 @@ async function computeSectorProgress(
     supabase.from("scan_events")
       .select("lot_id, lots!inner(quantity, production_orders!inner(reference, tenant_id))")
       .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(date)).lte("scanned_at", dayEnd(date)),
   ]);
 

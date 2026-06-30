@@ -166,15 +166,19 @@ export async function computeUserMeta(
 
   // Bipagens STAGE_IN do usuário: período (from..to), semana, mês + STAGE_OUT do dia
   const SEL = "scanned_at, lots!inner(quantity, production_orders!inner(reference))";
+  // EXCLUI OPs canceladas (status CANCELLED) da meta individual.
   const [dayRes, weekRes, monthRes, outRes] = await Promise.all([
     supabase.from("scan_events").select(SEL)
       .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", fromStart).lte("scanned_at", toEnd),
     supabase.from("scan_events").select(SEL)
       .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStartAbs(wkStart)).lte("scanned_at", dayEndAbs(to)),
     supabase.from("scan_events").select(SEL)
       .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStartAbs(moStart)).lte("scanned_at", dayEndAbs(to)),
     supabase.from("scan_events").select("lot_id, scanned_at")
       .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_OUT")

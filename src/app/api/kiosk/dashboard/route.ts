@@ -126,6 +126,7 @@ export async function GET(request: Request) {
       })
       .eq("lots.production_orders.tenant_id", tenantId)
       .eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", yesterdayStart)
       .lte("scanned_at", yesterdayEnd),
 
@@ -138,6 +139,7 @@ export async function GET(request: Request) {
       })
       .eq("lots.production_orders.tenant_id", tenantId)
       .eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", oneHourAgo),
 
     // Scans today grouped by hour (for peak rate calculation). Story 8.18: só STAGE_IN
@@ -146,6 +148,7 @@ export async function GET(request: Request) {
       .select("scanned_at, lots!inner(production_orders!inner(tenant_id))")
       .eq("lots.production_orders.tenant_id", tenantId)
       .eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", effectiveStart)
       .lte("scanned_at", effectiveEnd)
       .order("scanned_at", { ascending: true }),
@@ -160,11 +163,12 @@ export async function GET(request: Request) {
     // Active lots count (not in terminal status)
     supabase
       .from("lots")
-      .select("id, production_orders!inner(tenant_id)", {
+      .select("id, production_orders!inner(tenant_id, status)", {
         count: "exact",
         head: true,
       })
       .eq("production_orders.tenant_id", tenantId)
+      .neq("production_orders.status", "CANCELLED")
       .not("status", "in", "(CREATED,IN_STOCK,PARTIALLY_STOCKED)"),
 
     // Defects today (count)
@@ -184,8 +188,9 @@ export async function GET(request: Request) {
     // Lots with current stage (for lots_by_stage grouping)
     supabase
       .from("lots")
-      .select("current_stage_id, production_orders!inner(tenant_id)")
+      .select("current_stage_id, production_orders!inner(tenant_id, status)")
       .eq("production_orders.tenant_id", tenantId)
+      .neq("production_orders.status", "CANCELLED")
       .not("current_stage_id", "is", null)
       .not("status", "in", "(CREATED,IN_STOCK,PARTIALLY_STOCKED)"),
 
@@ -196,10 +201,11 @@ export async function GET(request: Request) {
         `
         id, barcode, entered_current_stage_at, status,
         stages!lots_current_stage_id_fkey ( display_name ),
-        production_orders!inner ( op_number, tenant_id )
+        production_orders!inner ( op_number, tenant_id, status )
       `
       )
       .eq("production_orders.tenant_id", tenantId)
+      .neq("production_orders.status", "CANCELLED")
       .lt("entered_current_stage_at", twoHoursAgo)
       .not("status", "in", "(CREATED,IN_STOCK,PARTIALLY_STOCKED)")
       .not("current_stage_id", "is", null),
@@ -232,6 +238,7 @@ export async function GET(request: Request) {
       `
       )
       .eq("lots.production_orders.tenant_id", tenantId)
+      .neq("lots.production_orders.status", "CANCELLED")
       .order("scanned_at", { ascending: false })
       .limit(10),
 
@@ -263,10 +270,11 @@ export async function GET(request: Request) {
         stages!inner ( name ),
         lots!inner (
           quantity,
-          production_orders!inner ( meta_coefficient, tenant_id )
+          production_orders!inner ( meta_coefficient, tenant_id, status )
         )
       `)
       .eq("lots.production_orders.tenant_id", tenantId)
+      .neq("lots.production_orders.status", "CANCELLED")
       .eq("stages.name", "ESTOQUE")
       .eq("event_type", "STAGE_IN")
       .gte("scanned_at", effectiveStart)
@@ -275,8 +283,9 @@ export async function GET(request: Request) {
     // Story 8.18: eventos IN/OUT (últimos 30d) p/ tempo médio por etapa na TV
     supabase
       .from("scan_events")
-      .select("lot_id, stage_id, event_type, scanned_at, lots!inner(production_orders!inner(tenant_id))")
+      .select("lot_id, stage_id, event_type, scanned_at, lots!inner(production_orders!inner(tenant_id, status))")
       .eq("lots.production_orders.tenant_id", tenantId)
+      .neq("lots.production_orders.status", "CANCELLED")
       .in("event_type", ["STAGE_IN", "STAGE_OUT"])
       .not("stage_id", "is", null)
       .gte("scanned_at", thirtyDaysAgo)

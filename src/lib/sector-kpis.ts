@@ -175,16 +175,20 @@ export async function computeSectorKpis(
     (coeffs || []).map((c) => [String(c.reference), Number(c.coefficient) || 1.0]),
   );
 
-  // Bipagens STAGE_IN do setor (dia, semana, mês, ontem) em paralelo
+  // Bipagens STAGE_IN do setor (dia, semana, mês, ontem) em paralelo.
+  // EXCLUI OPs canceladas (status CANCELLED) de toda agregação de produção.
   const [dayScans, weekScans, monthScans, outScans, ydayScans] = await Promise.all([
     supabase.from("scan_events").select(SCAN_SELECT_DAY)
       .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(today)).lte("scanned_at", dayEnd(today)),
     supabase.from("scan_events").select(SCAN_SELECT)
       .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(wkStart)).lte("scanned_at", dayEnd(today)),
     supabase.from("scan_events").select(SCAN_SELECT)
       .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(moStart)).lte("scanned_at", dayEnd(today)),
     // STAGE_OUT do dia p/ tempo médio por lote (pareia com IN do dia)
     supabase.from("scan_events").select("lot_id, scanned_at")
@@ -193,6 +197,7 @@ export async function computeSectorKpis(
     // ONTEM (mesmo cálculo) p/ a onda comparativa do gráfico
     supabase.from("scan_events").select(SCAN_SELECT)
       .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(yesterday)).lte("scanned_at", dayEnd(yesterday)),
   ]);
 

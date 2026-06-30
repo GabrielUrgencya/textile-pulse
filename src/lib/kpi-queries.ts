@@ -160,10 +160,11 @@ export async function computeKpis(
         lot_id,
         lots!inner (
           quantity,
-          production_orders!inner ( meta_coefficient )
+          production_orders!inner ( meta_coefficient, status )
         )
       `)
       .eq("event_type", "STAGE_IN")
+      .neq("lots.production_orders.status", "CANCELLED")
       .in("stage_id", estoqueIds)
       .gte("scanned_at", fromStart)
       .lte("scanned_at", toEnd);
