@@ -16,6 +16,7 @@ export function TVHeaderV2({
   onSelect,
   activeName,
   connected,
+  locked = false,
 }: {
   tokenName: string;
   sectors: SectorOption[];
@@ -23,6 +24,8 @@ export function TVHeaderV2({
   onSelect: (id: string | null) => void;
   activeName: string;
   connected: boolean;
+  /** Story 9.1 — TV travada num setor (via URL): esconde o seletor. */
+  locked?: boolean;
 }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -47,8 +50,11 @@ export function TVHeaderV2({
             <h1 className="font-display font-bold tracking-tight text-[clamp(1.75rem,3vw,2.5rem)] leading-tight truncate">
               {activeName}
             </h1>
-            {/* Dropdown elegante substitui a antiga fileira de pills */}
-            <TVSectorSelector sectors={sectors} activeId={activeId} onChange={onSelect} />
+            {/* Dropdown elegante substitui a antiga fileira de pills.
+                Story 9.1 — oculto quando a TV está travada num setor via URL. */}
+            {!locked && (
+              <TVSectorSelector sectors={sectors} activeId={activeId} onChange={onSelect} />
+            )}
           </div>
         </div>
 

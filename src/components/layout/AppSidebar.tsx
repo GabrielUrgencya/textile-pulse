@@ -50,8 +50,9 @@ const mainItems = [
   { title: "Retrabalho", url: "/rework", icon: <AlertTriangle className="size-4 shrink-0" />, permission: "rework:view" },
   { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" />, permission: "quality:view" },
   { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" />, permission: "factions:view" },
-  { title: "Ranking", url: "/ranking", icon: <Trophy className="size-4 shrink-0" />, permission: "factions:view", adminOnly: true },
-  { title: "Config. da TV", url: "/sector-dashboard", icon: <Tv className="size-4 shrink-0" />, permission: "settings:manage", adminOnly: true },
+  // Story 9.x — TV e Ranking agora são permissões dinâmicas (editáveis em Configurações → Permissões)
+  { title: "Ranking", url: "/ranking", icon: <Trophy className="size-4 shrink-0" />, permission: "ranking:view" },
+  { title: "Config. da TV", url: "/sector-dashboard", icon: <Tv className="size-4 shrink-0" />, permission: "tv:config" },
   { title: "Equipe", url: "/team", icon: <Users className="size-4 shrink-0" />, permission: "users:manage" },
 ];
 
@@ -68,8 +69,8 @@ export function AppSidebar() {
   const { profile } = useUserProfile();
   const { can: hasPerm, isLoading: permsLoading } = usePermissions();
 
-  // Story 8.17: abre a TV usando/gerando um token kiosk (ADMIN only)
-  const canOpenTv = profile?.role === "ADMIN";
+  // Story 8.17 + 9.x: abre a TV usando/gerando um token kiosk (permissão tv:view)
+  const canOpenTv = permsLoading ? profile?.role === "ADMIN" : hasPerm("tv:view");
 
   // Story 8.22: filter menu items by effective permissions
   // Story 8.33: itens adminOnly só aparecem para ADMIN

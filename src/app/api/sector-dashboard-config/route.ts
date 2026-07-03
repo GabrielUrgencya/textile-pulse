@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { dbError } from "@/lib/api-helpers";
 import { getSectorDashboardConfig, isValidLayout } from "@/lib/dashboard-config";
+import { can } from "@/lib/effective-permissions";
 import { publishTvConfig } from "@/lib/realtime";
 
 /**
@@ -32,9 +33,9 @@ export async function PUT(request: Request) {
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
 
-  // Admin-only (defesa no servidor, não só na UI)
-  if (user.app_metadata?.role !== "ADMIN") {
-    return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 });
+  // Story 9.x: permissão dinâmica tv:config (defesa no servidor, não só na UI)
+  if (!can(user, "tv:config")) {
+    return NextResponse.json({ error: "Forbidden: tv:config required" }, { status: 403 });
   }
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;

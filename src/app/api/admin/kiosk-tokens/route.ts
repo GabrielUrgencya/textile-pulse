@@ -13,9 +13,9 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
 
-  // AC2: Only ADMIN can create tokens
-  if (!can(user, "settings:manage")) {
-    return NextResponse.json({ error: "Forbidden: ADMIN role required" }, { status: 403 });
+  // AC2 + Story 9.x: quem gere configurações OU tem tv:view/tv:config pode criar tokens
+  if (!can(user, "settings:manage") && !can(user, "tv:view") && !can(user, "tv:config")) {
+    return NextResponse.json({ error: "Forbidden: tv:view required" }, { status: 403 });
   }
 
   const tenantId = user.app_metadata?.tenant_id;
@@ -57,9 +57,9 @@ export async function GET() {
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
 
-  // AC3: Only ADMIN can list tokens
-  if (!can(user, "settings:manage")) {
-    return NextResponse.json({ error: "Forbidden: ADMIN role required" }, { status: 403 });
+  // AC3 + Story 9.x: quem gere configurações OU tem tv:view/tv:config pode listar tokens
+  if (!can(user, "settings:manage") && !can(user, "tv:view") && !can(user, "tv:config")) {
+    return NextResponse.json({ error: "Forbidden: tv:view required" }, { status: 403 });
   }
 
   const { data: tokens, error } = await supabase

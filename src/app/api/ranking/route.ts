@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { dbError } from "@/lib/api-helpers";
+import { can } from "@/lib/effective-permissions";
 import { computeFactionRanking } from "@/lib/faction-ranking";
 
 /**
@@ -12,9 +13,9 @@ export async function GET() {
   if (auth.error) return auth.error;
   const { supabase, user } = auth;
 
-  // Story 8.33: módulo Ranking é ADMIN-only (defesa no servidor, não só na UI)
-  if (user.app_metadata?.role !== "ADMIN") {
-    return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 });
+  // Story 9.x: permissão dinâmica ranking:view (defesa no servidor, não só na UI)
+  if (!can(user, "ranking:view")) {
+    return NextResponse.json({ error: "Forbidden: ranking:view required" }, { status: 403 });
   }
 
   const tenantId = user.app_metadata?.tenant_id;

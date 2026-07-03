@@ -276,7 +276,7 @@ export async function GET(request: Request) {
       .eq("lots.production_orders.tenant_id", tenantId)
       .neq("lots.production_orders.status", "CANCELLED")
       .eq("stages.name", "ESTOQUE")
-      .eq("event_type", "STAGE_IN")
+      .eq("event_type", "STAGE_OUT")
       .gte("scanned_at", effectiveStart)
       .lte("scanned_at", effectiveEnd),
 

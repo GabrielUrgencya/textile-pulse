@@ -31,7 +31,7 @@ async function computeSectorProgress(
     supabase.from("reference_stage_targets").select("reference, coefficient").eq("stage_id", stageId),
     supabase.from("scan_events")
       .select("lot_id, lots!inner(quantity, production_orders!inner(reference, tenant_id))")
-      .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(date)).lte("scanned_at", dayEnd(date)),
   ]);

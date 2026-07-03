@@ -28,7 +28,10 @@ type Permission =
   | "quality:manage"
   | "factions:view"
   | "factions:manage"
-  | "reports:export";
+  | "reports:export"
+  | "tv:view"
+  | "tv:config"
+  | "ranking:view";
 
 /** Story 8.22: lista de todas as permissões (para a matriz do editor). */
 export const ALL_PERMISSIONS: Permission[] = [
@@ -40,6 +43,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "quality:view", "quality:manage",
   "factions:view", "factions:manage",
   "reports:export",
+  "tv:view", "tv:config", "ranking:view",
   "users:manage", "settings:manage",
 ];
 
@@ -66,6 +70,9 @@ export const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
     "factions:view",
     "factions:manage",
     "reports:export",
+    "tv:view",
+    "tv:config",
+    "ranking:view",
   ],
   GERENTE: [
     "dashboard:view",

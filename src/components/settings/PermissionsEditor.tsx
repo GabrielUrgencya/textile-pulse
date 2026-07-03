@@ -46,6 +46,10 @@ const PERMISSION_GROUPS: Record<string, { label: string; permissions: string[] }
     label: "Relatórios",
     permissions: ["reports:export"],
   },
+  tv: {
+    label: "TV & Ranking",
+    permissions: ["tv:view", "tv:config", "ranking:view"],
+  },
   admin: {
     label: "Administração",
     permissions: ["users:manage", "settings:manage"],
@@ -69,6 +73,9 @@ const PERMISSION_LABELS: Record<string, string> = {
   "factions:view": "Ver facções",
   "factions:manage": "Gerir facções",
   "reports:export": "Exportar relatórios",
+  "tv:view": "Abrir TV / Painel",
+  "tv:config": "Config. da TV (layout dos setores)",
+  "ranking:view": "Ver ranking de facções",
   "users:manage": "Gerir equipe",
   "settings:manage": "Gerir configurações",
 };

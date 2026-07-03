@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_UTC_OFFSET } from "@/lib/tz";
+import { effectiveDailyTarget, rolloverStart, localDay } from "@/lib/rollover";
 
 export interface PeriodProgress {
   target: number | null;
@@ -169,15 +170,15 @@ export async function computeUserMeta(
   // EXCLUI OPs canceladas (status CANCELLED) da meta individual.
   const [dayRes, weekRes, monthRes, outRes] = await Promise.all([
     supabase.from("scan_events").select(SEL)
-      .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", fromStart).lte("scanned_at", toEnd),
     supabase.from("scan_events").select(SEL)
-      .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStartAbs(wkStart)).lte("scanned_at", dayEndAbs(to)),
     supabase.from("scan_events").select(SEL)
-      .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStartAbs(moStart)).lte("scanned_at", dayEndAbs(to)),
     supabase.from("scan_events").select("lot_id, scanned_at")
@@ -187,8 +188,36 @@ export async function computeUserMeta(
 
   const dayRows = (dayRes.data || []) as ScanRow[];
   const progress = weightedSum(dayRows, coeffMap);
-  const percent = target && target > 0 ? Math.round((progress / target) * 1000) / 10 : 0;
-  const completed = !!(target && target > 0 && progress >= target);
+
+  // Story 9.3 — meta individual EFETIVA com rollover cumulativo (déficit anterior)
+  const yEnd = (() => {
+    const d = new Date(`${to}T12:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const { data: rollRows } = await supabase.from("scan_events")
+    .select("lot_id, scanned_at, lots!inner(quantity, production_orders!inner(reference))")
+    .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
+    .neq("lots.production_orders.status", "CANCELLED")
+    .gte("scanned_at", dayStartAbs(rolloverStart(to))).lte("scanned_at", dayEndAbs(yEnd));
+  const producedByDay = new Map<string, number>();
+  const seenLotDay = new Set<string>();
+  for (const r of (rollRows || []) as Array<{ lot_id: string; scanned_at: string; lots: unknown }>) {
+    const day = localDay(r.scanned_at);
+    const dk = `${day}|${r.lot_id}`;
+    if (seenLotDay.has(dk)) continue;
+    seenLotDay.add(dk);
+    const lotRel = r.lots;
+    const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as { quantity?: number | string | null; production_orders?: unknown } | null;
+    const qty = Number(lot?.quantity) || 0;
+    const poRel = lot?.production_orders;
+    const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { reference: string | null } | null;
+    producedByDay.set(day, (producedByDay.get(day) || 0) + qty * (coeffMap.get(po?.reference ?? "") ?? 1.0));
+  }
+  const effTarget = effectiveDailyTarget(target, producedByDay, to).effective;
+
+  const percent = effTarget && effTarget > 0 ? Math.round((progress / effTarget) * 1000) / 10 : 0;
+  const completed = !!(effTarget && effTarget > 0 && progress >= effTarget);
 
   // Metas de período (cadastradas ou derivadas da diária)
   const weeklyTarget = (st?.weekly_target as number) ?? null;
@@ -238,7 +267,7 @@ export async function computeUserMeta(
   return {
     stage_id: stageId,
     stage_name: stageName,
-    target,
+    target: effTarget || target,
     unit,
     progress,
     percent,

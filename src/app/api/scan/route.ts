@@ -94,6 +94,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Stage not found" }, { status: 404 });
   }
 
+  // Story 9.4 — enforcement de setor: operador só bipa nos setores atribuídos.
+  // ADMIN e GERENTE são isentos (bipam qualquer setor). Sem setor atribuído → bloqueia tudo.
+  const role = user.app_metadata?.role as string | undefined;
+  const isSectorExempt = role === "ADMIN" || role === "GERENTE";
+  if (!isSectorExempt) {
+    const { data: assigned } = await supabase
+      .from("user_stages")
+      .select("stage_id")
+      .eq("user_id", user.id);
+    const allowedStageIds = (assigned || []).map((r) => r.stage_id as string);
+    if (allowedStageIds.length === 0) {
+      return NextResponse.json(
+        { error: "Você ainda não tem setor atribuído. Peça ao gestor para configurar seu setor." },
+        { status: 403 },
+      );
+    }
+    if (!allowedStageIds.includes(stage_id)) {
+      return NextResponse.json(
+        { error: `Você não está atribuído a este setor (${stage.name}). Bipe apenas no(s) seu(s) setor(es).` },
+        { status: 403 },
+      );
+    }
+  }
+
   // Story 8.14: estado da etapa por contagem de IN/OUT
   // "IN aberto" = existe um STAGE_IN sem STAGE_OUT correspondente na mesma etapa.
   const { data: stageScans } = await supabase
@@ -197,20 +221,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Story 8.36: registra "meta batida" (colaborador + setor) de forma idempotente.
-    // BEST-EFFORT — nunca deve quebrar a bipagem.
-    const achTenantId = user.app_metadata?.tenant_id as string | undefined;
-    if (achTenantId) {
-      try {
-        await evaluateAndRecordAchievements(supabase, {
-          tenantId: achTenantId,
-          userId: user.id,
-          stageId: stage_id,
-        });
-      } catch (e) {
-        console.warn("[scan] achievements best-effort falhou:", (e as Error)?.message);
-      }
-    }
   }
 
   // Check if scan is out of order (warn but don't block)
@@ -243,6 +253,21 @@ export async function POST(request: Request) {
       const ms =
         new Date(scanEvent.scanned_at).getTime() - new Date(lastIn.scanned_at).getTime();
       stageDurationHours = Math.round((ms / 3_600_000) * 100) / 100;
+    }
+
+    // Story 9.2/8.36: a "meta batida" (colaborador + setor) é avaliada no FIM do
+    // lote (STAGE_OUT), pois a produção passa a contar na conclusão. BEST-EFFORT.
+    const achTenantId = user.app_metadata?.tenant_id as string | undefined;
+    if (achTenantId) {
+      try {
+        await evaluateAndRecordAchievements(supabase, {
+          tenantId: achTenantId,
+          userId: user.id,
+          stageId: stage_id,
+        });
+      } catch (e) {
+        console.warn("[scan] achievements best-effort falhou:", (e as Error)?.message);
+      }
     }
   }
 

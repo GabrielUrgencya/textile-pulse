@@ -5,7 +5,7 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard } from "@/components/ui/lision-card";
 import { useServerData } from "@/hooks/use-server-data";
-import { useUserProfile } from "@/hooks/use-user-profile";
+import { usePermissions } from "@/hooks/use-permissions";
 import { TVPodium } from "@/components/tv/TVPodium";
 
 interface RankEntry {
@@ -40,16 +40,16 @@ function FactionAvatar({ entry, size }: { entry: RankEntry; size: number }) {
 const MEDALS = ["🥇", "🥈", "🥉"];
 
 export default function RankingPage() {
-  const { profile, isLoading: profileLoading } = useUserProfile();
+  const { can: hasPerm, isLoading: permsLoading } = usePermissions();
   const { data, isLoading } = useServerData<RankEntry[]>("/api/ranking");
 
-  // AC7: guard ADMIN
-  if (!profileLoading && profile && profile.role !== "ADMIN") {
+  // Story 9.x: guard por permissão dinâmica (ranking:view) — editável na tela de permissões
+  if (!permsLoading && !hasPerm("ranking:view")) {
     return (
       <div className="max-w-[900px] mx-auto px-6 py-16 text-center">
         <Lock className="size-10 mx-auto text-muted-foreground/40 mb-3" />
         <h2 className="text-[18px] font-semibold">Acesso restrito</h2>
-        <p className="text-[13px] text-muted-foreground mt-1">Este módulo é exclusivo para administradores.</p>
+        <p className="text-[13px] text-muted-foreground mt-1">Peça ao administrador a permissão &quot;Ver ranking&quot;.</p>
       </div>
     );
   }

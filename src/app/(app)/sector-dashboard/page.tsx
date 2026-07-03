@@ -6,11 +6,12 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { Lock, Save, Eye, X, Loader2 } from "lucide-react";
+import { Lock, Save, Eye, X, Loader2, Tv } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard } from "@/components/ui/lision-card";
 import { useUserProfile } from "@/hooks/use-user-profile";
+import { usePermissions } from "@/hooks/use-permissions";
 import { BentoGrid, BentoCell } from "@/components/ui/bento-grid";
 import { WidgetRenderer } from "@/components/tv/widgets/WidgetRenderer";
 import { SectorSidebar, type BuilderStage } from "@/components/dashboard-builder/SectorSidebar";
@@ -53,6 +54,8 @@ const MOCK_KPIS: SectorKpis = {
 
 export default function SectorDashboardBuilderPage() {
   const { profile, isLoading: profileLoading } = useUserProfile();
+  const { can: hasPerm, isLoading: permsLoading } = usePermissions();
+  const tvAllowed = permsLoading ? profile?.role === "ADMIN" : hasPerm("tv:config");
 
   const [stages, setStages] = useState<BuilderStage[]>([]);
   const [stageId, setStageId] = useState<string | null>(null);
@@ -63,6 +66,7 @@ export default function SectorDashboardBuilderPage() {
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [openingTv, setOpeningTv] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const dirty = useMemo(() => JSON.stringify(layout) !== savedJson, [layout, savedJson]);
@@ -152,13 +156,51 @@ export default function SectorDashboardBuilderPage() {
     }
   }, [stageId, layout]);
 
-  // Guard admin
-  if (!profileLoading && profile && profile.role !== "ADMIN") {
+  // Story 9.1 — abre a TV travada NESTE setor (token de kiosk, sem sessão de admin)
+  const openSectorTv = useCallback(async () => {
+    if (!stageId || openingTv) return;
+    setOpeningTv(true);
+    try {
+      let token: string | null = null;
+      const listRes = await fetch("/api/admin/kiosk-tokens", { credentials: "same-origin" });
+      if (listRes.ok) {
+        const { tokens } = await listRes.json();
+        const active = (tokens || []).find(
+          (t: { token: string; scope: string; is_active: boolean }) => t.is_active && t.scope === "dashboard",
+        );
+        if (active) token = active.token;
+      }
+      if (!token) {
+        const createRes = await fetch("/api/admin/kiosk-tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ name: "TV Painel", scope: "dashboard" }),
+        });
+        if (createRes.ok) {
+          const { token: created } = await createRes.json();
+          token = created.token;
+        }
+      }
+      if (token) {
+        window.open(`/tv?token=${token}&stage=${stageId}`, "_blank", "noopener");
+      } else {
+        setFeedback("Não foi possível gerar o link da TV.");
+      }
+    } catch {
+      setFeedback("Erro ao abrir a TV do setor.");
+    } finally {
+      setOpeningTv(false);
+    }
+  }, [stageId, openingTv]);
+
+  // Story 9.x: guard por permissão dinâmica (tv:config) — editável na tela de permissões
+  if (!profileLoading && profile && !tvAllowed) {
     return (
       <div className="max-w-[900px] mx-auto px-6 py-16 text-center">
         <Lock className="size-10 mx-auto text-muted-foreground/40 mb-3" />
         <h2 className="text-[18px] font-semibold">Acesso restrito</h2>
-        <p className="text-[13px] text-muted-foreground mt-1">Este módulo é exclusivo para administradores.</p>
+        <p className="text-[13px] text-muted-foreground mt-1">Peça ao administrador a permissão &quot;Config. da TV&quot;.</p>
       </div>
     );
   }
@@ -171,6 +213,15 @@ export default function SectorDashboardBuilderPage() {
         <PageHeader eyebrow="Tela de TV" title="Configuração de KPIs por Setor" />
         <div className="flex items-center gap-2">
           {feedback && <span className="text-[12px] text-muted-foreground">{feedback}</span>}
+          <button
+            type="button"
+            onClick={openSectorTv}
+            disabled={!stageId || openingTv}
+            title="Abre a TV travada neste setor (sem precisar manter o admin logado)"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary/60 border border-border/50 hover:bg-secondary transition-colors text-[13px] disabled:opacity-50"
+          >
+            {openingTv ? <Loader2 className="size-4 animate-spin" /> : <Tv className="size-4" />} Abrir TV do setor
+          </button>
           <button
             type="button"
             onClick={() => setPreview(true)}

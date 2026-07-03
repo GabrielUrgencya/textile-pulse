@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_UTC_OFFSET, todayInTz } from "@/lib/tz";
+import { effectiveDailyTarget, rolloverStart, localDay } from "@/lib/rollover";
 
 /**
  * Épico Metas/KPIs por Setor — cálculo de KPIs de um setor (= Stage) para a TV.
@@ -175,39 +176,66 @@ export async function computeSectorKpis(
     (coeffs || []).map((c) => [String(c.reference), Number(c.coefficient) || 1.0]),
   );
 
-  // Bipagens STAGE_IN do setor (dia, semana, mês, ontem) em paralelo.
+  // Story 9.2 — PRODUÇÃO conta no FIM do lote (STAGE_OUT), não no início.
+  // Bipagens STAGE_OUT do setor (dia, semana, mês, ontem) = produção concluída.
+  // Uma query STAGE_IN do dia serve só para medir tempo (início dos lotes).
   // EXCLUI OPs canceladas (status CANCELLED) de toda agregação de produção.
-  const [dayScans, weekScans, monthScans, outScans, ydayScans] = await Promise.all([
+  const [dayScans, weekScans, monthScans, dayInScans, ydayScans] = await Promise.all([
     supabase.from("scan_events").select(SCAN_SELECT_DAY)
-      .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(today)).lte("scanned_at", dayEnd(today)),
     supabase.from("scan_events").select(SCAN_SELECT)
-      .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(wkStart)).lte("scanned_at", dayEnd(today)),
     supabase.from("scan_events").select(SCAN_SELECT)
-      .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(moStart)).lte("scanned_at", dayEnd(today)),
-    // STAGE_OUT do dia p/ tempo médio por lote (pareia com IN do dia)
+    // STAGE_IN do dia p/ tempo médio por lote (início) e "tempo decorrido"
     supabase.from("scan_events").select("lot_id, scanned_at")
-      .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
-      .gte("scanned_at", dayStart(today)).lte("scanned_at", dayEnd(today)),
-    // ONTEM (mesmo cálculo) p/ a onda comparativa do gráfico
-    supabase.from("scan_events").select(SCAN_SELECT)
       .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
+      .gte("scanned_at", dayStart(today)).lte("scanned_at", dayEnd(today)),
+    // ONTEM (produção concluída) p/ a onda comparativa do gráfico
+    supabase.from("scan_events").select(SCAN_SELECT)
+      .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(yesterday)).lte("scanned_at", dayEnd(yesterday)),
   ]);
 
+  // dayRows = STAGE_OUT (produção do dia); dayInRows = STAGE_IN (início, p/ tempo)
   const dayRows = (dayScans.data || []) as DayScanRow[];
+  const dayInRows = (dayInScans.data || []) as Array<{ lot_id: string; scanned_at: string }>;
+
+  // Story 9.3 — meta efetiva com rollover cumulativo (déficit dos dias úteis anteriores).
+  const { data: rolloverScans } = await supabase.from("scan_events").select(SCAN_SELECT)
+    .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
+    .neq("lots.production_orders.status", "CANCELLED")
+    .gte("scanned_at", dayStart(rolloverStart(today))).lte("scanned_at", dayEnd(yesterday));
+  const producedByDay = new Map<string, number>();
+  const seenLotDay = new Set<string>();
+  for (const r of (rolloverScans || []) as ScanLotRow[]) {
+    const day = localDay(r.scanned_at);
+    const dedupe = `${day}|${r.lot_id}`;
+    if (seenLotDay.has(dedupe)) continue;
+    seenLotDay.add(dedupe);
+    const lotRel = r.lots;
+    const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as { quantity?: number | string | null; production_orders?: unknown } | null;
+    const qty = Number(lot?.quantity) || 0;
+    const poRel = lot?.production_orders;
+    const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { reference: string | null } | null;
+    producedByDay.set(day, (producedByDay.get(day) || 0) + qty * (coeffMap.get(po?.reference ?? "") ?? 1.0));
+  }
+  const rollover = effectiveDailyTarget(dailyTarget, producedByDay, today);
+  const effectiveTarget = rollover.effective;
   const produced = weightedSum(dayRows, coeffMap);
   const weeklyProgress = weightedSum((weekScans.data || []) as ScanLotRow[], coeffMap);
   const monthlyProgress = weightedSum((monthScans.data || []) as ScanLotRow[], coeffMap);
 
-  const distanceDaily = dailyTarget && dailyTarget > 0 ? Math.max(0, Math.round((dailyTarget - produced) * 10) / 10) : 0;
-  const percent = dailyTarget && dailyTarget > 0 ? Math.round((produced / dailyTarget) * 1000) / 10 : 0;
+  // Story 9.3 — distância/percentual usam a meta EFETIVA (com rollover)
+  const distanceDaily = effectiveTarget && effectiveTarget > 0 ? Math.max(0, Math.round((effectiveTarget - produced) * 10) / 10) : 0;
+  const percent = effectiveTarget && effectiveTarget > 0 ? Math.round((produced / effectiveTarget) * 1000) / 10 : 0;
 
   // Metas de período (cadastradas ou derivadas)
   const weeklyTarget = (st?.weekly_target as number) ?? null;
@@ -220,23 +248,23 @@ export async function computeSectorKpis(
     ? { target: monthlyTarget, progress: monthlyProgress, estimated: false }
     : { target: dailyTarget != null ? dailyTarget * monthDays : null, progress: monthlyProgress, estimated: true };
 
-  // Tempo decorrido desde a 1ª bipagem do dia
+  // Tempo decorrido desde a 1ª bipagem (início) do dia
   let elapsedMin: number | null = null;
-  if (dayRows.length > 0) {
-    const firstAt = dayRows.reduce((min, r) => (r.scanned_at < min ? r.scanned_at : min), dayRows[0].scanned_at);
+  if (dayInRows.length > 0) {
+    const firstAt = dayInRows.reduce((min, r) => (r.scanned_at < min ? r.scanned_at : min), dayInRows[0].scanned_at);
     elapsedMin = Math.max(0, Math.round((Date.now() - new Date(firstAt).getTime()) / 60000));
   }
 
-  // Tempo médio por lote (pareia 1º IN do dia com 1º OUT do dia por lote)
+  // Tempo médio por lote (pareia 1º IN do dia [início] com 1º OUT do dia [fim] por lote)
   let avgPerLotMin: number | null = null;
   const outByLot = new Map<string, string>();
-  for (const o of (outScans.data || []) as Array<{ lot_id: string; scanned_at: string }>) {
+  for (const o of dayRows) {
     if (!outByLot.has(o.lot_id) || o.scanned_at < (outByLot.get(o.lot_id) as string)) {
       outByLot.set(o.lot_id, o.scanned_at);
     }
   }
   const inByLot = new Map<string, string>();
-  for (const r of dayRows) {
+  for (const r of dayInRows) {
     if (!inByLot.has(r.lot_id) || r.scanned_at < (inByLot.get(r.lot_id) as string)) {
       inByLot.set(r.lot_id, r.scanned_at);
     }
@@ -332,7 +360,7 @@ export async function computeSectorKpis(
     stage_name: stageName,
     unit,
     produced,
-    daily_target: dailyTarget,
+    daily_target: effectiveTarget || dailyTarget,
     distance_daily: distanceDaily,
     percent,
     weekly,

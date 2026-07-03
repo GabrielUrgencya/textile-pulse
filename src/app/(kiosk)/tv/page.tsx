@@ -110,26 +110,33 @@ function TVDashboardContent() {
     return createClient(url, key);
   }, []);
 
+  // Story 9.1 — TV travada num setor via URL (?stage=<stageId>). Sobrepõe
+  // dropdown/localStorage: cada setor tem sua própria URL de TV standalone.
+  const lockedStage = searchParams.get("stage");
+  const isLocked = !!lockedStage;
+
   // Story 8.34 — setor selecionado (persistido por token; null = Visão Geral)
-  const [sectorId, setSectorId] = useState<string | null>(null);
+  const [sectorId, setSectorId] = useState<string | null>(lockedStage);
   const sectorKey = token ? `tv_sector_${token}` : "tv_sector";
 
-  // Carrega a seleção persistida no mount (não reseta no reload)
+  // Carrega a seleção persistida no mount (não reseta no reload).
+  // No modo travado (URL) a URL manda — não lê/grava localStorage.
   useEffect(() => {
-    if (!token) return;
+    if (!token || isLocked) return;
     try {
       const saved = localStorage.getItem(`tv_sector_${token}`);
       if (saved) setSectorId(saved);
     } catch { /* ignore */ }
-  }, [token]);
+  }, [token, isLocked]);
 
   const changeSector = useCallback((id: string | null) => {
+    if (isLocked) return; // travado por URL — ignora troca manual
     setSectorId(id);
     try {
       if (id) localStorage.setItem(sectorKey, id);
       else localStorage.removeItem(sectorKey);
     } catch { /* ignore */ }
-  }, [sectorKey]);
+  }, [sectorKey, isLocked]);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -228,6 +235,7 @@ function TVDashboardContent() {
         onSelect={changeSector}
         activeName={activeSector ? activeSector.name : "Visão Geral"}
         connected={connected}
+        locked={isLocked}
       />
 
       {/* Dashboard content */}
