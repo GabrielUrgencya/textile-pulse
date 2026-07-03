@@ -13,18 +13,24 @@ function getClientIp(request: Request): string {
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
 
-  if (!body?.tenantId || !body?.pin) {
+  // HOTFIX multi-tenant: aceita tenantId OU tenantSlug (resolvido server-side).
+  // Antes o front dependia de NEXT_PUBLIC_DEFAULT_TENANT_ID (env de build) —
+  // tenant novo em produção ficava inacessível sem redeploy.
+  if (!body?.pin || (!body?.tenantId && !body?.tenantSlug)) {
     return NextResponse.json(
-      { error: "tenantId and pin are required" },
+      { error: "pin and tenantId or tenantSlug are required" },
       { status: 400 }
     );
   }
 
-  const { tenantId, pin } = body as { tenantId: string; pin: string };
-  const ip = getClientIp(request);
-  const key = rateLimitKey(ip, tenantId);
+  const { pin, tenantSlug } = body as { pin: string; tenantId?: string; tenantSlug?: string };
+  let tenantId = body.tenantId as string | undefined;
 
-  // Rate limit check
+  // Rate limit ANTES de resolver o slug (chave = identificador bruto):
+  // evita probing ilimitado de slugs e mantém 1 chave por (ip, tenant).
+  const ip = getClientIp(request);
+  const key = rateLimitKey(ip, tenantId ?? tenantSlug ?? "unknown");
+
   const limit = checkRateLimit(key);
   if (!limit.allowed) {
     return NextResponse.json(
@@ -40,6 +46,25 @@ export async function POST(request: Request) {
   }
 
   const headers = { "X-RateLimit-Remaining": String(limit.remaining) };
+
+  if (!tenantId && tenantSlug) {
+    const { data: tenant } = await supabaseAdmin
+      .from("tenants")
+      .select("id")
+      .eq("slug", tenantSlug)
+      .eq("is_active", true)
+      .maybeSingle();
+    // 401 genérico COM os mesmos headers do 401 de PIN errado —
+    // resposta indistinguível (não vaza existência de tenant).
+    if (!tenant) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401, headers });
+    }
+    tenantId = tenant.id as string;
+  }
+
+  if (!tenantId) {
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401, headers });
+  }
 
   // Fetch active profiles with PIN for this tenant
   const { data: profiles, error: fetchError } = await supabaseAdmin

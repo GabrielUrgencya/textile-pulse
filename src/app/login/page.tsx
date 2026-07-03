@@ -1,14 +1,18 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { KeyRound, Mail, ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 
 type AuthMode = "choose" | "email" | "pin";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  // HOTFIX multi-tenant: /login?tenant=<slug> define o tenant sem depender do
+  // env de build (NEXT_PUBLIC_DEFAULT_TENANT_ID) — sem redeploy por tenant.
+  const searchParams = useSearchParams();
+  const tenantSlug = searchParams.get("tenant");
   const [mode, setMode] = useState<AuthMode>("choose");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -63,7 +67,10 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId, pin: currentPin }),
+        // ?tenant=<slug> tem prioridade; sem ele, mantém o tenant default do env
+        body: JSON.stringify(
+          tenantSlug ? { tenantSlug, pin: currentPin } : { tenantId, pin: currentPin },
+        ),
       });
 
       if (!res.ok) {
@@ -336,5 +343,20 @@ function ErrorBanner({ message }: { message: string }) {
       <AlertTriangle className="size-3.5 mt-0.5 text-destructive shrink-0" />
       <span className="text-foreground/80">{message}</span>
     </motion.div>
+  );
+}
+
+// useSearchParams exige Suspense boundary (mesmo padrão da TV)
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen bg-background text-muted-foreground text-[14px]">
+          Carregando...
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }
