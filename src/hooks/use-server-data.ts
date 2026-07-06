@@ -5,6 +5,10 @@ import { showToast } from "@/lib/toast";
 
 interface UseServerDataOptions {
   enabled?: boolean;
+  /** Se definido, refaz o fetch a cada N ms em background (sem skeleton nem toast). */
+  refreshMs?: number;
+  /** Refaz o fetch (silencioso) quando a aba volta ao foco. */
+  revalidateOnFocus?: boolean;
 }
 
 interface UseServerDataReturn<T> {
@@ -23,8 +27,11 @@ export function useServerData<T>(
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const enabled = options?.enabled ?? true;
+  const refreshMs = options?.refreshMs;
+  const revalidateOnFocus = options?.revalidateOnFocus ?? false;
 
-  const fetchData = useCallback(async () => {
+  // silent=true: revalidação em background — não mostra skeleton nem toast.
+  const fetchData = useCallback(async (silent = false) => {
     if (!url || !enabled) {
       setIsLoading(false);
       return;
@@ -34,7 +41,7 @@ export function useServerData<T>(
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setIsLoading(true);
+    if (!silent) setIsLoading(true);
     setError(null);
 
     try {
@@ -57,7 +64,7 @@ export function useServerData<T>(
       const message =
         err instanceof Error ? err.message : "Erro de conexao";
       setError(message);
-      showToast("error", message);
+      if (!silent) showToast("error", message);
     } finally {
       if (!controller.signal.aborted) {
         setIsLoading(false);
@@ -72,5 +79,22 @@ export function useServerData<T>(
     };
   }, [fetchData]);
 
-  return { data, isLoading, error, refetch: fetchData };
+  // Polling em background (tempo real).
+  useEffect(() => {
+    if (!url || !enabled || !refreshMs) return;
+    const t = setInterval(() => fetchData(true), refreshMs);
+    return () => clearInterval(t);
+  }, [url, enabled, refreshMs, fetchData]);
+
+  // Revalidação ao focar a aba.
+  useEffect(() => {
+    if (!url || !enabled || !revalidateOnFocus) return;
+    const onFocus = () => fetchData(true);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [url, enabled, revalidateOnFocus, fetchData]);
+
+  const publicRefetch = useCallback(() => fetchData(false), [fetchData]);
+
+  return { data, isLoading, error, refetch: publicRefetch };
 }

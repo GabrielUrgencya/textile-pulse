@@ -1,11 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_UTC_OFFSET } from "@/lib/tz";
 import { effectiveDailyTarget, rolloverStart, localDay } from "@/lib/rollover";
+import { getActiveDeficits, accumulatedGoal } from "@/lib/goal-deficits";
 
 export interface PeriodProgress {
   target: number | null;
   progress: number;
   estimated: boolean; // true = derivada da diária (não cadastrada)
+}
+
+/** Déficits acumulados vigentes (épico Metas) — alimenta o ticker. */
+export interface UserDeficits {
+  daily: number;
+  weekly: number;
+  monthly: number;
 }
 
 export interface UserMeta {
@@ -21,6 +29,8 @@ export interface UserMeta {
   elapsed_since_first_scan_min: number | null;
   avg_per_lot_min: number | null;
   completed: boolean;
+  /** Déficits acumulados vigentes por granularidade (0 = em dia). */
+  deficits: UserDeficits;
 }
 
 const BUSINESS_DAYS_PER_WEEK = 5;
@@ -214,22 +224,37 @@ export async function computeUserMeta(
     const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { reference: string | null } | null;
     producedByDay.set(day, (producedByDay.get(day) || 0) + qty * (coeffMap.get(po?.reference ?? "") ?? 1.0));
   }
-  const effTarget = effectiveDailyTarget(target, producedByDay, to).effective;
+  // Épico Metas: déficit PERSISTIDO (goal_deficits) prevalece; o rollover
+  // dinâmico (Story 9.3) permanece como fallback quando não há fechamento —
+  // transição suave até o cron popular a tabela.
+  const persisted = await getActiveDeficits(supabase, userId, to);
+  const dynDaily = effectiveDailyTarget(target, producedByDay, to);
+  const effTarget =
+    persisted.daily !== null && target != null && target > 0
+      ? accumulatedGoal(target, persisted.daily)
+      : dynDaily.effective;
+  const dailyDeficit = persisted.daily !== null ? persisted.daily : dynDaily.backlog;
 
   const percent = effTarget && effTarget > 0 ? Math.round((progress / effTarget) * 1000) / 10 : 0;
   const completed = !!(effTarget && effTarget > 0 && progress >= effTarget);
 
-  // Metas de período (cadastradas ou derivadas da diária)
-  const weeklyTarget = (st?.weekly_target as number) ?? null;
-  const monthlyTarget = (st?.monthly_target as number) ?? null;
+  // Metas de período (cadastradas ou derivadas da diária) + déficit acumulado
+  const weeklyBase = (st?.weekly_target as number) ?? (target != null ? target * BUSINESS_DAYS_PER_WEEK : null);
+  const monthlyBase = (st?.monthly_target as number) ?? (target != null ? target * businessDaysBetween(moStart, moEnd) : null);
+  const weeklyEstimated = (st?.weekly_target as number) == null;
+  const monthlyEstimated = (st?.monthly_target as number) == null;
   const weeklyProgress = weightedSum((weekRes.data || []) as ScanRow[], coeffMap);
   const monthlyProgress = weightedSum((monthRes.data || []) as ScanRow[], coeffMap);
-  const weekly: PeriodProgress = weeklyTarget != null
-    ? { target: weeklyTarget, progress: weeklyProgress, estimated: false }
-    : { target: target != null ? target * BUSINESS_DAYS_PER_WEEK : null, progress: weeklyProgress, estimated: true };
-  const monthly: PeriodProgress = monthlyTarget != null
-    ? { target: monthlyTarget, progress: monthlyProgress, estimated: false }
-    : { target: target != null ? target * businessDaysBetween(moStart, moEnd) : null, progress: monthlyProgress, estimated: true };
+  const weekly: PeriodProgress = {
+    target: weeklyBase != null ? accumulatedGoal(weeklyBase, persisted.weekly) : null,
+    progress: weeklyProgress,
+    estimated: weeklyEstimated,
+  };
+  const monthly: PeriodProgress = {
+    target: monthlyBase != null ? accumulatedGoal(monthlyBase, persisted.monthly) : null,
+    progress: monthlyProgress,
+    estimated: monthlyEstimated,
+  };
 
   // Tempo decorrido desde a 1ª bipagem do dia
   let elapsedMin: number | null = null;
@@ -276,5 +301,10 @@ export async function computeUserMeta(
     elapsed_since_first_scan_min: elapsedMin,
     avg_per_lot_min: avgPerLotMin,
     completed,
+    deficits: {
+      daily: Math.round(dailyDeficit || 0),
+      weekly: Math.round(persisted.weekly ?? 0),
+      monthly: Math.round(persisted.monthly ?? 0),
+    },
   };
 }

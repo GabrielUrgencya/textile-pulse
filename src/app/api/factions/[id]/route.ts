@@ -66,17 +66,22 @@ export async function GET(
   const pricePerPiece = Number(faction.price_per_piece) || 0;
   const totalPieces = allShipments.reduce((sum, s) => sum + (s.total_quantity || 0), 0);
   const grossValue = totalPieces * pricePerPiece;
-  // TODO: Implement deductions logic when payment/deduction table exists
-  const deductions = 0;
-  const netValue = grossValue - deductions;
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  // Pagamento com liberação parcial: soma dos valores por remessa.
+  const totalReleased = r2(allShipments.reduce((sum, s) => sum + Number(s.released_value || 0), 0));
+  const totalRetained = r2(allShipments.reduce((sum, s) => sum + Number(s.retained_value || 0), 0));
+  const totalPaid = r2(allShipments.reduce((sum, s) => sum + (s.payment_status === "PAID" ? Number(s.released_value || 0) : 0), 0));
+  const deductions = r2(allShipments.reduce((sum, s) => sum + Number(s.deduction_value || 0), 0));
+  const netValue = totalReleased;
 
   // UX1 FIX: Calculate delivery and quality scores
   const completedShipments = allShipments.filter((s) =>
     ["RECEIVED", "RETURNED"].includes(s.status),
   );
   const onTimeReturns = completedShipments.filter((s) => {
-    if (!s.received_at || !s.expected_return) return false;
-    return new Date(s.received_at) <= new Date(s.expected_return);
+    const prazo = s.expected_return || s.expected_return_at;
+    if (!s.actual_return_at || !prazo) return false;
+    return new Date(s.actual_return_at) <= new Date(prazo);
   });
   const deliveryScore = completedShipments.length > 0
     ? Math.round((onTimeReturns.length / completedShipments.length) * 100)
@@ -95,6 +100,9 @@ export async function GET(
         grossValue,
         deductions,
         netValue,
+        totalReleased,
+        totalRetained,
+        totalPaid,
       },
       scores: {
         deliveryScore,

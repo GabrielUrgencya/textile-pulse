@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import {
   InputOTP,
   InputOTPGroup,
@@ -56,13 +57,15 @@ export function DeliveryCodeInput({
 
   const shakeClass = status === "error" ? "animate-shake" : "";
 
+  const isError = status === "error" || status === "blocked";
+
   return (
     <div className="flex flex-col items-center gap-4">
-      <p className="text-sm font-medium text-muted-foreground">
-        Digite o código de entrega para confirmar recebimento
-      </p>
-
-      <div className={`${shakeClass} ${borderClass} rounded-lg p-1`}>
+      <div
+        role="group"
+        aria-label="Código de entrega de 6 dígitos"
+        className={`${shakeClass} ${borderClass} rounded-lg p-1 transition-shadow`}
+      >
         <InputOTP
           maxLength={6}
           pattern={REGEXP_ONLY_DIGITS}
@@ -85,20 +88,27 @@ export function DeliveryCodeInput({
         </InputOTP>
       </div>
 
-      {status === "error" && (
-        <p className="text-sm font-medium text-destructive">{errorMessage}</p>
-      )}
-      {status === "blocked" && (
-        <p className="text-sm font-medium text-destructive">{errorMessage}</p>
-      )}
-      {status === "success" && (
-        <p className="text-sm font-medium text-green-500">
-          Recebimento confirmado!
-        </p>
-      )}
-      {status === "loading" && (
-        <p className="text-sm text-muted-foreground">Verificando...</p>
-      )}
+      {/* Feedback de estado — anunciado por leitores de tela */}
+      <div aria-live="polite" className="min-h-[20px] text-center">
+        {isError && (
+          <p className="flex items-center justify-center gap-1.5 text-sm font-medium text-destructive">
+            <AlertCircle className="size-4 shrink-0" />
+            {errorMessage}
+          </p>
+        )}
+        {status === "success" && (
+          <p className="flex items-center justify-center gap-1.5 text-sm font-medium text-success">
+            <CheckCircle2 className="size-4 shrink-0" />
+            Recebimento confirmado!
+          </p>
+        )}
+        {status === "loading" && (
+          <p className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
+            <Loader2 className="size-4 shrink-0 animate-spin" />
+            Verificando...
+          </p>
+        )}
+      </div>
     </div>
   );
 }

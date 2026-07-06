@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+// F4 (redesign mobile): navegação final com 5 itens (diretriz máx. 5).
+// "Defeitos" saiu do nav — acesso via card no Início, detalhe da remessa e avisos.
 const NAV_ITEMS = [
   { href: "/portal/dashboard", label: "Início", icon: HomeIcon },
   { href: "/portal/shipments", label: "Remessas", icon: PackageIcon },
-  { href: "/portal/defects", label: "Defeitos", icon: AlertIcon },
   { href: "/portal/financial", label: "Pagamentos", icon: WalletIcon },
+  { href: "/portal/chat", label: "Mensagens", icon: ChatIcon },
   { href: "/portal/notifications", label: "Avisos", icon: BellIcon },
 ];
 
@@ -22,6 +24,26 @@ export default function AuthenticatedPortalLayout({
   const [factionName, setFactionName] = useState("");
   const [isDark, setIsDark] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
+
+  // Badges: avisos não lidos + mensagens não lidas (polling 10s)
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      fetch("/api/faction/notifications?limit=1")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => { if (alive && json) setUnreadCount(json.unreadCount ?? 0); })
+        .catch(() => {});
+      fetch("/api/faction/chat/unread")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => { if (alive && json) setChatUnread(json.unreadCount ?? 0); })
+        .catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 10000);
+    return () => { alive = false; clearInterval(t); };
+  }, [pathname]);
 
   useEffect(() => {
     fetch("/api/faction/summary")
@@ -127,13 +149,25 @@ export default function AuthenticatedPortalLayout({
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center justify-center gap-0.5 min-w-[64px] min-h-[44px] text-[11px] transition-colors ${
+                className={`relative flex flex-col items-center justify-center gap-0.5 min-w-[64px] min-h-[48px] text-[11px] transition-colors ${
                   isActive
                     ? "text-foreground font-medium"
                     : "text-muted-foreground"
                 }`}
               >
-                <item.icon className="h-5 w-5" filled={isActive} />
+                <span className="relative">
+                  <item.icon className="h-5 w-5" filled={isActive} />
+                  {item.href === "/portal/notifications" && unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                  {item.href === "/portal/chat" && chatUnread > 0 && (
+                    <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+                      {chatUnread > 9 ? "9+" : chatUnread}
+                    </span>
+                  )}
+                </span>
                 <span>{item.label}</span>
               </Link>
             );
@@ -171,18 +205,6 @@ function PackageIcon({ className, filled }: { className?: string; filled?: boole
   );
 }
 
-function AlertIcon({ className, filled }: { className?: string; filled?: boolean }) {
-  return filled ? (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.401 3.003ZM12 8.25a.75.75 0 0 1 .75.75v3.75a.75.75 0 0 1-1.5 0V9a.75.75 0 0 1 .75-.75Zm0 8.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clipRule="evenodd" />
-    </svg>
-  ) : (
-    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-    </svg>
-  );
-}
-
 function WalletIcon({ className, filled }: { className?: string; filled?: boolean }) {
   return filled ? (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -203,6 +225,18 @@ function BellIcon({ className, filled }: { className?: string; filled?: boolean 
   ) : (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+    </svg>
+  );
+}
+
+function ChatIcon({ className, filled }: { className?: string; filled?: boolean }) {
+  return filled ? (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path fillRule="evenodd" d="M4.848 2.771A49.144 49.144 0 0 1 12 2.25c2.43 0 4.817.178 7.152.52 1.978.292 3.348 2.024 3.348 3.97v6.02c0 1.946-1.37 3.678-3.348 3.97a48.901 48.901 0 0 1-3.476.383.39.39 0 0 0-.297.17l-2.755 4.133a.75.75 0 0 1-1.248 0l-2.755-4.133a.39.39 0 0 0-.297-.17 48.9 48.9 0 0 1-3.476-.384c-1.978-.29-3.348-2.024-3.348-3.97V6.741c0-1.946 1.37-3.68 3.348-3.97Z" clipRule="evenodd" />
+    </svg>
+  ) : (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
     </svg>
   );
 }

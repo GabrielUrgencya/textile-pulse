@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { PullToRefresh } from "@/components/portal/PullToRefresh";
 
 interface Notification {
   id: string;
@@ -10,21 +12,47 @@ interface Notification {
   severity: string;
   read_at: string | null;
   created_at: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+}
+
+/** Rota de contexto ao clicar na notificação (informativa; sem ações embutidas). */
+function contextRoute(n: Notification): string | null {
+  if (n.entity_type === "shipment" && n.entity_id) return `/portal/shipments/${n.entity_id}`;
+  if (n.entity_type === "financial") return "/portal/financial";
+  if (n.entity_type === "defect") return "/portal/defects";
+  return null;
 }
 
 export default function PortalNotificationsPage() {
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const refresh = useCallback(
+    () =>
+      fetch("/api/faction/notifications")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => { if (data) setNotifications(data.data || []); })
+        .catch(() => {}),
+    [],
+  );
+
   useEffect(() => {
-    fetch("/api/faction/notifications")
-      .then((r) => {
-        if (!r.ok) throw new Error("Fetch failed");
-        return r.json();
-      })
-      .then((data) => setNotifications(data.data || []))
-      .catch(() => setNotifications([]))
-      .finally(() => setLoading(false));
+    let alive = true;
+    const load = (initial: boolean) =>
+      fetch("/api/faction/notifications")
+        .then((r) => {
+          if (!r.ok) throw new Error("Fetch failed");
+          return r.json();
+        })
+        .then((data) => { if (alive) setNotifications(data.data || []); })
+        .catch(() => { if (alive && initial) setNotifications([]); })
+        .finally(() => { if (alive && initial) setLoading(false); });
+
+    load(true);
+    const t = setInterval(() => load(false), 10000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
 
   async function markAsRead(ids: string[]) {
@@ -68,6 +96,7 @@ export default function PortalNotificationsPage() {
   };
 
   return (
+    <PullToRefresh onRefresh={refresh}>
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-[20px] font-semibold">
@@ -117,7 +146,11 @@ export default function PortalNotificationsPage() {
           {notifications.map((n) => (
             <button
               key={n.id}
-              onClick={() => !n.read_at && markAsRead([n.id])}
+              onClick={() => {
+                if (!n.read_at) markAsRead([n.id]);
+                const route = contextRoute(n);
+                if (route) router.push(route);
+              }}
               className={`w-full rounded-lg border p-4 text-left transition-colors ${
                 SEVERITY_STYLES[n.severity] || SEVERITY_STYLES.INFO
               } ${!n.read_at ? "ring-1 ring-primary/20" : "opacity-70"}`}
@@ -149,6 +182,7 @@ export default function PortalNotificationsPage() {
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }
 

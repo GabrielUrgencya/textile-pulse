@@ -89,6 +89,8 @@ export interface MyMeta {
   elapsed_since_first_scan_min: number | null;
   avg_per_lot_min: number | null;
   completed: boolean;
+  /** Épico Metas — déficits acumulados vigentes (alimenta o ticker). */
+  deficits?: { daily: number; weekly: number; monthly: number };
 }
 
 export interface DashboardData {

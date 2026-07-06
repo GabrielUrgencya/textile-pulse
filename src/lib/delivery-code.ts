@@ -10,17 +10,25 @@ const MAX_GENERATION_RETRIES = 3;
  * Retries up to 3 times to avoid collision with active shipments.
  */
 export async function generateUniqueDeliveryCode(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  column: "delivery_code" | "return_code" = "delivery_code"
 ): Promise<{ code: string; expiresAt: string }> {
+  // Statuses em que um código ainda pode estar "ativo" (para evitar colisão).
+  // Envio: PREPARING/SENT. Devolução: RETURN_DECLARED.
+  const activeStatuses =
+    column === "return_code"
+      ? ["RETURN_DECLARED"]
+      : ["PREPARING", "SENT"];
+
   for (let i = 0; i < MAX_GENERATION_RETRIES; i++) {
     const code = String(randomInt(100000, 999999));
 
-    // Check uniqueness among active shipments (PREPARING or SENT)
+    // Check uniqueness among active shipments for the given code column
     const { data: existing } = await supabase
       .from("faction_shipments")
       .select("id")
-      .eq("delivery_code", code)
-      .in("status", ["PREPARING", "SENT"])
+      .eq(column, code)
+      .in("status", activeStatuses)
       .limit(1);
 
     if (!existing || existing.length === 0) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { getShipmentStatusMeta } from "@/lib/shipment-status";
 
 const STEPS = [
   { key: "PENDING", label: "Preparando" },
@@ -8,14 +9,6 @@ const STEPS = [
   { key: "RECEIVED", label: "Com Facção" },
   { key: "RETURNED", label: "Devolvido" },
 ] as const;
-
-const STATUS_ORDER: Record<string, number> = {
-  PENDING: 0,
-  SENT: 1,
-  RECEIVED: 2,
-  LATE: 2, // same position as RECEIVED (still with faction)
-  RETURNED: 3,
-};
 
 interface ShipmentTimelineProps {
   status: string;
@@ -58,10 +51,11 @@ export function ShipmentTimeline({
   status,
   expectedReturn,
 }: ShipmentTimelineProps) {
-  const currentIndex = STATUS_ORDER[status] ?? 0;
+  const meta = getShipmentStatusMeta(status);
+  const currentIndex = meta.order;
   const urgency = getUrgencyColor(expectedReturn);
   const styles = urgencyStyles[urgency];
-  const isDone = status === "RETURNED";
+  const isDone = meta.group === "closed";
 
   return (
     <>

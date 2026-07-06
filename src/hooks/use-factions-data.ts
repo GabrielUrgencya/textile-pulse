@@ -12,6 +12,7 @@ export interface Faction {
   is_active: boolean;
   price_per_piece: number | null;
   avg_delivery_days: number;
+  current_balance?: number | null;
   created_at: string;
 }
 
@@ -29,10 +30,18 @@ export interface FactionShipment {
   total_quantity: number;
   returned_quantity: number | null;
   sent_at: string;
-  expected_return: string;
+  expected_return: string | null;
+  expected_return_at?: string | null;
   received_at: string | null;
   notes: string | null;
   faction_confirmed_at: string | null;
+  delivery_code?: string | null;
+  payment_value?: number | null;
+  deduction_value?: number | null;
+  released_value?: number | null;
+  retained_value?: number | null;
+  payment_status?: string | null;
+  paid_at?: string | null;
 }
 
 export interface FactionDetail {
@@ -49,6 +58,9 @@ export interface FactionDetail {
     grossValue: number;
     deductions: number;
     netValue: number;
+    totalReleased?: number;
+    totalRetained?: number;
+    totalPaid?: number;
   };
   scores?: {
     deliveryScore: number;
@@ -69,7 +81,11 @@ export function useFactions(params?: { search?: string; active?: boolean }) {
 }
 
 export function useFactionDetail(id: string | null) {
-  return useServerData<FactionDetail>(id ? `/api/factions/${id}` : null);
+  // Tempo real: revalida ao focar a aba e a cada 15s (silencioso, sem skeleton).
+  return useServerData<FactionDetail>(id ? `/api/factions/${id}` : null, {
+    refreshMs: 15000,
+    revalidateOnFocus: true,
+  });
 }
 
 export function useFactionShipments(factionId: string, status?: string) {

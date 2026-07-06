@@ -19,7 +19,18 @@ interface Lot {
   id: string;
   code: string;
   quantity: number;
+  color?: string | null;
   op_code?: string;
+}
+
+/** Chip que sinaliza a cor do lote (sublote de fracionamento). */
+function ColorChip({ color }: { color?: string | null }) {
+  if (!color) return null;
+  return (
+    <span className="ml-2 inline-flex items-center rounded-full border border-border/60 bg-secondary/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      {color}
+    </span>
+  );
 }
 
 function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCreateProps) {
@@ -29,12 +40,31 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
   const [notes, setNotes] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [step, setStep] = React.useState<"select" | "confirm">("select");
+  const [barcode, setBarcode] = React.useState("");
+  const [addingBarcode, setAddingBarcode] = React.useState(false);
+  const [recentId, setRecentId] = React.useState<string | null>(null);
+  const recentTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Realça por ~1.6s o lote recém-adicionado via código, para dar feedback visual.
+  const flagRecent = React.useCallback((id: string) => {
+    setRecentId(id);
+    if (recentTimer.current) clearTimeout(recentTimer.current);
+    recentTimer.current = setTimeout(() => setRecentId(null), 1600);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (recentTimer.current) clearTimeout(recentTimer.current);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (open) {
       setSelectedIds(new Set());
       setExpectedReturn("");
       setNotes("");
+      setBarcode("");
+      setRecentId(null);
       setStep("select");
       // Fetch available lots
       fetch("/api/production/lots?available=true")
@@ -51,6 +81,36 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
       else next.add(id);
       return next;
     });
+  };
+
+  // Colar código do lote/sublote (barcode) e atrelar à remessa. Aceita lotes que
+  // não estão na lista "disponível" (ex.: sublotes de fracionamento por cor).
+  const addByBarcode = async () => {
+    const code = barcode.trim();
+    if (!code || addingBarcode) return;
+    setAddingBarcode(true);
+    try {
+      const res = await fetch(`/api/production/lots?barcode=${encodeURIComponent(code)}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.data) {
+        showToast("error", json.error || "Lote não encontrado");
+        return;
+      }
+      const lot = json.data as Lot;
+      if (selectedIds.has(lot.id)) {
+        showToast("info", "Lote já adicionado");
+      } else {
+        setLots((prev) => (prev.some((l) => l.id === lot.id) ? prev : [lot, ...prev]));
+        setSelectedIds((prev) => new Set(prev).add(lot.id));
+        showToast("success", `Lote ${lot.code} adicionado`);
+      }
+      flagRecent(lot.id);
+      setBarcode("");
+    } catch {
+      showToast("error", "Erro ao buscar lote");
+    } finally {
+      setAddingBarcode(false);
+    }
   };
 
   const selectedLots = lots.filter((l) => selectedIds.has(l.id));
@@ -97,38 +157,100 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
 
         {step === "select" ? (
           <div className="space-y-4 mt-2">
+            {/* Caminho 1: colar / escanear o código do lote ou sublote */}
+            <div className="space-y-1.5">
+              <Label htmlFor="lot-barcode">
+                Colar ou escanear código do lote
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="lot-barcode"
+                  aria-label="Código de barras do lote"
+                  aria-describedby="lot-barcode-hint"
+                  className="input-field flex-1 font-mono"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addByBarcode();
+                    }
+                  }}
+                  placeholder="Ex.: LT-000123"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addByBarcode}
+                  disabled={addingBarcode || !barcode.trim()}
+                >
+                  {addingBarcode ? "..." : "Adicionar"}
+                </Button>
+              </div>
+              <p id="lot-barcode-hint" className="text-[11px] text-muted-foreground/70">
+                Aceita sublotes de fracionamento por cor. Também dá para marcar na lista abaixo.
+              </p>
+            </div>
+
+            {/* Separador entre os dois caminhos */}
+            <div className="flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-border/60" />
+              <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">ou</span>
+              <span className="h-px flex-1 bg-border/60" />
+            </div>
+
+            {/* Caminho 2: escolher da lista de lotes disponíveis */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Lotes disponíveis
+              </span>
+              {lots.length > 0 && (
+                <span className="text-[11px] text-muted-foreground/70">{lots.length} lote{lots.length !== 1 ? "s" : ""}</span>
+              )}
+            </div>
+
             {lots.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Nenhum lote disponível para envio
+                Nenhum lote disponível — cole um código acima para adicionar
               </p>
             ) : (
-              <div className="max-h-[300px] overflow-y-auto space-y-1">
-                {lots.map((lot) => (
-                  <label
-                    key={lot.id}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-secondary/30 cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={selectedIds.has(lot.id)}
-                      onCheckedChange={() => toggleLot(lot.id)}
-                    />
-                    <div className="flex-1">
-                      <span className="font-mono text-sm">{lot.code}</span>
-                      {lot.op_code && (
-                        <span className="text-xs text-muted-foreground ml-2">OP: {lot.op_code}</span>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {lot.quantity} pçs
-                    </span>
-                  </label>
-                ))}
+              <div className="max-h-[300px] overflow-y-auto space-y-1" role="group" aria-label="Lotes disponíveis">
+                {lots.map((lot) => {
+                  const isRecent = lot.id === recentId;
+                  return (
+                    <label
+                      key={lot.id}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                        isRecent
+                          ? "bg-foreground/10 ring-1 ring-foreground/30"
+                          : "hover:bg-secondary/30"
+                      }`}
+                    >
+                      <Checkbox
+                        checked={selectedIds.has(lot.id)}
+                        onCheckedChange={() => toggleLot(lot.id)}
+                        aria-label={`Selecionar lote ${lot.code}`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="font-mono text-sm">{lot.code}</span>
+                        <ColorChip color={lot.color} />
+                        {lot.op_code && (
+                          <span className="text-xs text-muted-foreground ml-2">OP: {lot.op_code}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground font-mono shrink-0">
+                        {lot.quantity} pçs
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             )}
 
             <div className="space-y-1.5">
-              <Label>Prazo de devolução</Label>
+              <Label htmlFor="expected-return">Prazo de devolução</Label>
               <Input
+                id="expected-return"
                 className="input-field"
                 type="date"
                 value={expectedReturn}
@@ -137,8 +259,9 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
             </div>
 
             <div className="space-y-1.5">
-              <Label>Motorista / Observações</Label>
+              <Label htmlFor="shipment-notes">Motorista / Observações</Label>
               <Input
+                id="shipment-notes"
                 className="input-field"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -169,9 +292,12 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
 
             <div className="space-y-1">
               {selectedLots.map((lot) => (
-                <div key={lot.id} className="flex justify-between text-xs px-2 py-1 bg-secondary/10 rounded">
-                  <span className="font-mono">{lot.code}</span>
-                  <span className="text-muted-foreground">{lot.quantity} pçs</span>
+                <div key={lot.id} className="flex justify-between items-center text-xs px-2 py-1 bg-secondary/10 rounded">
+                  <span className="font-mono flex items-center">
+                    {lot.code}
+                    <ColorChip color={lot.color} />
+                  </span>
+                  <span className="text-muted-foreground shrink-0">{lot.quantity} pçs</span>
                 </div>
               ))}
             </div>

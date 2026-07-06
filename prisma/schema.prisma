@@ -75,9 +75,11 @@ enum ShipmentStatus {
   PREPARING
   SENT
   RECEIVED_BY_FACTION
+  RETURN_DECLARED
   PARTIALLY_RETURNED
   RETURNED
   OVERDUE
+  CLOSED
 }
 
 // ============================================================
@@ -106,6 +108,9 @@ model Tenant {
   auditLogs        AuditLog[]
   kioskTokens      KioskToken[]
   factionTokens    FactionToken[]
+  factionMessages  FactionMessage[]
+  goalDeficits     GoalDeficit[]
+  shipmentEvents   ShipmentEvent[]
   opsClock         OpsClock[]
   referenceTargets ReferenceTarget[]
   referenceStageTargets ReferenceStageTarget[]
@@ -333,6 +338,7 @@ model Profile {
   createdLots         Lot[]              @relation("LotCreatedBy")
   holdingLots         Lot[]              @relation("LotCurrentHolder")
   scanEvents          ScanEvent[]
+  goalDeficits        GoalDeficit[]
   detectedDefects     DefectRecord[]     @relation("DefectDetectedBy")
   resolvedDefects     DefectRecord[]     @relation("DefectResolvedBy")
   sentShipments       FactionShipment[]  @relation("ShipmentSentBy")
@@ -436,6 +442,7 @@ model Lot {
   scanEvents        ScanEvent[]
   defectRecords     DefectRecord[]
   factionShipments  FactionShipment[]
+  shipmentLots      ShipmentLot[]
   aduanaValidations AduanaValidation[]
 
   @@unique([poId, lotNumber])
@@ -490,14 +497,97 @@ model Faction {
   /// Foto da facção (URL pública no bucket faction-photos). Null = placeholder por iniciais.
   photoUrl        String?  @map("photo_url")
   isActive        Boolean  @default(true) @map("is_active")
+  /// Saldo corrente do ledger de compensação (migration 20260704130000).
+  /// >0 = a facção tem a receber; <0 = a compensar na próxima remessa.
+  currentBalance  Decimal  @default(0) @map("current_balance") @db.Decimal(12, 2)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   tenant        Tenant            @relation(fields: [tenantId], references: [id])
   shipments     FactionShipment[]
   factionTokens FactionToken[]
   notifications Notification[]
+  ledgerEntries FactionLedger[]
+  messages      FactionMessage[]
 
   @@map("factions")
+}
+
+/// Metas acumulativas persistidas (migration 20260704160000).
+/// Fechamento por período/usuário: deficit = MAX(0, meta_efetiva − produzido).
+/// UNIQUE (user, period_type, period_reference) → job idempotente.
+model GoalDeficit {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  /// 'daily' | 'weekly' | 'monthly'
+  periodType      String   @map("period_type") @db.VarChar(8)
+  /// Início do período que GEROU o déficit.
+  periodReference DateTime @map("period_reference") @db.Date
+  baseGoal        Int      @map("base_goal")
+  produced        Int
+  deficit         Int
+  /// Início do período que absorveu este déficit.
+  carriedTo       DateTime? @map("carried_to") @db.Date
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodType, periodReference])
+  @@index([userId, periodType, periodReference])
+  @@index([tenantId, periodType])
+  @@map("goal_deficits")
+}
+
+/// Chat bilateral admin ↔ facção (migration 20260704150000).
+/// read_at = lido pelo lado RECEPTOR. Não lidas do admin: sender_type FACTION
+/// AND read_at IS NULL; não lidas da facção: sender_type ADMIN AND read_at IS NULL.
+model FactionMessage {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  factionId   String    @map("faction_id") @db.Uuid
+  /// 'ADMIN' | 'FACTION'
+  senderType  String    @map("sender_type") @db.VarChar(12)
+  senderId    String?   @map("sender_id") @db.Uuid
+  /// text | audio | image | video | file
+  contentType String    @default("text") @map("content_type") @db.VarChar(12)
+  contentText String?   @map("content_text")
+  contentUrl  String?   @map("content_url")
+  contentMeta Json?     @map("content_meta")
+  readAt      DateTime? @map("read_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  faction Faction @relation(fields: [factionId], references: [id])
+
+  @@index([factionId, createdAt])
+  @@index([factionId, senderType, readAt])
+  @@index([tenantId, createdAt])
+  @@map("faction_messages")
+}
+
+/// Ledger de compensação por facção (append-only). O saldo corrente
+/// (factions.current_balance) é mantido por trigger a cada entrada.
+model FactionLedger {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  factionId    String   @map("faction_id") @db.Uuid
+  shipmentId   String?  @map("shipment_id") @db.Uuid
+  /// PAYMENT | DEDUCTION | ADJUSTMENT | COMPENSATION
+  entryType    String   @map("entry_type") @db.VarChar(24)
+  /// Assinado: + crédito à facção, − débito.
+  amount       Decimal  @db.Decimal(12, 2)
+  balanceAfter Decimal  @map("balance_after") @db.Decimal(12, 2)
+  description  String?
+  createdById  String?  @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  faction  Faction          @relation(fields: [factionId], references: [id])
+  shipment FactionShipment? @relation(fields: [shipmentId], references: [id])
+
+  @@index([factionId, createdAt])
+  @@index([tenantId])
+  @@map("faction_ledger")
 }
 
 /// Envios para Facção
@@ -533,14 +623,97 @@ model FactionShipment {
   deliveryCodeExpiresAt   DateTime? @map("delivery_code_expires_at") @db.Timestamptz
   deliveryCodeAttempts    Int       @default(0) @map("delivery_code_attempts")
 
-  faction    Faction       @relation(fields: [factionId], references: [id])
-  lot        Lot           @relation(fields: [lotId], references: [id])
-  driver     Driver?       @relation(fields: [driverId], references: [id])
-  sentBy     Profile?      @relation("ShipmentSentBy", fields: [sentById], references: [id])
-  receivedBy Profile?      @relation("ShipmentReceivedBy", fields: [receivedById], references: [id])
-  defects    DefectRecord[]
+  /// Devolução Híbrida A+B (migration 20260703150000)
+  /// Código de devolução (facção → motorista → fábrica), mesma mecânica do delivery_code.
+  returnCode              String?   @map("return_code") @db.VarChar(6)
+  returnCodeExpiresAt     DateTime? @map("return_code_expires_at") @db.Timestamptz
+  returnCodeAttempts      Int       @default(0) @map("return_code_attempts")
+  /// Declaração da facção no portal (contagem esperada).
+  declaredOk              Int?      @map("declared_ok")
+  declaredDefect          Int?      @map("declared_defect")
+  declaredAt              DateTime? @map("declared_at") @db.Timestamptz
+  /// Reconciliação da conferência cega na fábrica: OK | SHORTAGE | DISCREPANCY.
+  reconciliationStatus    String?   @map("reconciliation_status") @db.VarChar(16)
+  /// Faltante = quantity_sent − (quantity_returned + quantity_defective).
+  shortageQty             Int?      @map("shortage_qty")
+
+  /// Pagamento com liberação parcial (migration 20260704120000).
+  releasedValue           Decimal   @default(0) @map("released_value") @db.Decimal(10, 2)
+  retainedValue           Decimal   @default(0) @map("retained_value") @db.Decimal(10, 2)
+  /// PENDING | PARTIALLY_RELEASED | RELEASED | PAID
+  paymentStatus           String    @default("PENDING") @map("payment_status") @db.VarChar(24)
+  paidAt                  DateTime? @map("paid_at") @db.Timestamptz
+  /// Trilha de ajustes/liberações (revert-deduction, edições, pagamentos).
+  metadata                Json      @default("{}")
+
+  /// Frente C — colunas adicionadas pela migration de reconciliação
+  /// (20260703140000). O app usa o modelo canônico 1 remessa = 1 lote
+  /// (lot_id/quantity_sent/expected_return_at), então estas ficam disponíveis
+  /// mas não populadas pela criação atual.
+  tenantId       String?   @map("tenant_id") @db.Uuid
+  totalQuantity  Int?      @map("total_quantity")
+  expectedReturn DateTime? @map("expected_return") @db.Timestamptz
+
+  /// Encerramento (migration 20260705100000): CLOSED = estado final.
+  closedAt          DateTime? @map("closed_at") @db.Timestamptz
+  closedBy          String?   @map("closed_by")
+  /// Status anterior ao encerramento (para reabertura com log).
+  statusBeforeClose String?   @map("status_before_close")
+
+  faction      Faction        @relation(fields: [factionId], references: [id])
+  lot          Lot            @relation(fields: [lotId], references: [id])
+  driver       Driver?        @relation(fields: [driverId], references: [id])
+  sentBy       Profile?       @relation("ShipmentSentBy", fields: [sentById], references: [id])
+  receivedBy   Profile?       @relation("ShipmentReceivedBy", fields: [receivedById], references: [id])
+  defects       DefectRecord[]
+  shipmentLots  ShipmentLot[]
+  ledgerEntries FactionLedger[]
+  events        ShipmentEvent[]
 
   @@map("faction_shipments")
+}
+
+/// Timeline da remessa (migration 20260705100000): eventos + observações.
+/// event_type: CREATED | SENT | CONFIRMED | RETURN_DECLARED | RECEIVED |
+/// RECONCILED | PAYMENT | NOTE | DEADLINE_CHANGED | CLOSED | REOPENED.
+/// Observações = NOTE; visible_to_faction controla exposição no portal.
+model ShipmentEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  shipmentId       String   @map("shipment_id") @db.Uuid
+  eventType        String   @map("event_type") @db.VarChar(32)
+  /// ADMIN | FACTION | SYSTEM
+  actorType        String   @default("SYSTEM") @map("actor_type") @db.VarChar(8)
+  actorName        String?  @map("actor_name")
+  visibleToFaction Boolean  @default(true) @map("visible_to_faction")
+  payload          Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment FactionShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, createdAt], map: "shipment_events_shipment_idx")
+  @@index([tenantId], map: "shipment_events_tenant_idx")
+  @@map("shipment_events")
+}
+
+/// Junção remessa↔lotes criada na migration 20260703140000.
+/// NÃO utilizada pelo app atual (modelo canônico é 1 remessa = 1 lote via
+/// faction_shipments.lot_id). Mantida no schema por fidelidade ao banco.
+model ShipmentLot {
+  id         String   @id @default(uuid()) @db.Uuid
+  shipmentId String   @map("shipment_id") @db.Uuid
+  lotId      String   @map("lot_id") @db.Uuid
+  quantity   Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  shipment FactionShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  lot      Lot             @relation(fields: [lotId], references: [id])
+
+  @@unique([shipmentId, lotId])
+  @@index([shipmentId])
+  @@index([lotId])
+  @@map("shipment_lots")
 }
 
 /// Defeitos registrados por lote
@@ -654,10 +827,19 @@ model Notification {
   /// Portal field (Story 6.2)
   factionId  String?  @map("faction_id") @db.Uuid
 
+  /// Notificações estratégicas (migration 20260704140000)
+  /// Contexto clicável (ex.: 'shipment' + uuid) e dedupe determinístico p/ cron.
+  entityType String?  @map("entity_type") @db.VarChar(24)
+  entityId   String?  @map("entity_id") @db.Uuid
+  dedupeKey  String?  @unique(map: "idx_notifications_dedupe") @map("dedupe_key")
+  /// 'ADMIN' | 'FACTION' — separa o sino do admin do portal da facção.
+  audience   String   @default("ADMIN") @db.VarChar(12)
+
   tenant  Tenant   @relation(fields: [tenantId], references: [id])
   user    Profile? @relation(fields: [userId], references: [id])
   faction Faction? @relation(fields: [factionId], references: [id])
 
+  @@index([factionId, audience, readAt])
   @@map("notifications")
 }
 

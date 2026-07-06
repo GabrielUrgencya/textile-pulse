@@ -103,6 +103,7 @@ function LoginForm() {
               id="pin"
               type="password"
               inputMode="numeric"
+              autoComplete="one-time-code"
               maxLength={6}
               pattern="[0-9]{6}"
               value={pin}

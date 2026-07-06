@@ -4,6 +4,16 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/api/cron/deadline-notifications",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/goal-closures",
+      "schedule": "30 3 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",

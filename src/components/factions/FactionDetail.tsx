@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Plus, PackageCheck, Truck, Key, Copy, Check } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, PackageCheck, Truck, Key, Copy, Check, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -16,16 +16,12 @@ import { ShipmentTimeline } from "@/components/shipments/ShipmentTimeline";
 import { FactionForm } from "@/components/factions/FactionForm";
 import { ShipmentCreate } from "@/components/factions/ShipmentCreate";
 import { ShipmentReceive } from "@/components/factions/ShipmentReceive";
+import { ShipmentPaymentDialog } from "@/components/factions/ShipmentPaymentDialog";
+import { ShipmentDrawer } from "@/components/factions/ShipmentDrawer";
+import { DeliveryCodeDisplay } from "@/components/shipments/DeliveryCodeDisplay";
 import { useFactionDetail, type FactionShipment } from "@/hooks/use-factions-data";
 import { showToast } from "@/lib/toast";
-
-const SHIPMENT_STATUS_MAP: Record<string, "success" | "warning" | "destructive" | "neutral"> = {
-  SENT: "warning",
-  RECEIVED: "success",
-  RETURNED: "neutral",
-  LATE: "destructive",
-  PENDING: "neutral",
-};
+import { getShipmentStatusMeta, isActiveShipment } from "@/lib/shipment-status";
 
 interface FactionDetailProps {
   factionId: string;
@@ -38,6 +34,7 @@ function FactionDetail({ factionId }: FactionDetailProps) {
   const [editOpen, setEditOpen] = React.useState(false);
   const [shipmentCreateOpen, setShipmentCreateOpen] = React.useState(false);
   const [receiveTarget, setReceiveTarget] = React.useState<FactionShipment | null>(null);
+  const [paymentTarget, setPaymentTarget] = React.useState<FactionShipment | null>(null);
   const [deactivateOpen, setDeactivateOpen] = React.useState(false);
   const [deactivating, setDeactivating] = React.useState(false);
   const [shipmentTab, setShipmentTab] = React.useState<"active" | "history">("active");
@@ -45,6 +42,16 @@ function FactionDetail({ factionId }: FactionDetailProps) {
   const [generatingToken, setGeneratingToken] = React.useState(false);
   const [generatedToken, setGeneratedToken] = React.useState<{ portalUrl: string; pin: string } | null>(null);
   const [copiedField, setCopiedField] = React.useState<string | null>(null);
+  // Código de entrega (tela do motorista): dialog por remessa
+  const [codeTarget, setCodeTarget] = React.useState<FactionShipment | null>(null);
+  const [codeData, setCodeData] = React.useState<{ deliveryCode: string | null; expiresAt: string | null; expired: boolean } | null>(null);
+  const [codeLoading, setCodeLoading] = React.useState(false);
+  const [regenerating, setRegenerating] = React.useState(false);
+  // Encerramento de remessa (épico Robustez F2)
+  const [closeTarget, setCloseTarget] = React.useState<FactionShipment | null>(null);
+  const [closing, setClosing] = React.useState(false);
+  // Drawer da remessa (épico Robustez F3)
+  const [drawerTarget, setDrawerTarget] = React.useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -60,8 +67,8 @@ function FactionDetail({ factionId }: FactionDetailProps) {
 
   const { faction, shipments, defects, financial, scores } = data;
 
-  const activeShipments = shipments.filter((s) => ["PENDING", "SENT"].includes(s.status));
-  const historyShipments = shipments.filter((s) => !["PENDING", "SENT"].includes(s.status));
+  const activeShipments = shipments.filter((s) => isActiveShipment(s.status));
+  const historyShipments = shipments.filter((s) => !isActiveShipment(s.status));
   const displayedShipments = shipmentTab === "active" ? activeShipments : historyShipments;
 
   const handleDeactivate = async () => {
@@ -80,6 +87,39 @@ function FactionDetail({ factionId }: FactionDetailProps) {
       showToast("error", "Erro ao desativar");
     } finally {
       setDeactivating(false);
+    }
+  };
+
+  const handleCloseShipment = async () => {
+    if (!closeTarget) return;
+    setClosing(true);
+    try {
+      const res = await fetch(`/api/shipments/${closeTarget.id}/close`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const missing = Array.isArray(body.missing) ? ` — ${body.missing.join("; ")}` : "";
+        throw new Error(`${body.error || "Erro ao encerrar"}${missing}`);
+      }
+      const warnings: string[] = body.data?.warnings || [];
+      showToast("success", `Remessa encerrada${warnings.length ? ` (${warnings.join("; ")})` : ""}`);
+      setCloseTarget(null);
+      refetch();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro ao encerrar remessa");
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  const handleReopenShipment = async (shipmentId: string) => {
+    try {
+      const res = await fetch(`/api/shipments/${shipmentId}/reopen`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Erro ao reabrir");
+      showToast("success", "Remessa reaberta");
+      refetch();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro ao reabrir remessa");
     }
   };
 
@@ -112,13 +152,46 @@ function FactionDetail({ factionId }: FactionDetailProps) {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  const openDeliveryCode = async (shipment: FactionShipment) => {
+    setCodeTarget(shipment);
+    setCodeData(null);
+    setCodeLoading(true);
+    try {
+      const res = await fetch(`/api/shipments/${shipment.id}/delivery-code`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Erro ao buscar código");
+      setCodeData(json.data);
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro ao buscar código");
+      setCodeTarget(null);
+    } finally {
+      setCodeLoading(false);
+    }
+  };
+
+  const handleRegenerateCode = async () => {
+    if (!codeTarget) return;
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/shipments/${codeTarget.id}/delivery-code`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Erro ao gerar novo código");
+      setCodeData({ deliveryCode: json.data.deliveryCode, expiresAt: json.data.expiresAt, expired: false });
+      showToast("success", "Novo código gerado");
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro ao gerar novo código");
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   const shipmentColumns: DataTableColumn<FactionShipment>[] = [
     {
       key: "timeline",
       header: "Progresso",
       className: "min-w-[180px]",
       render: (row) => (
-        <ShipmentTimeline status={row.status} expectedReturn={row.expected_return} />
+        <ShipmentTimeline status={row.status} expectedReturn={row.expected_return || row.expected_return_at || ""} />
       ),
     },
     {
@@ -135,7 +208,10 @@ function FactionDetail({ factionId }: FactionDetailProps) {
     {
       key: "expected_return",
       header: "Prazo",
-      render: (row) => <span className="text-sm">{new Date(row.expected_return).toLocaleDateString("pt-BR")}</span>,
+      render: (row) => {
+        const prazo = row.expected_return || row.expected_return_at;
+        return <span className="text-sm">{prazo ? new Date(prazo).toLocaleDateString("pt-BR") : "—"}</span>;
+      },
     },
     {
       key: "status",
@@ -146,10 +222,11 @@ function FactionDetail({ factionId }: FactionDetailProps) {
           !row.faction_confirmed_at &&
           new Date(row.sent_at).getTime() < Date.now() - 4 * 60 * 60 * 1000;
 
+        const meta = getShipmentStatusMeta(row.status);
         return (
           <div className="space-y-1">
-            <StatusBadge status={SHIPMENT_STATUS_MAP[row.status] || "neutral"}>
-              {row.status}
+            <StatusBadge status={meta.tone}>
+              {meta.label}
             </StatusBadge>
             {isUnconfirmed && (
               <div className="flex items-center gap-1 animate-pulse">
@@ -167,19 +244,77 @@ function FactionDetail({ factionId }: FactionDetailProps) {
     {
       key: "actions",
       header: "",
-      className: "w-[140px] text-right",
-      render: (row) =>
-        row.status === "SENT" ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={(e) => { e.stopPropagation(); setReceiveTarget(row); }}
-          >
-            <PackageCheck className="size-3.5" />
-            Receber
-          </Button>
-        ) : null,
+      className: "w-[200px] text-right",
+      render: (row) => {
+        if (row.status === "SENT") {
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={(e) => { e.stopPropagation(); openDeliveryCode(row); }}
+              title="Código de entrega para repassar ao motorista/facção"
+            >
+              <Key className="size-3.5" />
+              Código
+            </Button>
+          );
+        }
+        if (row.status === "RETURN_DECLARED") {
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={(e) => { e.stopPropagation(); setReceiveTarget(row); }}
+              title="Conferir a devolução com o código do motorista"
+            >
+              <PackageCheck className="size-3.5" />
+              Conferir devolução
+            </Button>
+          );
+        }
+        if (row.status === "RETURNED" || row.status === "PARTIALLY_RETURNED") {
+          return (
+            <div className="flex items-center justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={(e) => { e.stopPropagation(); setPaymentTarget(row); }}
+                title="Gerenciar pagamento (liberar / editar / marcar pago)"
+              >
+                <Wallet className="size-3.5" />
+                Pagamento
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={(e) => { e.stopPropagation(); setCloseTarget(row); }}
+                title="Encerrar a remessa (vai para o histórico nos dois lados)"
+              >
+                <PackageCheck className="size-3.5" />
+                Encerrar
+              </Button>
+            </div>
+          );
+        }
+        if (row.status === "CLOSED") {
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={(e) => { e.stopPropagation(); handleReopenShipment(row.id); }}
+              title="Reabrir a remessa encerrada (volta ao status anterior)"
+            >
+              Reabrir
+            </Button>
+          );
+        }
+        return null;
+      },
     },
   ];
 
@@ -307,6 +442,7 @@ function FactionDetail({ factionId }: FactionDetailProps) {
             columns={shipmentColumns}
             data={displayedShipments}
             keyExtractor={(row) => row.id}
+            onRowClick={(row) => setDrawerTarget(row.id)}
             emptyState={{
               icon: Truck,
               title: shipmentTab === "active" ? "Sem remessas ativas" : "Sem histórico",
@@ -330,18 +466,31 @@ function FactionDetail({ factionId }: FactionDetailProps) {
         {/* Financial Summary */}
         <LisionCard>
           <LisionCardHeader eyebrow="Financeiro" title="Resumo" />
-          <div className="p-4 grid grid-cols-3 gap-4">
-            <div>
-              <div className="text-xs text-muted-foreground mb-0.5">Valor Bruto</div>
-              <div className="font-mono text-lg">R$ {financial.grossValue.toLocaleString("pt-BR")}</div>
-            </div>
+          <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <div className="text-xs text-muted-foreground mb-0.5">Deduções</div>
               <div className="font-mono text-lg text-destructive">-R$ {financial.deductions.toLocaleString("pt-BR")}</div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground mb-0.5">Valor Líquido</div>
-              <div className="font-mono text-lg font-semibold">R$ {financial.netValue.toLocaleString("pt-BR")}</div>
+              <div className="text-xs text-muted-foreground mb-0.5">A liberar/pago</div>
+              <div className="font-mono text-lg font-semibold text-success">R$ {(financial.totalReleased ?? financial.netValue).toLocaleString("pt-BR")}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5">Retido</div>
+              <div className="font-mono text-lg text-warning">R$ {(financial.totalRetained ?? 0).toLocaleString("pt-BR")}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5">Já pago</div>
+              <div className="font-mono text-lg">R$ {(financial.totalPaid ?? 0).toLocaleString("pt-BR")}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5">Saldo da facção</div>
+              {(() => {
+                const bal = Number(faction.current_balance || 0);
+                if (bal > 0) return <div className="font-mono text-lg font-semibold text-success">A receber: R$ {bal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>;
+                if (bal < 0) return <div className="font-mono text-lg font-semibold text-warning">A compensar: R$ {Math.abs(bal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>;
+                return <div className="font-mono text-lg text-muted-foreground">—</div>;
+              })()}
             </div>
           </div>
         </LisionCard>
@@ -364,6 +513,49 @@ function FactionDetail({ factionId }: FactionDetailProps) {
       <FactionForm open={editOpen} onOpenChange={setEditOpen} faction={faction} onSuccess={refetch} />
       <ShipmentCreate open={shipmentCreateOpen} onOpenChange={setShipmentCreateOpen} factionId={factionId} onSuccess={refetch} />
       <ShipmentReceive open={!!receiveTarget} onOpenChange={() => setReceiveTarget(null)} shipment={receiveTarget} onSuccess={refetch} />
+      <ShipmentPaymentDialog open={!!paymentTarget} onOpenChange={() => setPaymentTarget(null)} shipment={paymentTarget} onSuccess={refetch} />
+
+      {/* Drawer da remessa (épico Robustez F3): timeline + observações + ações */}
+      <ShipmentDrawer
+        shipmentId={drawerTarget}
+        onOpenChange={(open) => { if (!open) setDrawerTarget(null); }}
+        onEditPayment={() => {
+          const row = shipments.find((s) => s.id === drawerTarget) || null;
+          setDrawerTarget(null);
+          setPaymentTarget(row);
+        }}
+        onReceive={() => {
+          const row = shipments.find((s) => s.id === drawerTarget) || null;
+          setDrawerTarget(null);
+          setReceiveTarget(row);
+        }}
+        onChanged={refetch}
+      />
+
+      {/* Código de entrega — o operador/motorista mostra este código à facção na entrega */}
+      <Dialog open={!!codeTarget} onOpenChange={(open) => { if (!open) { setCodeTarget(null); setCodeData(null); } }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Código de Entrega</DialogTitle>
+            <DialogDescription>
+              Passe este código ao motorista. Ele o entrega à facção, que o digita no portal para confirmar o recebimento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2">
+            {codeLoading ? (
+              <Skeleton className="h-40 w-full rounded-lg" />
+            ) : (
+              <DeliveryCodeDisplay
+                code={codeData?.deliveryCode ?? null}
+                expiresAt={codeData?.expiresAt ?? null}
+                expired={codeData?.expired}
+                onRegenerate={handleRegenerateCode}
+                regenerating={regenerating}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
       <ConfirmDialog
         open={deactivateOpen}
         onCancel={() => setDeactivateOpen(false)}
@@ -373,6 +565,17 @@ function FactionDetail({ factionId }: FactionDetailProps) {
         confirmLabel="Desativar"
         variant="destructive"
         loading={deactivating}
+      />
+
+      {/* Encerramento de remessa (épico Robustez F2): critérios validados no servidor */}
+      <ConfirmDialog
+        open={!!closeTarget}
+        onCancel={() => setCloseTarget(null)}
+        onConfirm={handleCloseShipment}
+        title="Encerrar remessa?"
+        description="A remessa vai para o histórico nos dois lados (sistema e portal da facção). Requisitos: devolução recebida, peças conferidas e valor financeiro lançado — o servidor valida e informa o que faltar. É possível reabrir depois."
+        confirmLabel="Encerrar"
+        loading={closing}
       />
 
       <Dialog open={tokenDialogOpen} onOpenChange={(open) => { if (!open) setGeneratedToken(null); setTokenDialogOpen(open); }}>

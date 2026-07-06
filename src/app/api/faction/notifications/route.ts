@@ -24,19 +24,31 @@ export async function GET(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Notifications directed to this faction OR to role FACCAO within the tenant
+  // Somente notificações DESTA facção com audience FACTION (antes filtrava só
+  // tenant_id e vazava notificações do admin para o portal).
   const { data, count, error } = await supabase
     .from("notifications")
-    .select("id, type, title, message, severity, read_at, created_at", { count: "exact" })
+    .select("id, type, title, message, severity, read_at, created_at, entity_type, entity_id", { count: "exact" })
     .eq("tenant_id", session.tenantId)
-    .or(`faction_id.eq.${session.factionId},target_role.eq.FACCAO`)
+    .eq("faction_id", session.factionId)
+    .eq("audience", "FACTION")
     .order("created_at", { ascending: false })
     .range(from, to);
 
   if (error) return dbError("GET /api/faction/notifications", error);
 
+  // Badge: contagem de não lidas com os mesmos filtros.
+  const { count: unreadCount } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", session.tenantId)
+    .eq("faction_id", session.factionId)
+    .eq("audience", "FACTION")
+    .is("read_at", null);
+
   return NextResponse.json({
     data: data || [],
+    unreadCount: unreadCount ?? 0,
     pagination: {
       page,
       limit,

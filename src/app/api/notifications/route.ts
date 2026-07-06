@@ -20,6 +20,8 @@ export async function GET(request: Request) {
   let query = supabase
     .from("notifications")
     .select("id, type, title, message, severity, read_at, created_at")
+    // Sino do admin não deve exibir notificações do portal da facção.
+    .eq("audience", "ADMIN")
     .order("created_at", { ascending: false })
     .limit(50);
 

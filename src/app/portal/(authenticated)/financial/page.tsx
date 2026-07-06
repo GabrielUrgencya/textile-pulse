@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { paymentSummaryLabel } from "@/lib/payment-display";
+import { PullToRefresh } from "@/components/portal/PullToRefresh";
 
 interface PeriodData {
   period: string;
   totalPayment: number;
   totalDeduction: number;
+  totalReleased: number;
+  totalRetained: number;
+  totalPaid: number;
   netAmount: number;
   shipmentCount: number;
   piecesProcessed: number;
@@ -15,21 +20,49 @@ interface PeriodData {
 interface FinancialData {
   openPeriod: PeriodData | null;
   history: PeriodData[];
+  currentBalance?: number;
 }
+
+// Tons do herói (tema escuro do portal).
+const HERO_TONE: Record<string, string> = {
+  success: "text-emerald-400",
+  warning: "text-amber-400",
+  neutral: "text-muted-foreground",
+  destructive: "text-red-400",
+};
 
 export default function PortalFinancialPage() {
   const [data, setData] = useState<FinancialData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const refresh = useCallback(
+    () =>
+      fetch("/api/faction/financial")
+        .then((r) => {
+          if (!r.ok) throw new Error("Fetch failed");
+          return r.json();
+        })
+        .then((json) => setData(json))
+        .catch(() => {}),
+    [],
+  );
+
   useEffect(() => {
-    fetch("/api/faction/financial")
-      .then((r) => {
-        if (!r.ok) throw new Error("Fetch failed");
-        return r.json();
-      })
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+    let alive = true;
+    const load = (initial: boolean) =>
+      fetch("/api/faction/financial")
+        .then((r) => {
+          if (!r.ok) throw new Error("Fetch failed");
+          return r.json();
+        })
+        .then((json) => { if (alive) setData(json); })
+        .catch(() => { if (alive && initial) setData(null); })
+        .finally(() => { if (alive && initial) setLoading(false); });
+
+    load(true);
+    // Polling silencioso: reflete conferências/pagamentos em <3s sem refresh.
+    const t = setInterval(() => load(false), 3000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
 
   if (loading) return <LoadingSkeleton />;
@@ -38,32 +71,40 @@ export default function PortalFinancialPage() {
   const period = data.openPeriod;
   const now = new Date();
   const currentPeriodLabel = period?.period || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const summary = paymentSummaryLabel(data.currentBalance ?? 0);
 
   return (
+    <PullToRefresh onRefresh={refresh}>
     <div className="space-y-5">
       <h2 className="font-display text-[20px] font-semibold">Pagamentos</h2>
 
-      {/* Current period — always visible, zeroed if no data */}
+      {/* Saldo — herói semântico (nunca expõe valor negativo com "−") */}
       <div className="rounded-2xl border border-success/30 bg-success/5 p-5 space-y-3">
         <p className="text-[13px] text-muted-foreground">Período atual — {currentPeriodLabel}</p>
         <div>
-          <p className="text-[13px] text-muted-foreground">Valor líquido</p>
-          <p className="mt-1 font-display text-[36px] font-bold tracking-tight tabular-nums text-emerald-400">
-            {formatCurrency(period?.netAmount || 0)}
+          <p className={`mt-1 font-display text-[26px] font-bold tracking-tight leading-tight ${HERO_TONE[summary.tone]}`}>
+            {summary.label}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3 border-t border-border/50 pt-3">
           <div>
-            <p className="text-[12px] text-muted-foreground">Valor bruto</p>
-            <p className="font-display text-[20px] font-bold tabular-nums">{formatCurrency(period?.totalPayment || 0)}</p>
+            <p className="text-[12px] text-muted-foreground">Retido (defeitos em análise)</p>
+            <p className="font-display text-[20px] font-bold tabular-nums text-amber-400">
+              {formatCurrency(period?.totalRetained || 0)}
+            </p>
           </div>
           <div>
-            <p className="text-[12px] text-muted-foreground">Deduções</p>
-            <p className="font-display text-[20px] font-bold tabular-nums text-red-400">
-              -{formatCurrency(period?.totalDeduction || 0)}
+            <p className="text-[12px] text-muted-foreground">Já pago</p>
+            <p className="font-display text-[20px] font-bold tabular-nums">
+              {formatCurrency(period?.totalPaid || 0)}
             </p>
           </div>
         </div>
+        {(period?.totalRetained || 0) > 0 && (
+          <p className="text-[12px] text-amber-400/90">
+            O valor retido é liberado assim que os defeitos forem resolvidos.
+          </p>
+        )}
         <p className="text-[12px] text-muted-foreground">
           {period?.shipmentCount || 0} lote{(period?.shipmentCount || 0) !== 1 ? "s" : ""} neste período
         </p>
@@ -96,17 +137,18 @@ export default function PortalFinancialPage() {
               <div>
                 <p className="text-[14px] font-medium">{h.period}</p>
                 <p className="text-[12px] text-muted-foreground">
-                  Bruto: {formatCurrency(h.totalPayment)} · Ded: -{formatCurrency(h.totalDeduction)}
+                  Recebido: {formatCurrency(h.totalPaid)} · Retido: {formatCurrency(h.totalRetained)}
                 </p>
               </div>
               <p className="text-[14px] font-semibold text-emerald-400">
-                {formatCurrency(h.netAmount)}
+                {formatCurrency(h.totalReleased)}
               </p>
             </div>
           ))}
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }
 

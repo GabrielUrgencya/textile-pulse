@@ -3,6 +3,8 @@ import { withAuth } from "@/lib/auth-middleware";
 import { can } from "@/lib/effective-permissions";
 import { dbError, requireTenantId } from "@/lib/api-helpers";
 import { generateUniqueDeliveryCode } from "@/lib/delivery-code";
+import { notifyFaction, FACTION_NOTIFICATION_TYPES } from "@/lib/faction-notifications";
+import { validateLotsEligibility } from "@/lib/production-orders";
 
 export async function GET(request: Request) {
   const auth = await withAuth();
@@ -93,54 +95,142 @@ export async function POST(request: Request) {
   const t = requireTenantId(user);
   if (t.error) return t.error;
 
-  // Get lot quantities
-  const { data: lots } = await supabase
+  const lotIds: string[] = Array.from(new Set(body.lotIds as string[]));
+  const sentAt = new Date().toISOString();
+
+  // Quantidades dos lotes (escopo garantido: só lotes de OPs do tenant).
+  // F1 barreira 2: status/op_number para revalidar elegibilidade no submit —
+  // não confiar no filtro do frontend.
+  const { data: pos, error: poErr } = await supabase
+    .from("production_orders")
+    .select("id, status, op_number")
+    .eq("tenant_id", t.tenantId);
+  if (poErr) return dbError("POST /api/shipments (pos)", poErr);
+  const poIds = (pos || []).map((p) => p.id as string);
+  const posById = new Map(
+    (pos || []).map((p) => [p.id as string, { status: p.status as string, op_number: p.op_number as string | null }]),
+  );
+
+  const { data: lots, error: lotsErr } = await supabase
     .from("lots")
-    .select("id, quantity")
-    .in("id", body.lotIds);
+    .select("id, quantity, po_id")
+    .in("id", lotIds)
+    .in("po_id", poIds);
+  if (lotsErr) return dbError("POST /api/shipments (lots)", lotsErr);
 
-  const totalQuantity = lots?.reduce((sum, l) => sum + (l.quantity || 0), 0) || 0;
-
-  // Story 8.2: Generate delivery code
-  let deliveryCode: string | null = null;
-  let deliveryCodeExpiresAt: string | null = null;
-  try {
-    const dc = await generateUniqueDeliveryCode(supabase);
-    deliveryCode = dc.code;
-    deliveryCodeExpiresAt = dc.expiresAt;
-  } catch {
-    // Non-blocking: shipment can proceed without delivery code
+  if (!lots || lots.length !== lotIds.length) {
+    return NextResponse.json(
+      { error: "Um ou mais lotes não foram encontrados neste tenant" },
+      { status: 400 },
+    );
   }
 
-  // Create shipment
-  const { data: shipment, error } = await supabase
-    .from("faction_shipments")
-    .insert({
+  // F1: qualquer lote de OP inelegível (CANCELLED/COMPLETED) rejeita a
+  // remessa INTEIRA antes de criar qualquer linha.
+  const rejection = validateLotsEligibility(
+    lots as Array<{ id: string; po_id: string }>,
+    posById,
+  );
+  if (rejection) {
+    return NextResponse.json({ error: rejection }, { status: 422 });
+  }
+
+  // Modelo canônico: 1 remessa = 1 lote (portal/financeiro/devoluções leem por
+  // lote). Uma "remessa" com N lotes vira N linhas — cada sublote (fracionamento
+  // por cor) é um lot com barcode próprio, então preto→facção A e branco→facção B
+  // são remessas distintas. Cada linha recebe seu delivery_code único.
+  const rows: Record<string, unknown>[] = [];
+  for (const lot of lots) {
+    let deliveryCode: string | null = null;
+    let deliveryCodeExpiresAt: string | null = null;
+    try {
+      const dc = await generateUniqueDeliveryCode(supabase);
+      deliveryCode = dc.code;
+      deliveryCodeExpiresAt = dc.expiresAt;
+    } catch {
+      // Non-blocking: remessa procede sem código de entrega
+    }
+    const qty = lot.quantity || 0;
+    rows.push({
       tenant_id: t.tenantId,
       faction_id: body.factionId,
+      lot_id: lot.id,
       status: "SENT",
-      total_quantity: totalQuantity,
-      sent_at: new Date().toISOString(),
+      quantity_sent: qty,
+      // Registro COMPLETO: o admin (/api/factions/[id]) lê total_quantity e
+      // expected_return (sem _at); o portal lê quantity_sent e expected_return_at.
+      // Gravamos ambos (1 lote → total_quantity == quantity_sent) para todos os
+      // leitores funcionarem.
+      total_quantity: qty,
+      sent_at: sentAt,
+      expected_return_at: body.expectedReturn,
       expected_return: body.expectedReturn,
       notes: body.notes || null,
       delivery_code: deliveryCode,
       delivery_code_expires_at: deliveryCodeExpiresAt,
-    })
-    .select("id, delivery_code, delivery_code_expires_at")
-    .single();
+    });
+  }
+
+  const { data: created, error } = await supabase
+    .from("faction_shipments")
+    .insert(rows)
+    .select("id, lot_id, delivery_code");
 
   if (error) return dbError("POST /api/shipments", error);
 
-  // Link lots to shipment
-  if (shipment && lots) {
-    const shipmentLots = lots.map((lot) => ({
-      shipment_id: shipment.id,
-      lot_id: lot.id,
-      quantity: lot.quantity || 0,
-    }));
+  // Junção shipment_lots: o /api/factions/[id] liga defeitos aos lotes por aqui.
+  // 1 remessa = 1 lote, então cada remessa gera 1 linha na junção.
+  if (created && created.length > 0) {
+    const junction = created.map((s) => {
+      const lot = lots.find((l) => l.id === (s.lot_id as string));
+      return { shipment_id: s.id, lot_id: s.lot_id, quantity: lot?.quantity || 0 };
+    });
+    const { error: junctionError } = await supabase.from("shipment_lots").insert(junction);
+    if (junctionError) {
+      // Não bloqueia a remessa (já criada), mas registra para diagnóstico.
+      console.error("POST /api/shipments (shipment_lots):", junctionError);
+    }
 
-    await supabase.from("shipment_lots").insert(shipmentLots);
+    // Timeline (F3): evento CREATED por remessa — best-effort.
+    const actorName =
+      (user as { profile?: { full_name?: string | null } }).profile?.full_name ??
+      (user as { email?: string | null }).email ??
+      null;
+    const events = created.map((s) => {
+      const lot = lots.find((l) => l.id === (s.lot_id as string));
+      return {
+        tenant_id: t.tenantId,
+        shipment_id: s.id as string,
+        event_type: "CREATED",
+        actor_type: "ADMIN",
+        actor_name: actorName,
+        visible_to_faction: true,
+        payload: { quantity: lot?.quantity || 0, faction_id: body.factionId },
+      };
+    });
+    const { error: eventsError } = await supabase.from("shipment_events").insert(events);
+    if (eventsError) {
+      console.error("POST /api/shipments (shipment_events):", eventsError);
+    }
+
+    // Notificação estratégica: nova remessa disponível para a facção.
+    const prazo = new Date(body.expectedReturn).toLocaleDateString("pt-BR");
+    for (const s of created) {
+      const lot = lots.find((l) => l.id === (s.lot_id as string));
+      await notifyFaction(supabase, {
+        tenantId: t.tenantId,
+        factionId: body.factionId,
+        type: FACTION_NOTIFICATION_TYPES.SHIPMENT_NEW,
+        title: "Nova remessa disponível",
+        message: `Nova remessa disponível: ${lot?.quantity || 0} peças. Prazo: ${prazo}.`,
+        entityType: "shipment",
+        entityId: s.id as string,
+      });
+    }
   }
 
-  return NextResponse.json({ data: shipment }, { status: 201 });
+  return NextResponse.json(
+    { data: { shipments: created, count: created?.length || 0 } },
+    { status: 201 },
+  );
 }

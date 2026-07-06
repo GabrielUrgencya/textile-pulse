@@ -1,6 +1,7 @@
 "use client";
 
-import { Copy, RefreshCw, Clock } from "lucide-react";
+import { useState } from "react";
+import { Copy, Check, RefreshCw, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -19,6 +20,8 @@ export function DeliveryCodeDisplay({
   onRegenerate,
   regenerating,
 }: DeliveryCodeDisplayProps) {
+  const [copied, setCopied] = useState(false);
+
   if (!code) {
     return (
       <div className="rounded-lg border border-dashed border-muted-foreground/30 p-4 text-center text-sm text-muted-foreground">
@@ -31,6 +34,8 @@ export function DeliveryCodeDisplay({
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   const expiresDate = expiresAt ? new Date(expiresAt) : null;
@@ -48,6 +53,10 @@ export function DeliveryCodeDisplay({
         }`}
       >
         {formatted}
+      </p>
+
+      <p className="text-[12px] text-muted-foreground text-center max-w-[260px]">
+        Passe este código ao motorista — ele o entrega à facção, que o digita no portal para confirmar o recebimento.
       </p>
 
       <div className="flex items-center gap-2">
@@ -75,9 +84,20 @@ export function DeliveryCodeDisplay({
           size="sm"
           onClick={handleCopy}
           disabled={isExpired}
+          aria-live="polite"
+          className={copied ? "text-success border-success/40" : ""}
         >
-          <Copy className="mr-1 h-3 w-3" />
-          Copiar
+          {copied ? (
+            <>
+              <Check className="mr-1 h-3 w-3" />
+              Copiado!
+            </>
+          ) : (
+            <>
+              <Copy className="mr-1 h-3 w-3" />
+              Copiar
+            </>
+          )}
         </Button>
 
         {isExpired && onRegenerate && (

@@ -2,7 +2,7 @@
 // Caches static assets only. Not offline-first.
 // Cache version is based on build date — updated on each deploy.
 
-const CACHE_VERSION = "20260602";
+const CACHE_VERSION = "20260703";
 const CACHE_NAME = `lision-portal-v${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   "/portal",
@@ -35,7 +35,11 @@ self.addEventListener("fetch", (event) => {
   // Network-first for API calls
   if (event.request.url.includes("/api/")) return;
 
+  // Network-first; no cache-miss deve retornar undefined (senão o browser lança
+  // "Failed to convert value to 'Response'"). Garante sempre uma Response válida.
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request).catch(() =>
+      caches.match(event.request).then((cached) => cached || Response.error())
+    )
   );
 });

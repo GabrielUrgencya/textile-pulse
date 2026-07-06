@@ -24,16 +24,26 @@ export async function GET(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data, count, error } = await supabase
+  // F2: ativas = posse/pendência da facção; histórico = RETURNED + CLOSED
+  // (encerradas ficam consultáveis com o resumo financeiro).
+  const view = searchParams.get("view");
+
+  let query = supabase
     .from("faction_shipments")
     .select(
-      "id, lot_id, quantity_sent, quantity_returned, quantity_defective, sent_at, expected_return_at, actual_return_at, status, payment_value, deduction_value, notes, faction_confirmed_at, faction_estimated_return, reschedule_count, lots!inner(barcode, lot_number, production_orders!inner(op_number, product_name))",
+      "id, lot_id, quantity_sent, quantity_returned, quantity_defective, sent_at, expected_return_at, actual_return_at, status, payment_value, deduction_value, released_value, retained_value, payment_status, closed_at, notes, faction_confirmed_at, faction_estimated_return, reschedule_count, lots!inner(barcode, lot_number, production_orders!inner(op_number, product_name))",
       { count: "exact" }
     )
     .eq("faction_id", session.factionId)
-    .neq("status", "RETURNED")
     .order("sent_at", { ascending: false })
     .range(from, to);
+
+  query =
+    view === "history"
+      ? query.in("status", ["RETURNED", "CLOSED"])
+      : query.not("status", "in", "(RETURNED,CLOSED)");
+
+  const { data, count, error } = await query;
 
   if (error) return dbError("GET /api/faction/shipments", error);
 

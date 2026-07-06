@@ -306,3 +306,21 @@
 
 /* Cantos 12px (rounded-xl) para os cards do kiosk, conforme spec premium */
 .tv-premium .rounded-2xl { border-radius: 0.875rem; }
+
+/* Épico Metas — marquee do ticker de déficit no header (direita → esquerda) */
+@keyframes ticker-marquee {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.ticker-marquee-text {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+  animation: ticker-marquee 18s linear infinite;
+}
+.ticker-marquee-container:hover .ticker-marquee-text {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-marquee-text { animation: none; }
+}

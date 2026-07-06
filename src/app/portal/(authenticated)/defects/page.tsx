@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { PullToRefresh } from "@/components/portal/PullToRefresh";
 
 interface Defect {
   id: string;
@@ -24,16 +25,21 @@ export default function PortalDefectsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ id: string; msg: string; ok: boolean } | null>(null);
 
+  const load = useCallback(
+    () =>
+      fetch("/api/faction/defects")
+        .then((r) => {
+          if (!r.ok) throw new Error("Fetch failed");
+          return r.json();
+        })
+        .then((data) => setDefects(data.data || []))
+        .catch(() => {}),
+    [],
+  );
+
   useEffect(() => {
-    fetch("/api/faction/defects")
-      .then((r) => {
-        if (!r.ok) throw new Error("Fetch failed");
-        return r.json();
-      })
-      .then((data) => setDefects(data.data || []))
-      .catch(() => setDefects([]))
-      .finally(() => setLoading(false));
-  }, []);
+    load().finally(() => setLoading(false));
+  }, [load]);
 
   async function handleRespond(defectId: string, response: "CONFIRMED" | "CONTESTED") {
     setSubmitting(true);
@@ -81,6 +87,7 @@ export default function PortalDefectsPage() {
   const totalPieces = defects.reduce((sum, d) => sum + d.quantity, 0);
 
   return (
+    <PullToRefresh onRefresh={load}>
     <div className="space-y-4">
       <h2 className="font-display text-[20px] font-semibold">Defeitos</h2>
 
@@ -162,14 +169,14 @@ export default function PortalDefectsPage() {
                   <button
                     onClick={() => handleRespond(d.id, "CONFIRMED")}
                     disabled={submitting}
-                    className="flex-1 rounded border border-emerald-600 px-3 py-2 text-sm font-medium text-emerald-400 transition-colors active:bg-emerald-500/10 disabled:opacity-50"
+                    className="flex-1 min-h-[48px] rounded-lg border border-emerald-600 px-3 text-[15px] font-medium text-emerald-400 transition-colors active:bg-emerald-500/10 disabled:opacity-50"
                   >
                     Confirmar
                   </button>
                   <button
                     onClick={() => setContestModal(d.id)}
                     disabled={submitting}
-                    className="flex-1 rounded border border-red-600 px-3 py-2 text-sm font-medium text-red-400 transition-colors active:bg-red-500/10 disabled:opacity-50"
+                    className="flex-1 min-h-[48px] rounded-lg border border-red-600 px-3 text-[15px] font-medium text-red-400 transition-colors active:bg-red-500/10 disabled:opacity-50"
                   >
                     Contestar
                   </button>
@@ -191,13 +198,13 @@ export default function PortalDefectsPage() {
                     <button
                       onClick={() => handleRespond(d.id, "CONTESTED")}
                       disabled={!reason.trim() || submitting}
-                      className="flex-1 rounded bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                      className="flex-1 min-h-[48px] rounded-lg bg-red-600 px-3 text-[15px] font-medium text-white disabled:opacity-50"
                     >
                       {submitting ? "Enviando..." : "Enviar contestação"}
                     </button>
                     <button
                       onClick={() => { setContestModal(null); setReason(""); }}
-                      className="rounded border border-border px-3 py-2 text-sm text-muted-foreground"
+                      className="min-h-[48px] rounded-lg border border-border px-4 text-[15px] text-muted-foreground"
                     >
                       Cancelar
                     </button>
@@ -209,6 +216,7 @@ export default function PortalDefectsPage() {
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { PartyPopper } from "lucide-react";
 
@@ -50,7 +50,6 @@ export function TVCelebration({ achievements, storageKey }: TVCelebrationProps) 
   const initedRef = useRef(false);
   const [queue, setQueue] = useState<CelebrationItem[]>([]);
   const [current, setCurrent] = useState<CelebrationItem | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Init: carrega ids já exibidos hoje
   if (!initedRef.current && typeof window !== "undefined") {
@@ -68,11 +67,7 @@ export function TVCelebration({ achievements, storageKey }: TVCelebrationProps) 
     });
   }, [achievements, current]);
 
-  const finish = useCallback(() => {
-    setCurrent(null);
-  }, []);
-
-  // Desenfileira um por vez
+  // Desenfileira um por vez (SEM timer aqui — o timer vive num efeito próprio)
   useEffect(() => {
     if (current || queue.length === 0) return;
     const next = queue[0];
@@ -80,11 +75,16 @@ export function TVCelebration({ achievements, storageKey }: TVCelebrationProps) 
     setCurrent(next);
     shownRef.current.add(next.id);
     persistShown(storageKey, shownRef.current);
-    timerRef.current = setTimeout(finish, SHOW_MS);
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [current, queue, storageKey, finish]);
+  }, [current, queue, storageKey]);
+
+  // Auto-dismiss após SHOW_MS. BUGFIX: antes o setTimeout era limpo no re-render
+  // (quando `current` mudava) e nunca re-armado → a celebração não sumia sozinha.
+  // Agora o timer é ancorado só em `current`. Teto de tela ≤ 10s (SHOW_MS).
+  useEffect(() => {
+    if (!current) return;
+    const t = setTimeout(() => setCurrent(null), SHOW_MS);
+    return () => clearTimeout(t);
+  }, [current]);
 
   const visible = current != null;
   const isUser = current?.scope === "USER";

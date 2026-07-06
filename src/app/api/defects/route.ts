@@ -138,6 +138,7 @@ export async function POST(request: Request) {
               tenant_id: tenantId,
               faction_id: shipment.faction_id,
               type: "DEFECT_DETECTED",
+              audience: "FACTION",
               title: `Defeito detectado — Lote ${lot_id.slice(0, 8)}`,
               message: `${qty} peça(s) com defeito de ${defect_type}. Severidade: ${severity}.`,
               severity: notifSeverity,

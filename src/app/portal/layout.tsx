@@ -10,6 +10,10 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "LISION",
   },
+  // Substituto moderno da tag apple-mobile-web-app-capable (deprecada).
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {

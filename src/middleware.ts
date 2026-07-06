@@ -25,6 +25,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // --- Dev-only: preview de UI (loop visual da @ux); a página dá 404 em prod ---
+  if (process.env.NODE_ENV !== "production" && path.startsWith("/meu-plano/preview")) {
+    return NextResponse.next();
+  }
+
   // --- Routes that need auth: create Supabase client and validate session ---
   const response = NextResponse.next();
 

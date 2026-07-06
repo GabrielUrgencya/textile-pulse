@@ -56,3 +56,22 @@ CONTEXTO*.txt
 .aiox/
 .ai/
 .claude/
+
+# session artifacts (agents/QA locais — nunca commitar)
+.env.bak*
+.playwright-mcp/
+.tmp_hist/
+supabase/.temp/
+/qa-*.js
+/qa-*.mjs
+/qa-screenshots/
+/scripts/qa-*
+/scripts/screenshots/
+/scripts/apply-migration-*.mjs
+/scripts/restore-config.mjs
+*.mp3
+*.zip
+/tv-*.png
+/IMAGEM RANKING.png
+/apresentacao-lision.html
+/documentos/

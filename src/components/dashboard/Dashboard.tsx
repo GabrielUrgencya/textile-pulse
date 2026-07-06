@@ -4,11 +4,10 @@ import { cardEnter, cardEnterTransition } from "@/lib/motion";
 import { Skeleton } from "@/components/ui/data-states";
 import { CountUp } from "@/components/ui/count-up";
 import { KpiCard, KpiLabel, KpiValue, KpiSupport } from "@/components/ui/kpi-card";
-import { displayUnit } from "@/lib/utils";
+import { DeficitTicker } from "@/components/dashboard/DeficitTicker";
 import {
   AlertTriangle, ArrowDownRight, ArrowUpRight,
   Command, Layers, Menu, MoveRight, Users,
-  CheckCircle2, Clock, TrendingUp,
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
@@ -144,103 +143,6 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-/* --------------------------- Plano do Dia (8.27) -------------------------- */
-
-interface DailyPlanItemView {
-  id: string;
-  reference: string | null;
-  color: string | null;
-  size_label: string | null;
-  quantity: number | null;
-}
-
-interface DailyPlanView {
-  id: string;
-  name: string | null;
-  meta: number;
-  items: DailyPlanItemView[];
-}
-
-function DailyPlanCard() {
-  const [plans, setPlans] = useState<DailyPlanView[]>([]);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    const today = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Sao_Paulo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-    fetch(`/api/production/daily-plan?date=${today}`)
-      .then((r) => r.json())
-      .then((d) => setPlans(Array.isArray(d?.plans) ? d.plans : []))
-      .catch(() => {})
-      .finally(() => setLoaded(true));
-  }, []);
-
-  const totalMeta = plans.reduce((acc, p) => acc + (Number(p.meta) || 0), 0);
-  const hasContent = plans.some((p) => (p.items?.length ?? 0) > 0);
-
-  return (
-    <Card className="lg:col-span-12">
-      <CardHeader
-        eyebrow="Plano de produção"
-        title="Hoje você precisa produzir"
-        right={
-          hasContent ? (
-            <div className="text-right">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Meta do dia</div>
-              <div className="font-display text-[18px] font-semibold tabular-nums">
-                {totalMeta.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
-              </div>
-            </div>
-          ) : undefined
-        }
-      />
-      {!loaded ? (
-        <div className="h-16 rounded-xl bg-secondary/30 animate-pulse" />
-      ) : !hasContent ? (
-        <EmptyState message="Nenhum plano definido para hoje" />
-      ) : (
-        <div className="space-y-4">
-          {plans.map((plan) => (
-            <div key={plan.id}>
-              {plan.name ? (
-                <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">{plan.name}</div>
-              ) : null}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {plan.items.map((it) => (
-                  <div
-                    key={it.id}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-secondary/30 border border-border/40"
-                  >
-                    <Layers className="size-4 text-muted-foreground shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium truncate">
-                        {it.reference || "—"}
-                        {it.color ? <span className="text-muted-foreground"> · {it.color}</span> : null}
-                      </div>
-                      {it.size_label ? (
-                        <div className="text-[11px] text-muted-foreground truncate">{it.size_label}</div>
-                      ) : null}
-                    </div>
-                    {it.quantity != null ? (
-                      <span className="font-mono text-[13px] tabular-nums">
-                        {it.quantity.toLocaleString("pt-BR")}
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 /* --------------------------------- TopBar --------------------------------- */
 
 function buildTickers(kpis: KpiResult | null) {
@@ -259,7 +161,7 @@ function buildTickers(kpis: KpiResult | null) {
   ];
 }
 
-function TopBar({ now, kpis, userProfile }: { now: Date; kpis: KpiResult | null; userProfile: UserProfile | null }) {
+function TopBar({ now, kpis, userProfile, myMeta }: { now: Date; kpis: KpiResult | null; userProfile: UserProfile | null; myMeta: MyMeta | null }) {
   const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const date = now.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   const tickerItems = buildTickers(kpis);
@@ -271,7 +173,21 @@ function TopBar({ now, kpis, userProfile }: { now: Date; kpis: KpiResult | null;
           <Menu className="size-4" />
         </SidebarTrigger>
 
-        <div className="ml-auto flex items-center gap-3">
+        {/* Épico Metas 2b — ticker de déficit em marquee, entre a esquerda e o relógio */}
+        {myMeta ? (
+          <DeficitTicker
+            deficits={myMeta.deficits}
+            dailyGoal={myMeta.target}
+            weeklyGoal={myMeta.weekly?.target ?? null}
+            monthlyGoal={myMeta.monthly?.target ?? null}
+            unit={myMeta.unit}
+            completed={myMeta.completed}
+          />
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
+
+        <div className="ml-auto flex items-center gap-3 shrink-0">
           <div className="hidden md:flex items-center gap-2 text-right leading-tight">
             <div className="text-right">
               <div className="font-mono text-sm tabular-nums" suppressHydrationWarning>
@@ -333,101 +249,6 @@ function getProjection(produced: number, shiftStart: string, shiftEnd: string, t
   const pct = target > 0 ? (projected / target) * 100 : 0;
 
   return { projected: Math.round(projected), pct };
-}
-
-/* --------------------------- Minha Meta (setor) -------------------------- */
-
-function fmtMetaMin(min: number | null): string {
-  if (min == null) return "—";
-  if (min < 60) return `${Math.round(min)}min`;
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  return m > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
-}
-
-function MetaPeriodChip({ label, kpi, unit }: { label: string; kpi: MyMeta["weekly"]; unit: string }) {
-  const pct = kpi.target && kpi.target > 0 ? Math.min(100, Math.round((kpi.progress / kpi.target) * 100)) : 0;
-  return (
-    <div className="rounded-lg bg-secondary/50 px-3 py-2">
-      <div className="flex items-center justify-between text-[11px]">
-        <span className="flex items-center gap-1 text-muted-foreground"><TrendingUp className="size-3" /> {label}</span>
-        {kpi.estimated && <span className="text-[9px] uppercase text-muted-foreground/50">est.</span>}
-      </div>
-      <div className="mt-0.5 text-[13px] tabular-nums">
-        {kpi.progress.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} / {kpi.target != null ? kpi.target.toLocaleString("pt-BR") : "—"}{unit ? ` ${unit}` : ""}
-      </div>
-      <div className="mt-1 h-1.5 rounded-full bg-background/70 overflow-hidden">
-        <div className="h-full rounded-full bg-muted-foreground/40" style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function MyMetaCard({ myMeta }: { myMeta: MyMeta | null }) {
-  if (!myMeta || myMeta.target == null) return null;
-  const unit = displayUnit(myMeta.unit);
-  const pct = myMeta.percent;
-  const completed = myMeta.completed;
-  const barColor = completed ? "bg-success" : pct >= 80 ? "bg-foreground" : "bg-warning";
-
-  return (
-    <Card className={`lg:col-span-12 ${completed ? "border-success/40 bg-success/5" : ""}`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-            Minha meta · {myMeta.stage_name}
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="font-display text-[34px] font-semibold tabular-nums">
-              {myMeta.progress.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
-            </span>
-            <span className="text-muted-foreground text-sm tabular-nums">
-              / {myMeta.target.toLocaleString("pt-BR")}
-            </span>
-            {unit && <span className="text-muted-foreground/70 text-[13px]">{unit}</span>}
-          </div>
-        </div>
-        <div className={`text-right font-mono text-sm tabular-nums ${completed ? "text-success" : pct >= 80 ? "text-foreground" : "text-warning"}`}>
-          {pct.toFixed(1)}%
-        </div>
-      </div>
-
-      <div className="relative h-1.5 mt-4 rounded-full bg-secondary overflow-hidden">
-        <motion.div
-          className={`absolute inset-y-0 left-0 rounded-full ${barColor}`}
-          initial={{ width: 0 }}
-          animate={{ width: `${Math.min(100, pct)}%` }}
-          transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-        />
-      </div>
-
-      {/* Story 8.37 — estado "Meta Concluída" */}
-      {completed && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-success">
-          <CheckCircle2 className="size-4" />
-          <span className="text-[13px] font-medium">🎉 Meta concluída! Parabéns pelo dia.</span>
-        </div>
-      )}
-
-      {/* Story 8.37 — metas semanal/mensal (secundárias) */}
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <MetaPeriodChip label="Semana" kpi={myMeta.weekly} unit={unit} />
-        <MetaPeriodChip label="Mês" kpi={myMeta.monthly} unit={unit} />
-      </div>
-
-      {/* Story 8.37 — tempo de processo do dia */}
-      <div className="mt-3 flex items-center gap-4 text-[12px] text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <Clock className="size-3.5" /> Decorrido hoje: <span className="text-foreground tabular-nums">{fmtMetaMin(myMeta.elapsed_since_first_scan_min)}</span>
-        </span>
-        <span className="tabular-nums">Médio/lote: {fmtMetaMin(myMeta.avg_per_lot_min)}</span>
-      </div>
-
-      <div className="mt-3 text-[11px] text-muted-foreground">
-        Medido na sua etapa ({myMeta.stage_name}){unit ? `, em ${unit}` : ""}, ponderado pelo coeficiente da referência.
-      </div>
-    </Card>
-  );
 }
 
 /* --------------------- KPIs primários (região superior 8.43) --------------------- */
@@ -1099,7 +920,7 @@ export function Dashboard() {
     <div className="min-h-screen bg-background text-foreground relative">
       <div className="fixed inset-0 bg-grid opacity-30 pointer-events-none" />
       <div className="relative">
-        <TopBar now={now} kpis={data.kpis} userProfile={userProfile} />
+        <TopBar now={now} kpis={data.kpis} userProfile={userProfile} myMeta={data.myMeta} />
 
         <main className="px-6 lg:px-10 py-6 lg:py-8 max-w-[1600px] mx-auto">
           {/* Section title */}
@@ -1148,11 +969,7 @@ export function Dashboard() {
             {/* Story 8.4: Allowance Alert */}
             <AllowanceAlert />
 
-            {/* Story 8.27: Plano do dia ("hoje você precisa produzir") */}
-            <DailyPlanCard />
-
-            {/* Story 8.21: Minha meta (por setor/etapa) */}
-            <MyMetaCard myMeta={data.myMeta} />
+            {/* Épico Meu Plano: DailyPlanCard e MyMetaCard migraram para /meu-plano */}
 
             {/* Metas */}
             <GoalsRow kpis={data.kpis} targets={targets} period={period} />

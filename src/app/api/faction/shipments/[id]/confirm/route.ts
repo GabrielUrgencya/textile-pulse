@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateFactionSession } from "@/lib/faction-middleware";
 import { validateDeliveryCode } from "@/lib/delivery-code";
+import { logShipmentEvent } from "@/lib/shipment-events";
 
 /**
  * PATCH /api/faction/shipments/[id]/confirm
@@ -36,7 +37,7 @@ export async function PATCH(
   // Validate ownership + status + delivery code fields
   const { data: shipment, error: fetchError } = await supabase
     .from("faction_shipments")
-    .select("id, faction_id, status, faction_confirmed_at, delivery_code, delivery_code_expires_at, delivery_code_attempts")
+    .select("id, faction_id, tenant_id, status, faction_confirmed_at, delivery_code, delivery_code_expires_at, delivery_code_attempts")
     .eq("id", id)
     .eq("faction_id", session.factionId)
     .single();
@@ -59,7 +60,8 @@ export async function PATCH(
     );
   }
 
-  // Story 8.2: Validate delivery code if shipment has one
+  // Story 8.2: código de entrega OBRIGATÓRIO quando a remessa tem um.
+  // O motorista repassa o código à facção, que o digita no portal para confirmar.
   if (shipment.delivery_code) {
     if (!body.deliveryCode) {
       return NextResponse.json(
@@ -102,6 +104,18 @@ export async function PATCH(
   if (updateError) {
     console.error("[faction/confirm] Update error:", updateError);
     return NextResponse.json({ error: "Failed to confirm shipment" }, { status: 500 });
+  }
+
+  // Timeline (épico Robustez F2) — best-effort.
+  if (shipment.tenant_id) {
+    await logShipmentEvent(supabase, {
+      tenantId: shipment.tenant_id as string,
+      shipmentId: id,
+      eventType: "CONFIRMED",
+      actorType: "FACTION",
+      actorName: session.factionName ?? null,
+      payload: {},
+    });
   }
 
   return NextResponse.json({

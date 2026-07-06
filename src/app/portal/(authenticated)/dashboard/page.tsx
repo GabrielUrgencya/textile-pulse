@@ -2,19 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { paymentSummaryLabel } from "@/lib/payment-display";
 
 interface SummaryData {
   factionName?: string;
   totalPiecesWithFaction: number;
   pendingReturns: number;
   pendingDefects: number;
-  currentPeriodValue: number;
+  /** Fonte única: factions.current_balance (ledger). */
+  currentBalance: number;
   nextDeadline: string | null;
   overdueCount: number;
+  /** F4c — novos cards */
+  returnedShipments?: number;
+  totalPiecesReturned?: number;
+  approvalRate?: number | null;
   unreadNotifications: number;
   pendingConfirmation?: boolean;
   pendingShipmentId?: string;
 }
+
+const HERO_TONE: Record<string, string> = {
+  success: "text-success",
+  warning: "text-warning",
+  neutral: "text-muted-foreground",
+  destructive: "text-destructive",
+};
 
 function vibrate() {
   try { navigator?.vibrate?.(50); } catch { /* silent fallback */ }
@@ -26,14 +40,21 @@ export default function PortalDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/faction/summary")
-      .then((r) => {
-        if (!r.ok) throw new Error("Unauthorized");
-        return r.json();
-      })
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+    let alive = true;
+    const load = (initial: boolean) =>
+      fetch("/api/faction/summary")
+        .then((r) => {
+          if (!r.ok) throw new Error("Unauthorized");
+          return r.json();
+        })
+        .then((json) => { if (alive) setData(json); })
+        .catch(() => { if (alive && initial) setData(null); })
+        .finally(() => { if (alive && initial) setLoading(false); });
+
+    load(true);
+    // Polling 2s: edições/lançamentos refletem no Início em <2s (AC da frente).
+    const t = setInterval(() => load(false), 2000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
 
   if (loading) return <LoadingSkeleton />;
@@ -58,16 +79,20 @@ export default function PortalDashboardPage() {
         </p>
       </div>
 
-      {/* Payment KPI */}
-      <div className="rounded-2xl border border-success/30 bg-success/5 p-5">
-        <p className="text-[14px] text-muted-foreground">Você vai receber</p>
-        <p className="mt-1 font-display text-[32px] font-bold tracking-tight tabular-nums text-success">
-          R$ {(data.currentPeriodValue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-        </p>
-        {paymentDate && (
-          <p className="mt-1 text-[14px] text-muted-foreground">dia {paymentDate}</p>
-        )}
-      </div>
+      {/* Payment KPI — fonte única (ledger) + display semântico compartilhado */}
+      {(() => {
+        const summary = paymentSummaryLabel(data.currentBalance ?? 0);
+        return (
+          <div className="rounded-2xl border border-success/30 bg-success/5 p-5">
+            <p className={`font-display text-[26px] font-bold tracking-tight leading-tight ${HERO_TONE[summary.tone]}`}>
+              {summary.label}
+            </p>
+            {paymentDate && (
+              <p className="mt-1 text-[14px] text-muted-foreground">dia {paymentDate}</p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Mini cards row */}
       <div className="grid grid-cols-2 gap-3">
@@ -81,7 +106,53 @@ export default function PortalDashboardPage() {
             {data.nextDeadline ? new Date(data.nextDeadline).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—"}
           </p>
         </div>
+        {/* F4c — Remessas devolvidas + taxa de aprovação */}
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-[14px] text-muted-foreground">Remessas devolvidas</p>
+          <p className="mt-1 font-display text-[24px] font-bold tabular-nums">
+            {(data.returnedShipments ?? 0).toLocaleString("pt-BR")}
+          </p>
+          <p className="text-[12px] text-muted-foreground">
+            {(data.totalPiecesReturned ?? 0).toLocaleString("pt-BR")} peças devolvidas
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-[14px] text-muted-foreground">Taxa de aprovação</p>
+          <p
+            className={`mt-1 font-display text-[24px] font-bold tabular-nums ${
+              data.approvalRate == null
+                ? "text-muted-foreground"
+                : data.approvalRate >= 95
+                  ? "text-success"
+                  : data.approvalRate >= 85
+                    ? "text-warning"
+                    : "text-destructive"
+            }`}
+          >
+            {data.approvalRate == null ? "—" : `${data.approvalRate}%`}
+          </p>
+        </div>
       </div>
+
+      {/* Defeitos — acesso principal (F4: saiu do bottom-nav) */}
+      <Link
+        href="/portal/defects"
+        className={`flex min-h-[56px] items-center justify-between rounded-2xl border p-4 transition-colors active:opacity-80 ${
+          data.pendingDefects > 0
+            ? "border-amber-500/30 bg-amber-500/5"
+            : "border-border bg-card"
+        }`}
+      >
+        <div>
+          <p className="text-[16px] font-semibold">Defeitos</p>
+          <p className="text-[13px] text-muted-foreground">
+            {data.pendingDefects > 0
+              ? `${data.pendingDefects} pendente${data.pendingDefects > 1 ? "s" : ""} de resposta`
+              : "Nenhum defeito pendente"}
+          </p>
+        </div>
+        <span className={`text-[20px] ${data.pendingDefects > 0 ? "text-amber-400" : "text-muted-foreground/50"}`}>→</span>
+      </Link>
 
       {/* Overdue alert */}
       {data.overdueCount > 0 && (

@@ -9,10 +9,13 @@ import {
   CalendarDays,
   ChevronsLeft,
   ClipboardCheck,
+  ClipboardList,
   Clock,
   Factory,
+  FileSpreadsheet,
   LayoutDashboard,
   LogOut,
+  MessageCircle,
   ScanLine,
   Settings,
   ShieldCheck,
@@ -42,6 +45,7 @@ import { cn } from "@/lib/utils";
 
 const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard className="size-4 shrink-0" />, permission: "dashboard:view" },
+  { title: "Meu Plano", url: "/meu-plano", icon: <ClipboardList className="size-4 shrink-0" />, permission: "dashboard:view" },
   { title: "Produção", url: "/production/orders", icon: <Factory className="size-4 shrink-0" />, permission: "orders:view" },
   { title: "Plano do Dia", url: "/production/daily-plan", icon: <CalendarDays className="size-4 shrink-0" />, permission: "settings:manage" },
   { title: "Scan", url: "/scan", icon: <ScanLine className="size-4 shrink-0" />, permission: "scan:view" },
@@ -50,9 +54,11 @@ const mainItems = [
   { title: "Retrabalho", url: "/rework", icon: <AlertTriangle className="size-4 shrink-0" />, permission: "rework:view" },
   { title: "Qualidade", url: "/quality", icon: <ShieldCheck className="size-4 shrink-0" />, permission: "quality:view" },
   { title: "Facções", url: "/factions", icon: <Truck className="size-4 shrink-0" />, permission: "factions:view" },
+  { title: "Chat", url: "/chat", icon: <MessageCircle className="size-4 shrink-0" />, permission: "factions:view" },
   // Story 9.x — TV e Ranking agora são permissões dinâmicas (editáveis em Configurações → Permissões)
   { title: "Ranking", url: "/ranking", icon: <Trophy className="size-4 shrink-0" />, permission: "ranking:view" },
   { title: "Config. da TV", url: "/sector-dashboard", icon: <Tv className="size-4 shrink-0" />, permission: "tv:config" },
+  { title: "Relatórios", url: "/reports", icon: <FileSpreadsheet className="size-4 shrink-0" />, permission: "reports:export" },
   { title: "Equipe", url: "/team", icon: <Users className="size-4 shrink-0" />, permission: "users:manage" },
 ];
 
