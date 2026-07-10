@@ -46,7 +46,8 @@ export async function GET(request: Request) {
       useWeightedMeta = settings.use_weighted_meta !== false; // default: true
     }
 
-    const kpis = await computeKpis(supabase, { from, to, useWeightedMeta });
+    const tenantId = t.error ? undefined : t.tenantId;
+    const kpis = await computeKpis(supabase, { from, to, useWeightedMeta, tenantId });
 
     return NextResponse.json({
       kpis,

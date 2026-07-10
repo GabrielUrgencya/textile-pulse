@@ -1,0 +1,69 @@
+epicId: EPICO-DIVERGENCIA-METRICAS
+title: "Investigação & Correção de divergências de métricas (6 sintomas)"
+reviewer: "Quinn (@qa)"
+date: "2026-07-10"
+database: "produção (real) — regra: nenhum número afirmado sem query real"
+verdict: PASS
+
+scope:
+  corrections:
+    - id: 1
+      title: "Escopo de tenant na resolução de etapa"
+      files:
+        - src/lib/user-meta.ts
+        - src/app/api/my-plan/route.ts
+        - src/lib/kpi-queries.ts
+        - src/app/api/production/orders/[id]/route.ts
+      effect: "Corrige crash PGRST116 com 2 tenants + fecha vazamento cross-tenant"
+    - id: 2
+      title: "Fuso da TV alinhado ao tenant"
+      files: [src/app/api/kiosk/dashboard/route.ts]
+    - id: 5
+      title: "Mapeamento setor→etapa por operador (user_targets)"
+      effect: "COSTURA→PRODUCAO (3 operadores); não-produtivos sem meta"
+    - id: 6
+      title: "Empty state limpo (MetaSection/DeficitTicker)"
+    - id: 7
+      title: "Fuso da meta individual diária UTC→local"
+      files: [src/lib/user-meta.ts]
+
+validations:
+  - id: a_b
+    name: "Resolução de meta — todos operadores liserie"
+    result: PASS
+    evidence: "12 produtivos resolvem etapa + meta base real (CORTE=200, COSTURA→PRODUCAO=200); progresso real conferido (GABRIEL XAVIER=90, PRODUÇÃO=72 em 2026-07-09); 6 não-produtivos caem em empty state (sem meta)"
+  - id: c
+    name: "Meta acumulada — goal_deficits (rollover persistido)"
+    result: PASS
+    evidence: "8 linhas; base_goal cresce dia-a-dia (rollover), deficit>=0 (CHECK), carried_to encadeia 07-06→07-10. Mecanismo cron+goal_deficits funcionando"
+    note: "Só contas admin/owner (Marketing Avel liserie, Dono fabrica-teste) têm histórico — confirma causa raiz: até o fix, o cron (que reusa computeUserMeta) não computava operadores em fallback. Pós-fix, próximos ciclos acumulam operadores reais."
+  - id: d
+    name: "Coerência de fuso — janela diária local em todas as fontes"
+    result: PASS
+    evidence: "computeUserMeta (diária/semana/mês), kpi-queries (dashboard) e kiosk (TV) todos em -03:00. Correção 7 provada sem distorção (UTC=LOCAL em 5 dias reais)"
+  - id: e
+    name: "Multi-tenant — sem vazamento cross-tenant"
+    result: PASS
+    evidence: "CORTE/TRAVETE/ESTOQUE/PRODUCAO têm 2 linhas sem escopo → 1 linha determinística com .eq(tenant). CORTE liserie(9614ad2d) ≠ CORTE fabrica(7c87e0e3)"
+
+issues_found_during_gate:
+  - severity: medium
+    category: data
+    description: "Marketing Avel (ADMIN, setor ADMINISTRACAO) tinha user_targets órfão → CONFERENCIA (criado 2026-06-19, anterior ao épico). Fazia um admin ver meta fantasma, contradizendo a decisão 'não-produtivo → sem meta'."
+    resolution: "Linha removida (id 948437dd-...). Backup exato logado para reversão trivial. NÃO era regressão das 7 correções — dado sujo pré-existente que o gate expôs."
+    status: RESOLVED
+
+debt:
+  - severity: low
+    description: "goal_deficits históricos de Marketing Avel (4 linhas, 07-06 a 07-09) — inertes agora que o user_targets sumiu (computeUserMeta retorna null antes de lê-los). Limpeza cosmética opcional."
+  - severity: low
+    description: "Erica Mara de Lima com perfil duplicado (2 linhas) no liserie."
+  - severity: info
+    description: "Confirmar na Vercel: cron /api/cron/goal-closures agendado + CRON_SECRET setado, para o acúmulo continuar pós-deploy (goal_deficits mostram execuções diárias ~03:51 UTC até 07-10)."
+
+quality_signals:
+  tsc: clean
+  lint: clean
+  build: clean (todas as rotas compiladas)
+
+no_commit_no_push: true

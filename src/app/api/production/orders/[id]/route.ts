@@ -13,7 +13,14 @@ export async function GET(
 
   const { id } = params;
 
+  // Escopo de tenant p/ o lookup do ESTOQUE (nome repete entre tenants; .single()
+  // quebrava com >1 linha). maybeSingle + tenant → resolve a etapa do tenant certo.
+  const t = requireTenantId(user);
+  const tenantId = t.error ? null : t.tenantId;
+
   // Phase 1: Fetch order, lots, and ESTOQUE stage in parallel
+  let stageQuery = supabase.from("stages").select("id").eq("name", "ESTOQUE");
+  if (tenantId) stageQuery = stageQuery.eq("tenant_id", tenantId);
   const [orderResult, lotsResult, stageResult] = await Promise.all([
     supabase
       .from("production_orders")
@@ -25,11 +32,7 @@ export async function GET(
       .select("id, barcode, lot_number, quantity, current_stage_id, status, color, size_grid, destination, created_at")
       .eq("po_id", id)
       .order("lot_number", { ascending: true }),
-    supabase
-      .from("stages")
-      .select("id")
-      .eq("name", "ESTOQUE")
-      .single(),
+    stageQuery.limit(1).maybeSingle(),
   ]);
 
   if (orderResult.error || !orderResult.data) {

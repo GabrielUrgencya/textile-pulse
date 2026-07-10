@@ -36,6 +36,8 @@ export interface ChartDataPoint {
 export interface ComputeKpisOptions extends DateRange {
   /** Enable weighted meta calculation using meta_coefficient */
   useWeightedMeta?: boolean;
+  /** Tenant do usuário — escopa o lookup da etapa ESTOQUE (nome repete entre tenants). */
+  tenantId?: string;
 }
 
 /**
@@ -51,6 +53,7 @@ export async function computeKpis(
 ): Promise<KpiResult> {
   const { from, to } = dateRange;
   const useWeightedMeta = "useWeightedMeta" in dateRange ? dateRange.useWeightedMeta : false;
+  const tenantId = "tenantId" in dateRange ? dateRange.tenantId : undefined;
   // Story 8.29: limites do dia LOCAL (fuso do tenant), não UTC.
   const toEnd = localDayEnd(to);
   const fromStart = localDayStart(from);
@@ -145,10 +148,11 @@ export async function computeKpis(
 
   // Story 8.19: produção por PEÇA = peças dos lotes que ENTRARAM NO ESTOQUE no período.
   // Conta cada lote uma única vez (na entrada do estoque), não por bipagem/etapa.
-  const { data: estoqueStages } = await supabase
-    .from("stages")
-    .select("id")
-    .eq("name", "ESTOQUE");
+  // Escopo de tenant: "ESTOQUE" existe em cada tenant — sem o filtro, estoqueIds
+  // pegaria a etapa de todos os tenants e a produção somaria dados de outro tenant.
+  let estoqueQuery = supabase.from("stages").select("id").eq("name", "ESTOQUE");
+  if (tenantId) estoqueQuery = estoqueQuery.eq("tenant_id", tenantId);
+  const { data: estoqueStages } = await estoqueQuery;
   const estoqueIds = (estoqueStages || []).map((s) => s.id as string);
 
   let producedPieces = 0;

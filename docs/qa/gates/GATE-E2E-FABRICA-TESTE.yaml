@@ -1,0 +1,56 @@
+gateId: GATE-E2E-FABRICA-TESTE
+title: "Teste E2E visual — épico de métricas no tenant Fábrica Teste"
+reviewer: "Quinn (@qa)"
+date: "2026-07-10"
+tenant: "fabrica-teste-31ykr (69d6ebf0) — isolado da liserie"
+verdict: PASS
+
+parte_a_banco:
+  - id: computeUserMeta
+    result: PASS
+    evidence: "ANA meta=1600 prog=600 37,5% déf=600 | BRUNO meta=2000 prog=2000 100% (fallback setor) | CARLOS meta=3000 prog=1500 50% | DORA=null (empty state)"
+  - id: fuso
+    result: PASS
+    evidence: "CARLOS hoje LOCAL=1500 vs UTC=1600 — bipagem 09/07 22:00 SP fica no dia 09 (local), não no 10"
+  - id: cancelled
+    result: PASS
+    evidence: "BRUNO=2000 (OP CANCELLED de 500 excluída; contaria 2500)"
+  - id: dashboard_tv
+    result: PASS
+    evidence: "computeKpis produced_today (ESTOQUE ponderado, tenant escopado) = 800"
+  - id: mudanca_meta
+    result: PASS
+    evidence: "sector_targets CORTE 2000→2500 → BRUNO meta 2500 80%; restaurado para 2000"
+
+parte_b_telas:
+  - tela: TV
+    result: PASS
+    evidence: "/tv?token=141eb884… → 'PRODUÇÃO HOJE 800' (screenshot estilizado)"
+  - tela: dashboard_admin
+    result: PASS
+    evidence: "login GESTOR (PIN 9999) → 'Produção do dia 800,0' = TV (texto confirmado)"
+  - tela: meu_plano_ANA
+    result: PASS
+    evidence: "'600 / 1.600 peças · Base 1.000 · Déficit 600 · Total 1.600 · 37,5%' — acúmulo visível"
+  - tela: meu_plano_BRUNO
+    result: PASS
+    evidence: "'2.000 / 2.000 · Meta concluída · 100,0%' (Corte via fallback)"
+  - tela: meu_plano_CARLOS
+    result: PASS
+    evidence: "'1.500 / 3.000 · 50,0%' (virada fora do dia — fuso)"
+  - tela: meu_plano_DORA
+    result: PASS
+    evidence: "'Nenhuma meta configurada' — empty state, sem meta fantasma"
+
+achados_durante_gate:
+  - severity: medium
+    category: data
+    description: "Limpeza inicial do seed usava delete().in() em lote (atômico); FK de faction_shipments em lotes antigos fez o delete inteiro falhar SILENCIOSAMENTE (erro não checado) → 13 OPs/9 lotes antigos sobreviveram e apareciam na TV (Lotes por Etapa / Ação Necessária)."
+    resolution: "Reexecutada limpeza robusta em ordem de FK (ledger→events→shipment_lots→defects→scans→shipments→lots→OPs), preservando as 5 OPs do cenário. Tenant agora: 5 OPs, 16 lotes. TV limpa ('Nenhum alerta ativo')."
+    status: RESOLVED
+
+observacoes:
+  - "Sob o preview headless, o CSS do layout autenticado (/dashboard, /meu-plano) não aplicou — artefato do dev server; a TV (route-group kiosk) estilizou normal. Números corretos em todas. No navegador do Gabriel renderiza estilizado."
+  - "Login por PIN exige tenantSlug no corpo; a UI só o envia se a URL for /login?tenant=fabrica-teste-31ykr."
+
+no_commit_no_push: true
