@@ -135,7 +135,9 @@ export async function GET(request: Request) {
   if (!stageId) {
     const sector = (profileRes.data?.sector || "").trim();
     if (sector) {
-      const { data: stage } = await supabase.from("stages").select("id").ilike("name", sector).maybeSingle();
+      // Escopo de tenant obrigatório: nome de etapa se repete entre tenants.
+      const { data: stage } = await supabase
+        .from("stages").select("id").eq("tenant_id", t.tenantId).ilike("name", sector).limit(1).maybeSingle();
       stageId = stage?.id ?? null;
     }
   }

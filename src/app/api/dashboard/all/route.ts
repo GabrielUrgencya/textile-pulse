@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     profileResult,
   ] = await Promise.all([
     // 1. KPIs (uses RPCs internally — already optimized)
-    computeKpis(supabase, { from, to, useWeightedMeta }).catch(() => null),
+    computeKpis(supabase, { from, to, useWeightedMeta, tenantId }).catch(() => null),
 
     // 2. Chart data (uses RPC internally)
     computeChartData(supabase, { from, to }, groupBy).catch(() => []),

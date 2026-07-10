@@ -110,8 +110,11 @@ export async function computeUserMeta(
   from: string,
   to: string,
 ): Promise<UserMeta | null> {
-  const fromStart = `${from}T00:00:00.000Z`;
-  const toEnd = `${to}T23:59:59.999Z`;
+  // Fuso do tenant (não UTC): alinha a janela DIÁRIA com as de semana/mês
+  // (que já usam dayStartAbs/dayEndAbs) e com kpi-queries. Sem isso, a meta
+  // media o dia em UTC e divergia do resto perto da virada da meia-noite.
+  const fromStart = dayStartAbs(from);
+  const toEnd = dayEndAbs(to);
 
   // 1) Override explícito do usuário
   const { data: ut } = await supabase
@@ -124,20 +127,22 @@ export async function computeUserMeta(
   let target: number | null = ut?.daily_target ?? null;
   let unit: string | null = ut?.unit ?? null;
 
-  // 2) Fallback por setor do perfil
+  // 2) Fallback por setor do perfil.
+  // CRÍTICO: a busca de etapa por NOME deve ser escopada pelo tenant do usuário.
+  // Sem isso, com múltiplos tenants usando os mesmos nomes de etapa, o nome casa
+  // >1 linha → .maybeSingle() dá PGRST116 → stageId null → meta some. Também evita
+  // resolver a etapa do tenant errado (vazamento cross-tenant).
   if (!stageId) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("sector")
+      .select("sector, tenant_id")
       .eq("id", userId)
       .maybeSingle();
     const sector = (profile?.sector || "").trim();
     if (sector) {
-      const { data: stage } = await supabase
-        .from("stages")
-        .select("id")
-        .ilike("name", sector)
-        .maybeSingle();
+      let stageQuery = supabase.from("stages").select("id").ilike("name", sector);
+      if (profile?.tenant_id) stageQuery = stageQuery.eq("tenant_id", profile.tenant_id);
+      const { data: stage } = await stageQuery.limit(1).maybeSingle();
       stageId = stage?.id ?? null;
     }
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateKioskToken } from "@/lib/kiosk-middleware";
+import { todayInTz, localDayStart, localDayEnd } from "@/lib/tz";
 import { computeSectorKpis } from "@/lib/sector-kpis";
 import { listDayAchievements } from "@/lib/achievements";
 import { getSectorDashboardConfig } from "@/lib/dashboard-config";
@@ -32,16 +33,21 @@ export async function GET(request: Request) {
   );
 
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const fromStart = `${today}T00:00:00.000Z`;
-  const toEnd = `${today}T23:59:59.999Z`;
+  // Story 8.29 / fix de fuso: o "dia" da TV segue o fuso do tenant (como o
+  // dashboard via kpi-queries), NÃO UTC. Sem isso, TV e dashboard divergiam ~3h
+  // perto da virada do dia.
+  const today = todayInTz();
+  const fromStart = localDayStart(today);
+  const toEnd = localDayEnd(today);
 
-  // Yesterday for trend comparison
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().slice(0, 10);
-  const yesterdayStart = `${yesterdayStr}T00:00:00.000Z`;
-  const yesterdayEnd = `${yesterdayStr}T23:59:59.999Z`;
+  // Yesterday for trend comparison (também no fuso do tenant)
+  const yesterdayStr = (() => {
+    const d = new Date(`${today}T12:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const yesterdayStart = localDayStart(yesterdayStr);
+  const yesterdayEnd = localDayEnd(yesterdayStr);
 
   // 1 hour ago for current rate
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
