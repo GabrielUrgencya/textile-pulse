@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { TENANT_TZ } from "@/lib/tz";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { paymentSummaryLabel } from "@/lib/payment-display";
@@ -61,7 +62,7 @@ export default function PortalDashboardPage() {
   if (!data) return <p className="text-center text-[16px] text-muted-foreground py-12">Erro ao carregar dados.</p>;
 
   const paymentDate = data.nextDeadline
-    ? new Date(data.nextDeadline).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+    ? new Date(data.nextDeadline).toLocaleDateString("pt-BR", { timeZone: TENANT_TZ, day: "2-digit", month: "2-digit" })
     : null;
 
   return (
@@ -103,7 +104,7 @@ export default function PortalDashboardPage() {
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-[14px] text-muted-foreground">Próximo prazo</p>
           <p className="mt-1 font-display text-[24px] font-bold tabular-nums">
-            {data.nextDeadline ? new Date(data.nextDeadline).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—"}
+            {data.nextDeadline ? new Date(data.nextDeadline).toLocaleDateString("pt-BR", { timeZone: TENANT_TZ, day: "2-digit", month: "2-digit" }) : "—"}
           </p>
         </div>
         {/* F4c — Remessas devolvidas + taxa de aprovação */}

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Wallet, Check } from "lucide-react";
+import { formatDateBR } from "@/lib/tz";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,7 +101,7 @@ export function ShipmentPaymentDialog({ open, onOpenChange, shipment, onSuccess 
           </div>
           <StatusBadge status={STATUS_TONE[status] || "neutral"} size="md">
             {STATUS_LABEL[status] || status}
-            {isPaid && shipment?.paid_at ? ` · ${new Date(shipment.paid_at).toLocaleDateString("pt-BR")}` : ""}
+            {isPaid && shipment?.paid_at ? ` · ${formatDateBR(shipment.paid_at)}` : ""}
           </StatusBadge>
         </div>
 

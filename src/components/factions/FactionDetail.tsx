@@ -20,6 +20,7 @@ import { ShipmentPaymentDialog } from "@/components/factions/ShipmentPaymentDial
 import { ShipmentDrawer } from "@/components/factions/ShipmentDrawer";
 import { DeliveryCodeDisplay } from "@/components/shipments/DeliveryCodeDisplay";
 import { useFactionDetail, type FactionShipment } from "@/hooks/use-factions-data";
+import { formatDateBR } from "@/lib/tz";
 import { showToast } from "@/lib/toast";
 import { getShipmentStatusMeta, isActiveShipment } from "@/lib/shipment-status";
 
@@ -198,7 +199,7 @@ function FactionDetail({ factionId }: FactionDetailProps) {
       key: "sent_at",
       header: "Data Envio",
       sortable: true,
-      render: (row) => <span className="text-sm font-mono">{new Date(row.sent_at).toLocaleDateString("pt-BR")}</span>,
+      render: (row) => <span className="text-sm font-mono">{formatDateBR(row.sent_at)}</span>,
     },
     {
       key: "total_quantity",
@@ -210,7 +211,7 @@ function FactionDetail({ factionId }: FactionDetailProps) {
       header: "Prazo",
       render: (row) => {
         const prazo = row.expected_return || row.expected_return_at;
-        return <span className="text-sm">{prazo ? new Date(prazo).toLocaleDateString("pt-BR") : "—"}</span>;
+        return <span className="text-sm">{formatDateBR(prazo)}</span>;
       },
     },
     {
@@ -322,7 +323,7 @@ function FactionDetail({ factionId }: FactionDetailProps) {
     {
       key: "created_at",
       header: "Data",
-      render: (row) => <span className="text-sm font-mono">{new Date(row.created_at).toLocaleDateString("pt-BR")}</span>,
+      render: (row) => <span className="text-sm font-mono">{formatDateBR(row.created_at)}</span>,
     },
     {
       key: "defect_type",

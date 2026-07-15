@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { formatDateBR, formatDateTimeBR } from "@/lib/tz";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -63,9 +64,9 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const dt = (s: string | null) =>
-  s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
-const d = (s: string | null) => (s ? new Date(s).toLocaleDateString("pt-BR") : "—");
+// Datas SEMPRE no fuso do tenant (evita off-by-one no runtime UTC do Vercel).
+const dt = (s: string | null) => formatDateTimeBR(s);
+const d = (s: string | null) => formatDateBR(s);
 
 function eventDetail(ev: ShipmentEvent): string | null {
   const p = ev.payload || {};

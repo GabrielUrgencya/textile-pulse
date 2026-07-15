@@ -263,6 +263,27 @@
     font-size: 34px;
     line-height: 1;
   }
+
+  /* Frente 4 — TV "Instrumento": pulso vivo do ponto "agora" e dos semáforos */
+  @keyframes tv-live-ping {
+    0% { transform: scale(0.6); opacity: 0.7; }
+    80%, 100% { transform: scale(2.4); opacity: 0; }
+  }
+  .tv-live-ping {
+    border-radius: 9999px;
+    animation: tv-live-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  @keyframes tv-live-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.82); }
+  }
+  .tv-live-ping-dot { animation: tv-live-pulse 1.8s ease-in-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tv-live-ping { animation: none; opacity: 0; }
+    .tv-live-ping-dot { animation: none; }
+    .ticker-track { animation: none; }
+  }
 }
 
 /* ───────────────────────────────────────────────────────────

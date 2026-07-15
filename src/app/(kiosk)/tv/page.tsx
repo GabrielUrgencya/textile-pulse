@@ -3,17 +3,12 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { TVHero } from "@/components/tv/TVHero";
-import { TVKpis } from "@/components/tv/TVKpis";
-import { TVStageFlow } from "@/components/tv/TVStageFlow";
-import { TVAlerts } from "@/components/tv/TVAlerts";
 import { FullscreenButton } from "@/components/tv/FullscreenButton";
 import { type SectorOption } from "@/components/tv/TVSectorSelector";
 import { TVCelebration, type CelebrationItem } from "@/components/tv/TVCelebration";
 import { TVHeaderV2 } from "@/components/tv/TVHeaderV2";
-import { BentoGrid, BentoCell } from "@/components/ui/bento-grid";
-import { WidgetRenderer } from "@/components/tv/widgets/WidgetRenderer";
 import { TVSectorDefault } from "@/components/tv/TVSectorDefault";
+import { TVOverviewDefault } from "@/components/tv/TVOverviewDefault";
 import { subscribeToTvConfig } from "@/lib/realtime";
 import type { KPIWidget } from "@/lib/dashboard-config";
 import type { SectorKpis } from "@/lib/sector-kpis";
@@ -241,63 +236,26 @@ function TVDashboardContent() {
       {/* Dashboard content */}
       <div className="flex-1 flex flex-col gap-4 px-6 pt-4 pb-6 overflow-hidden">
         {activeSector ? (
-          /* ── Visão por SETOR ── */
-          data.dashboard_config && !data.dashboard_config.isDefault ? (
-            /* Config custom do admin (8.41) → bento dinâmico render-from-config */
-            <BentoGrid mode="tv" className="flex-1 min-h-0">
-              {(data.dashboard_config.layout || []).map((widget, i) => (
-                <BentoCell key={widget.id} size={widget.size}>
-                  <WidgetRenderer widget={widget} kpis={sectorKpis} index={i} />
-                </BentoCell>
-              ))}
-            </BentoGrid>
-          ) : (
-            /* Sem config própria → layout FIXO premium (áreas nomeadas) */
-            <div className="flex-1 min-h-0">
-              <TVSectorDefault kpis={sectorKpis} />
-            </div>
-          )
+          /* ── Visão por SETOR — redesign "Instrumento" (Frente 4) ──
+             TODOS os setores usam o MESMO layout premium. A config custom por
+             setor (8.41) foi intencionalmente descontinuada na TV: não pode
+             haver setor com tela antiga e setor com tela nova. */
+          <div className="flex-1 min-h-0">
+            <TVSectorDefault kpis={sectorKpis} />
+          </div>
         ) : (
-          /* ── Visão GERAL (retrocompatível) ── */
-          <>
-            <div className="grid grid-cols-12 gap-2.5">
-              <div className="col-span-5">
-                <TVHero
-                  producedToday={data.production.produced_today}
-                  dailyTarget={data.production.daily_target}
-                  percent={data.production.percent}
-                  currentRate={data.production.current_rate}
-                  peakRate={data.production.peak_rate}
-                  projectedEnd={data.production.projected_end}
-                  activeShift={data.shift.active_shift}
-                />
-              </div>
-              <div className="col-span-7">
-                <TVKpis
-                  activeOps={data.kpis.active_ops}
-                  opsTarget={data.kpis.ops_target}
-                  activeLots={data.kpis.active_lots}
-                  lotsTarget={data.kpis.lots_target}
-                  defectRate={data.kpis.defect_rate}
-                  defectTolerance={data.kpis.defect_tolerance}
-                  scansToday={data.kpis.scans_today}
-                  scansYesterday={data.kpis.scans_yesterday}
-                  currentRate={data.production.current_rate}
-                  peakRate={data.production.peak_rate}
-                  projectedEnd={data.production.projected_end}
-                  dailyTarget={data.production.daily_target}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-12 gap-2.5 flex-1 min-h-0">
-              <div className="col-span-7 min-h-0">
-                <TVStageFlow stages={data.lots_by_stage} avgStageDurations={data.avg_stage_durations} />
-              </div>
-              <div className="col-span-5 min-h-0">
-                <TVAlerts alerts={data.alerts} />
-              </div>
-            </div>
-          </>
+          /* ── Visão GERAL — redesign "Instrumento" (Frente 4) ──
+             Mesma linguagem do setor (gauge herói + glow de estado + vidro),
+             com os dados agregados do tenant. Sem tela legada. */
+          <div className="flex-1 min-h-0">
+            <TVOverviewDefault
+              production={data.production}
+              kpis={data.kpis}
+              stages={data.lots_by_stage}
+              avgStageDurations={data.avg_stage_durations}
+              alerts={data.alerts}
+            />
+          </div>
         )}
       </div>
     </div>

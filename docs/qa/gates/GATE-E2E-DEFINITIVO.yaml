@@ -1,0 +1,147 @@
+storyId: e2e-definitivo
+title: "E2E DEFINITIVO — crivo final antes do deploy (metas, déficit, calendário, isolamento, bordas)"
+reviewer: "Quinn (@qa)"
+date: "2026-07-15"
+database: "produção (real) — tenant Fábrica Teste (fabrica-teste-31ykr); liserie INTOCADA (54→54 OPs)"
+method: "Cenário construído do zero por Dara; prova por API (motor) + NAVEGAÇÃO na tela renderizada (screenshots) + lib de calendário headless."
+verdict: PASS   # correções aplicadas e validadas; pipeline físico provado por delta. (rev.2 2026-07-15)
+
+scenario:
+  operadores: "BRUNO(Corte,1200) ANA(Produção,800) CARLOS(Travete,500) DORA(Embalagem,herda 500) EVA(Limpeza,sem meta)"
+  setores: "Corte 1000 · Produção 1500 · Travete 800 · Embalagem 500 · Limpeza (sem meta)"
+  timeline: "D=07-15; cron fechou D-1=07-14; seed histórico ANA 07-13=300. Déficits ativos hoje: ANA 600, CARLOS 100, Produção 1000, Travete 400."
+  pins: "BRUNO 111111 · ANA 222222 · CARLOS 333333 · DORA 444444 · EVA 555555 · GESTOR(admin email) Teste@123456 (6 dígitos — o numpad só envia com 6)."
+
+pilares:
+  - id: P1_amostragem
+    name: "Amostragem correta em todas as telas (produção e déficit)"
+    result: PASS
+    evidence: >
+      Motor (kiosk API) por setor: Corte 1200/1000=120%, Produção 600/2500=24%, Travete 650/1200=54,2%,
+      Embalagem 250/500=50%, Limpeza null. Dashboard individual (my-plan): BRUNO 1200/1200=100%,
+      ANA 600/1400=42,9%, CARLOS 650/600=108,3%, DORA 250/500=50%, EVA vazio. Cada operador vê SÓ o seu.
+      Produção e déficit idênticos em TV, dashboard individual e relatório.
+  - id: P1_visual
+    name: "Prova VISUAL navegada (telas renderizadas) — o Gabriel VÊ"
+    result: PASS
+    evidence: >
+      Login PIN real na UI. Screenshots: ANA /meu-plano "600 / 1.400 · déficit 600 · Base 800 · Total 1.400 · 42,9%";
+      BRUNO "1.200/1.200 · 100% · Meta concluída"; CARLOS "650/600 · 108,3% · déficit 100 quitado";
+      EVA "Nenhuma meta configurada" (empty limpo); TV setor Produção gauge 600/2.500 24% pill "FALTAM 1.900".
+  - id: P2_deficit_acumula
+    name: "Déficit acumula (individual e setor), sem teto, começando limpo"
+    result: PASS
+    evidence: >
+      Cron gravou ANA 07-14: base 1100 (800+300) − produzido 500 = déficit 600 (cadeia 2 dias 300+300, SEM teto).
+      Setor Produção 07-14 déficit 1000. Hoje: meta efetiva ANA 1.400 e Produção 2.500 renderizadas na tela.
+  - id: P2_deficit_resolve
+    name: "Déficit resolve ao superar a meta efetiva"
+    result: PASS
+    evidence: "CARLOS meta efetiva 600 (500+100), produziu 650 → 108,3%, 'Meta concluída', déficit quitado. Provado em tela."
+  - id: P2_ticker_isolado
+    name: "Déficit/ticker por conta, sem vazamento"
+    result: PASS
+    evidence: "Ticker de ANA ('600 peças atrás, meta 1.400') aparece só na conta de ANA; BRUNO/CARLOS não mostram o déficit dela."
+  - id: P35_calendario
+    name: "Calendário por tenant (fim de semana) — lib real headless"
+    result: PASS
+    evidence: >
+      src/lib/work-calendar.ts exercitado (mesmo código do cron/dashboards):
+      seg-sex prevWorkingDay(07-13 seg)=07-10 sex (pula sáb/dom); seg-sáb prevWorkingDay(07-13)=07-11 sáb;
+      isWorkingDay sáb false(seg-sex)/true(seg-sáb), dom sempre false; workingDaysBetween 07-10..07-14 = 3(seg-sex)/4(seg-sáb).
+      Complemento vivo: ZERO linhas goal_deficits em 07-11/07-12 (dia não-útil não acumula).
+  - id: P4_isolamento
+    name: "Isolamento entre contas e multi-tenant"
+    result: PASS
+    evidence: "Cada operador só o seu (matriz cruzada my-plan por userId). liserie 54 OPs antes = 54 depois. Cron rodou escopado (só FT)."
+  - id: P5_cancelled
+    name: "OP CANCELLED não conta"
+    result: PASS
+    evidence: "OP E2E-C-3 (CANCELLED) do BRUNO +300 no Corte: BRUNO 1200 (não 1500), setor Corte 1200. Não aparece em nenhuma tela."
+  - id: P5_empty
+    name: "Operador/Setor sem meta → empty state limpo"
+    result: PASS
+    evidence: "EVA (Limpeza): 'Nenhuma meta configurada', sem número absurdo, sem erro. Setor Limpeza: meta null na TV."
+  - id: P5_meta_alterada
+    name: "Meta alterada no meio recalcula o %"
+    result: PASS
+    evidence: "Travete sector 800→650: TV efetiva 1200→1050, % 54,2%→61,9% ao vivo; revertido a 800 (54,2%)."
+  - id: P1_coerencia_relatorio
+    name: "Coerência do % entre RELATÓRIO e telas de meta acumulada"
+    result: CONCERNS   # <-- item a decidir/corrigir
+    evidence: >
+      Produção e déficit batem em TODAS as telas. PORÉM o atingimento % do RELATÓRIO usa a meta BASE,
+      enquanto TV e dashboard individual usam a meta EFETIVA (base+déficit). Divergem quando há déficit:
+      ANA 75% (rel, 600/800) vs 42,9% (dash, 600/1400); CARLOS 130% vs 108,3%; Travete 81,3% vs 54,2%;
+      Produção 40% vs 24%. Sem déficit, batem (Corte 120%, Embalagem 50%, BRUNO 100%, DORA 50%).
+    recomendacao: >
+      DECISÃO de produto/arquitetura: (A) alinhar o relatório à meta acumulada (report-data.ts usar meta efetiva
+      no atingimento) para coerência total com o modelo "a meta acumula"; ou (B) assumir que o relatório mostra
+      atingimento vs meta NOMINAL + déficit como coluna separada (visão gerencial), documentando a diferença.
+      Recomendo (A): a filosofia da feature é que a meta cresce com o déficit; o relatório a 75% subestima o esforço real da ANA.
+
+observacoes_baixa_severidade:
+  - id: OBS1_dashboard_css
+    severity: low
+    description: >
+      A rota /dashboard (dashboard GERAL) renderiza SEM o CSS completo no dev (Turbopack injeta o bundle via HMR;
+      118 regras vs 234 no /meu-plano). Sem erro de servidor. /meu-plano, /tv, /login estilizam normalmente.
+      Provável artefato do dev (CSS estático no build de produção). Verificar num build/preview antes do deploy.
+  - id: OBS2_producao_do_dia
+    severity: info
+    description: >
+      O headline 'Produção do dia' da dashboard geral (e da TV visão geral) = peças que entraram no ESTOQUE
+      (throughput de produto acabado, Story 8.19, kpi-queries.ts:149). Nenhum lote chegou ao ESTOQUE → 0 é CORRETO
+      por definição; é métrica distinta da produção-por-setor. Não é incoerência.
+
+quality_signals:
+  liserie_untouched: true          # 54 → 54
+  cron_scoped_to_FT: true
+  no_commit_no_push: true
+  build: "não executado (dev ativo)"
+
+test_data_cleanup:
+  - "Cenário E2E permanece no FT para o Gabriel navegar (roteiro em docs/qa/E2E-ROTEIRO-DE-ACESSO.md)."
+  - "Backup do estado anterior do FT em docs/qa/_e2e_backup_FT.json. Travete sector restaurado a 800 após o teste de recálculo."
+
+rev2_correcoes_e_fisico:
+  data: "2026-07-15 (2ª rodada)"
+  correcao1_relatorio_meta_efetiva:
+    result: PASS
+    evidence: >
+      report-data.ts agora usa meta EFETIVA (accumulatedGoal(base, déficit)). Validado pelo motor:
+      relatório Travete meta 1.200 atingimento 54,2%; Produção 2.500/24%; ANA 1.400/42,9%; CARLOS 600/108,3%;
+      Corte/DORA inalterados (déficit 0). % IDÊNTICO à TV e à dashboard individual — 4 telas coerentes.
+  correcao2_dois_numeros:
+    result: PASS
+    evidence: >
+      Dashboard geral mostra DOIS números rotulados: "Produzido hoje" (Σ setores) e "Foi pro estoque" (ESTOQUE).
+      Provado NA TELA (screenshot, dashboard estilizado): Produzido hoje 2.950 · Foi pro estoque 250.
+  pipeline_fisico_delta:
+    result: PASS
+    evidence: >
+      Bipagem FÍSICA pela tela /scan (login admin): STAGE_IN + STAGE_OUT do lote OP-20260715-002-L008 (250 pç) no ESTOQUE.
+      O sistema exigiu STAGE_IN antes do STAGE_OUT (validação de fluxo). ANTES: Produzido hoje=2.700, Foi pro estoque=0.
+      DEPOIS: Produzido hoje=2.950 (+250), Foi pro estoque=250 (+250). O número subiu EXATAMENTE o que foi bipado, em tempo real.
+  faccao_remessa_tv:
+    result: PASS
+    evidence: >
+      EXERCITADO FISICAMENTE pela UI (login admin): /factions → facção "Bianca" → "Nova Remessa" (ShipmentCreate) →
+      selecionado lote OP-20260715-002-L005 (1.200 pç) → prazo de devolução → "Revisar" → "Enviar Remessa".
+      Remessa criada: Ativas (1), 1.200 peças, status "Enviado", prazo 17/07/2026 (screenshot do FactionDetail).
+      TV do setor Produção: card "STATUS DA FACÇÃO" deixou de mostrar "Sem remessa vigente" e passou a mostrar
+      "● No prazo — Bianca · faltam 56h48" (screenshot da TV). Vínculo facção→remessa→TV provado ponta a ponta.
+    obs_menor: "Prazo digitado 18/07 gravou 17/07 na tela — possível off-by-one de fuso no input date; cosmético, verificar."
+  observacoes_resolvidas:
+    - "OBS2 (produção do dia = 0): RESOLVIDA pela Correção 2 (dois números rotulados)."
+    - "OBS1 (/dashboard sem CSS no dev): na 2ª rodada a /dashboard renderizou ESTILIZADA (FOUC transitório do dev). Recomendado confirmar num build de produção."
+  ambiente:
+    - "Instabilidade do dev server: quando subido via `npm run dev` (Bash) subiu em ~2s e se manteve; indício de que a queda era do harness de preview, não do app. Confirmar num build."
+  liserie_untouched: true   # 54 → 54 (reconfirmado)
+
+conclusao: >
+  Os quatro pilares de DADOS estão verdes: amostragem, déficit (acumula/resolve, individual e setor), calendário,
+  isolamento e bordas — provados por API E na tela renderizada (screenshots). Único bloqueio para 'tudo verde':
+  a coerência do ATINGIMENTO % do relatório vs telas de meta acumulada (produção e déficit já são coerentes).
+  Decisão do Gabriel/Aria: alinhar o relatório à meta efetiva (recomendado) e re-testar, ou aceitar a visão base+déficit.
+  Deploy só após resolver este item + auditoria de segurança.

@@ -1,0 +1,44 @@
+storyId: calendario-trabalho-por-tenant
+title: "Calendário de trabalho por empresa (dias úteis por tenant) — Frente 2"
+reviewer: "Quinn (@qa)"
+date: "2026-07-13"
+database: "produção (real) — tenant Fábrica Teste; liserie INTOCADA (14→14 o tempo todo)"
+verdict: PASS
+
+evidence:
+  - id: isolamento
+    name: "Cron escopado por tenant (?tenant=) não vaza entre empresas"
+    result: PASS
+    numbers: "GET /api/cron/goal-closures?tenant=fabrica-teste-31ykr → resposta tenants=[fabrica-teste-31ykr] apenas. Liserie goal_deficits: 14 antes = 14 depois, assinatura idêntica. Elimina o vazamento contornado manualmente antes."
+  - id: seg_sex
+    name: "Empresa seg-sex não acumula no fim de semana"
+    result: PASS
+    numbers: "Com default (sem work_days), o cron gravou period_reference=2026-07-10 (sexta). Sábado 11/07 e domingo 12/07 NUNCA viraram period_reference."
+  - id: seg_sab
+    name: "Empresa seg-sáb conta sábado, não domingo"
+    result: PASS
+    numbers: "Com work_days=[1,2,3,4,5,6], o cron passou a fechar 2026-07-11 (sábado). Domingo 2026-07-12 continuou fora. Restaurado ao default ao final."
+  - id: segunda
+    name: "Meta de segunda só conta dias úteis anteriores"
+    result: PASS
+    numbers: "Consequência direta do seg-sex: o dia fechado pula o fim de semana (sexta), então sáb/dom não penalizam."
+  - id: regressao
+    name: "Default seg-sex não altera números anteriores"
+    result: PASS
+    numbers: "Relatório: produção 800, Corte meta 42000, operadores BRUNO 2000 / CARLOS 1600 / ANA 1000 — idênticos ao gate anterior. Motores calendar-aware com default preservam o comportamento."
+
+quality_signals:
+  tsc: clean
+  lint: clean
+  build: "compiled (104/104)"
+  migration: "nenhuma (usa tenants.settings.work_days/holidays — JSON)"
+
+concerns:
+  - severity: medium
+    id: operador-rollover-dinamico
+    description: "A meta do OPERADOR (user-meta) ainda usa o rollover dinâmico de 30 dias como fallback (não unificado ao persistido-limpo como o SETOR foi na story anterior). Observado um closure USER base=46000 (rollover desenfreado) para um operador sem déficit persistido. NÃO é regressão da Frente 2 — é comportamento pré-existente do operador, documentado como fora de escopo (spec nota #5)."
+    recommendation: "Story futura: unificar a meta do operador ao déficit persistido-limpo (mesma abordagem 'começa zerado' do setor), removendo o fallback dinâmico de 30 dias."
+
+test_data_cleanup: "work_days restaurado (removido → default seg-sex); 14 closures de teste apagados; Fábrica Teste voltou ao seed 07-09. Liserie 14 (intocada)."
+liserie_untouched: true
+no_commit_no_push: true

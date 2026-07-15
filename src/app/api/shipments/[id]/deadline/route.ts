@@ -3,6 +3,7 @@ import { withAuth } from "@/lib/auth-middleware";
 import { can } from "@/lib/effective-permissions";
 import { notifyFaction, FACTION_NOTIFICATION_TYPES } from "@/lib/faction-notifications";
 import { logShipmentEvent, actorNameFromUser } from "@/lib/shipment-events";
+import { localDayEnd } from "@/lib/tz";
 
 /**
  * PATCH /api/shipments/[id]/deadline — Edição de prazo (épico Robustez F3).
@@ -46,9 +47,12 @@ export async function PATCH(
     );
   }
 
+  // Fix fuso: normaliza a data escolhida para o FIM do dia no fuso do tenant
+  // (colunas timestamptz). slice(0,10) aceita "YYYY-MM-DD" ou ISO completo.
+  const expectedReturnAt = localDayEnd(expectedReturn.slice(0, 10));
   const { error: updateError } = await supabase
     .from("faction_shipments")
-    .update({ expected_return_at: expectedReturn, expected_return: expectedReturn })
+    .update({ expected_return_at: expectedReturnAt, expected_return: expectedReturnAt })
     .eq("id", id);
 
   if (updateError) {

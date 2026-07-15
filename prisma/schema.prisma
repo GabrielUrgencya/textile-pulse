@@ -377,6 +377,7 @@ model Stage {
   userTargets   UserTarget[]
   dailyAchievements DailyAchievement[]
   sectorDashboardConfigs SectorDashboardConfig[]
+  goalDeficits  GoalDeficit[]
 
   @@unique([tenantId, orderIndex])
   @@map("stages")
@@ -518,7 +519,12 @@ model Faction {
 model GoalDeficit {
   id              String   @id @default(uuid()) @db.Uuid
   tenantId        String   @map("tenant_id") @db.Uuid
-  userId          String   @map("user_id") @db.Uuid
+  /// Escopo do fechamento: 'USER' (colaborador) ou 'SECTOR' (etapa/setor).
+  scope           String   @default("USER") @db.VarChar(8)
+  /// Preenchido quando scope='USER'; NULL quando scope='SECTOR'.
+  userId          String?  @map("user_id") @db.Uuid
+  /// Preenchido quando scope='SECTOR'; NULL quando scope='USER'.
+  stageId         String?  @map("stage_id") @db.Uuid
   /// 'daily' | 'weekly' | 'monthly'
   periodType      String   @map("period_type") @db.VarChar(8)
   /// Início do período que GEROU o déficit.
@@ -530,10 +536,14 @@ model GoalDeficit {
   carriedTo       DateTime? @map("carried_to") @db.Date
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  profile Profile? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stage   Stage?   @relation(fields: [stageId], references: [id], onDelete: Cascade)
 
+  // Idempotência do fechamento de USUÁRIO (constraint original preservada).
   @@unique([userId, periodType, periodReference])
+  // Idempotência do fechamento de SETOR (constraint nova; ver migração).
+  @@unique([tenantId, stageId, periodType, periodReference], map: "goal_deficits_sector_unique")
   @@index([userId, periodType, periodReference])
   @@index([tenantId, periodType])
   @@map("goal_deficits")

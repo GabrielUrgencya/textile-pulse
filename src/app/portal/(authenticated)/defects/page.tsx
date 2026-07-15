@@ -1,4 +1,5 @@
 "use client";
+import { formatDateBR } from "@/lib/tz";
 
 import { useCallback, useEffect, useState } from "react";
 import { PullToRefresh } from "@/components/portal/PullToRefresh";
@@ -131,7 +132,7 @@ export default function PortalDefectsPage() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Lote {d.lots?.barcode} · {d.quantity} peça{d.quantity > 1 ? "s" : ""} ·{" "}
-                    {new Date(d.detected_at).toLocaleDateString("pt-BR")}
+                    {formatDateBR(d.detected_at)}
                   </p>
                 </div>
                 {d.faction_response && (

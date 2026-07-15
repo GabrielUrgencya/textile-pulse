@@ -6,7 +6,10 @@ import type { UserProfile } from "@/hooks/use-user-profile";
 /* ─────────────────── Types matching API responses ─────────────────── */
 
 export interface KpiResult {
+  /** "Foi pro estoque" — peças que entraram no ESTOQUE (throughput final). */
   produced_today: number;
+  /** "Produzido hoje" — Σ produção ponderada de todos os setores (sobe com a bipagem). */
+  produced_today_sectors: number;
   defect_rate: number;
   active_ops: number;
   lots_by_stage: Array<{ stage_name: string; stage_id: string; count: number }>;

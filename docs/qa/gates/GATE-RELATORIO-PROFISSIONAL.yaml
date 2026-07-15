@@ -1,0 +1,41 @@
+storyId: relatorio-profissional
+title: "Relatório de produção profissional (.xlsx + PDF) — Frente 1"
+reviewer: "Quinn (@qa)"
+date: "2026-07-13"
+database: "produção (real) — tenant Fábrica Teste; liserie intocada"
+verdict: PASS
+method: "Arquivos ABERTOS de verdade (xlsx lido com exceljs; PDF rasterizado com pypdfium2 + inspeção visual da imagem). Não 'a função rodou'."
+
+root_cause_fixed:
+  - "######## era o Excel exibindo datas ISO do CSV em coluna estreita. CORRIGIDO: agora é .xlsx real com datas em células-data (dd/mm/yyyy) e colunas largas → nunca ########."
+  - "Métrica errada (contava eventos scan_events, cancelada incluída). CORRIGIDO: produção = peças ponderadas via motor unificado (ESTOQUE=800 bate com dashboard), CANCELADA fora."
+
+evidence:
+  - id: xlsx
+    name: ".xlsx aberto (exceljs)"
+    result: PASS
+    detail: "3 abas (Resumo, Por Setor, Por Operador). Datas dd/mm/yyyy em colunas largas (22/26) → SEM ########. Peças #,##0. Atingimento como FRAÇÃO (0.048) com formato 0.0%. Linha TOTAL presente. Autofilter + freeze panes."
+  - id: pdf
+    name: "PDF rasterizado (pypdfium2) + inspeção visual"
+    result: PASS
+    detail: "Render limpo e profissional: cabeçalho LISION com fio verde + empresa; 4 KPIs; tabela Por Setor com TOTAL; ranking Por Operador; rodapé 'Gerado por LISION' + paginação. Acentos corretos (Fábrica, Produção, PEÇAS, DÉFICIT, Facção) — o '?' na extração de texto era artefato de terminal, não do render."
+  - id: numeros
+    name: "Números batem com dashboard/TV (mesmo motor)"
+    result: PASS
+    detail: "Produção total 800 = card ESTOQUE do dashboard. Corte 2.000/42.000 (2000/dia × 21 dias úteis). Operadores: BRUNO 2.000, CARLOS 1.600 (1500+100 virada), ANA 1.000 (600+400). Coerente com o seed E2E."
+  - id: regressao
+    name: "Auth + limites"
+    result: PASS
+    detail: "Sem sessão → 401. reports:export exigido. Período > 400 dias → 400 'Período máximo: 400 dias'."
+
+quality_signals:
+  tsc: clean
+  lint: clean
+  build: "compiled (104/104)"
+  new_dependency: "exceljs@4.4.0 (aprovada pelo Gabriel)"
+
+notes:
+  - "Atingimento baixo (4,8% etc.) é correto: o período de 30 dias tem meta = diária×21 dias úteis, mas o seed só tem ~1 dia de produção. O relatório reflete fielmente o dado real."
+  - "Escopo de tenant em todas as queries do report-data (a auditoria da Frente 3 revalida)."
+
+no_commit_no_push: true
