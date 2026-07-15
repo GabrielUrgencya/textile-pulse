@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_UTC_OFFSET } from "@/lib/tz";
-import { effectiveDailyTarget, rolloverStart, localDay } from "@/lib/rollover";
 import { getActiveDeficits, accumulatedGoal } from "@/lib/goal-deficits";
+import { getTenantCalendar, workingDaysBetween, workingDaysPerWeek, DEFAULT_CALENDAR } from "@/lib/work-calendar";
 
 export interface PeriodProgress {
   target: number | null;
@@ -33,8 +33,6 @@ export interface UserMeta {
   deficits: UserDeficits;
 }
 
-const BUSINESS_DAYS_PER_WEEK = 5;
-
 function dayStartAbs(date: string) {
   return `${date}T00:00:00.000${TENANT_UTC_OFFSET}`;
 }
@@ -56,18 +54,6 @@ function monthEnd(date: string): string {
   const m = Number(date.slice(5, 7));
   const last = new Date(y, m, 0).getDate();
   return `${date.slice(0, 7)}-${String(last).padStart(2, "0")}`;
-}
-function businessDaysBetween(fromDate: string, toDate: string): number {
-  const start = new Date(`${fromDate}T12:00:00.000Z`);
-  const end = new Date(`${toDate}T12:00:00.000Z`);
-  let count = 0;
-  const cur = new Date(start);
-  while (cur <= end) {
-    const dow = cur.getUTCDay();
-    if (dow !== 0 && dow !== 6) count++;
-    cur.setUTCDate(cur.getUTCDate() + 1);
-  }
-  return count;
 }
 
 interface ScanRow {
@@ -149,13 +135,18 @@ export async function computeUserMeta(
 
   if (!stageId) return null;
 
-  // Nome da etapa
+  // Nome da etapa (+ tenant p/ calendário de trabalho)
   const { data: stageRow } = await supabase
     .from("stages")
-    .select("name, display_name")
+    .select("name, display_name, tenant_id")
     .eq("id", stageId)
     .maybeSingle();
   const stageName = (stageRow?.display_name as string) || (stageRow?.name as string) || "Setor";
+
+  // Frente 2 — calendário de trabalho do tenant (default seg-sex se não configurado)
+  const cal = stageRow?.tenant_id
+    ? await getTenantCalendar(supabase, stageRow.tenant_id as string)
+    : DEFAULT_CALENDAR;
 
   // Completa meta/unidade + metas de período pelo sector_target
   const { data: st } = await supabase
@@ -204,48 +195,19 @@ export async function computeUserMeta(
   const dayRows = (dayRes.data || []) as ScanRow[];
   const progress = weightedSum(dayRows, coeffMap);
 
-  // Story 9.3 — meta individual EFETIVA com rollover cumulativo (déficit anterior)
-  const yEnd = (() => {
-    const d = new Date(`${to}T12:00:00.000Z`);
-    d.setUTCDate(d.getUTCDate() - 1);
-    return d.toISOString().slice(0, 10);
-  })();
-  const { data: rollRows } = await supabase.from("scan_events")
-    .select("lot_id, scanned_at, lots!inner(quantity, production_orders!inner(reference))")
-    .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
-    .neq("lots.production_orders.status", "CANCELLED")
-    .gte("scanned_at", dayStartAbs(rolloverStart(to))).lte("scanned_at", dayEndAbs(yEnd));
-  const producedByDay = new Map<string, number>();
-  const seenLotDay = new Set<string>();
-  for (const r of (rollRows || []) as Array<{ lot_id: string; scanned_at: string; lots: unknown }>) {
-    const day = localDay(r.scanned_at);
-    const dk = `${day}|${r.lot_id}`;
-    if (seenLotDay.has(dk)) continue;
-    seenLotDay.add(dk);
-    const lotRel = r.lots;
-    const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as { quantity?: number | string | null; production_orders?: unknown } | null;
-    const qty = Number(lot?.quantity) || 0;
-    const poRel = lot?.production_orders;
-    const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { reference: string | null } | null;
-    producedByDay.set(day, (producedByDay.get(day) || 0) + qty * (coeffMap.get(po?.reference ?? "") ?? 1.0));
-  }
-  // Épico Metas: déficit PERSISTIDO (goal_deficits) prevalece; o rollover
-  // dinâmico (Story 9.3) permanece como fallback quando não há fechamento —
-  // transição suave até o cron popular a tabela.
-  const persisted = await getActiveDeficits(supabase, userId, to);
-  const dynDaily = effectiveDailyTarget(target, producedByDay, to);
-  const effTarget =
-    persisted.daily !== null && target != null && target > 0
-      ? accumulatedGoal(target, persisted.daily)
-      : dynDaily.effective;
-  const dailyDeficit = persisted.daily !== null ? persisted.daily : dynDaily.backlog;
+  // Frente 2.5 — meta efetiva do operador = déficit PERSISTIDO (goal_deficits),
+  // MESMO motor do setor: começa zerado (sem fechamento → parte da base). O rollover
+  // dinâmico de 30 dias foi REMOVIDO (gerava números desenfreados, ex.: 46.000).
+  const persisted = await getActiveDeficits(supabase, userId, to, cal);
+  const effTarget = target != null && target > 0 ? accumulatedGoal(target, persisted.daily) : target;
+  const dailyDeficit = persisted.daily ?? 0;
 
   const percent = effTarget && effTarget > 0 ? Math.round((progress / effTarget) * 1000) / 10 : 0;
   const completed = !!(effTarget && effTarget > 0 && progress >= effTarget);
 
   // Metas de período (cadastradas ou derivadas da diária) + déficit acumulado
-  const weeklyBase = (st?.weekly_target as number) ?? (target != null ? target * BUSINESS_DAYS_PER_WEEK : null);
-  const monthlyBase = (st?.monthly_target as number) ?? (target != null ? target * businessDaysBetween(moStart, moEnd) : null);
+  const weeklyBase = (st?.weekly_target as number) ?? (target != null ? target * workingDaysPerWeek(cal) : null);
+  const monthlyBase = (st?.monthly_target as number) ?? (target != null ? target * workingDaysBetween(moStart, moEnd, cal) : null);
   const weeklyEstimated = (st?.weekly_target as number) == null;
   const monthlyEstimated = (st?.monthly_target as number) == null;
   const weeklyProgress = weightedSum((weekRes.data || []) as ScanRow[], coeffMap);

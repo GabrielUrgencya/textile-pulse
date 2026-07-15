@@ -1,0 +1,88 @@
+storyId: tv-redesign-instrumento
+title: "Redesign da TV — 'Instrumento' (Frente 4)"
+reviewer: "Quinn (@qa)"
+date: "2026-07-14"
+database: "produção (real) — tenant Fábrica Teste (fabrica-teste-31ykr); liserie INTOCADA (54→54 OPs)"
+method: "Prova na tela (dev server :3000) + comparação com o motor unificado via /api/kiosk/dashboard"
+verdict: PASS
+iterations: 2   # 1ª: CONCERNS (peso da fonte) → @dev FIX-1 → 2ª: PASS
+
+evidence:
+  - id: tv_igual_motor
+    name: "Números da TV = motor unificado (sem cálculo paralelo)"
+    result: PASS
+    numbers: >
+      CORTE (JSON computeSectorKpis → tela, 13/07): produced 400=400; %20=20; meta /2.000 peças;
+      distância 1.600; semana 400/10.000 (4%); mês 2.400/46.000 (5%); ritmo 86/h;
+      tempo/lote 0min (0,1); ranking GESTOR TESTE 400 🥇; facção null='Sem remessa vigente'.
+      Visão Geral: produção 0/100 (0%); ritmo 0/h; pico 1/h; OPs 0/meta15; lotes 1/meta100;
+      defeitos 0%/tol3%; bipagens 0. Todos idênticos ao JSON da API.
+  - id: tres_cores
+    name: "Estado responsivo — 3 cores provadas com produção REAL"
+    result: PASS
+    numbers: >
+      Mesma produção real (400 peças em CORTE), variando só a meta (reversível):
+      meta 2000 → 20% → % e pill em rgb(239,68,68)=#ef4444 (VERMELHO/ABAIXO);
+      meta 500 → 80% → rgb(245,158,11)=#f59e0b (ÂMBAR/ATENÇÃO — FALTAM 100);
+      meta 400 → 100% → rgb(16,185,129)=#10b981 (EMERALD/NO RITMO — META BATIDA).
+      Glow ambiente e pill acompanham o estado. Meta restaurada para 2000 ao fim.
+  - id: visao_geral_novo_design
+    name: "Visão Geral no mesmo design (gauge + glow + KPIs de vidro)"
+    result: PASS
+    numbers: "Gauge herói; glow rgba(239,68,68,.5); 6 painéis de vidro (Ritmo/Pico/OPs/Lotes/Defeitos/Bipagens); fluxo por etapa + alertas no rodapé. Screenshot capturado."
+  - id: sem_legado
+    name: "Sem tela legada em nenhum setor"
+    result: PASS
+    numbers: "Página sempre renderiza TVSectorDefault (setor) e TVOverviewDefault (geral); caminho de config custom por setor (WidgetRenderer/bento) descontinuado. TVHero/TVKpis removidos do fluxo."
+  - id: fonte_familia
+    name: "Fonte da LISION (Inter) + tabular-nums"
+    result: PASS
+    numbers: "font-family computado = '__Inter_…'. Milhar formatado (2.000 / 1.600 / 46.000)."
+  - id: fonte_peso
+    name: "Pesos tipográficos 800/600 (Correção 1) — após FIX-1"
+    result: PASS
+    numbers: >
+      RE-VERIFICADO em tela (getComputedStyle), SETOR e GERAL:
+      número herói 800 (71px, Inter); % 800; pill de status 800;
+      labels 600 (Metas do Período, Produção por Hora, Ritmo, Pico, OPs Ativas,
+      Lotes Ativos, Defeitos, Bipagens, Tempo/Lote, Ranking do Setor).
+      Varredura por resíduos: nenhum número/label do instrumento restou em 500.
+      A utility global .font-display permanece INTACTA (git diff de globals.css = só
+      adições de @keyframes + guard de prefers-reduced-motion) → zero regressão no app.
+  - id: teste_distancia
+    name: "Leitura em 2s por cor/forma"
+    result: PASS
+    numbers: "A 16:9 reduzido, o sinal dominante é a cor (glow + % + pill). Gauge é o foco. Cor lida antes do dígito; com o herói agora em 800 a leitura ficou mais forte."
+  - id: estados_vazios
+    name: "Dia novo sem produção (14/07) — estados vazios"
+    result: PASS
+    numbers: "Produção do dia zera corretamente (0/2.000, 0%); semana segue acumulada (400/10.000). 'Sem produção registrada' / 'Sem bipagens hoje' / 'Sem remessa vigente' renderizam sem quebra."
+
+quality_signals:
+  tsc: clean
+  lint: clean
+  build: "não executado (dev server ativo — regra do projeto)"
+  runtime_errors: none
+
+resolved_fixes:
+  - id: FIX-1
+    severity: high
+    status: RESOLVIDO
+    was: "font-weight 500 no herói/%/pill/labels — a .font-display global sobrescrevia font-extrabold/font-semibold do Tailwind (mesma @layer utilities, vence por ordem)."
+    fix: "fontWeight inline (800 números / 600 labels) nos elementos do instrumento (RadialGauge, MiniRing, GlassPanel/PanelLabel, TVSectorDefault, TVOverviewDefault). .font-display global preservada."
+
+low_severity_notes:
+  - id: LOW-1
+    category: ui/polish
+    description: >
+      As contagens das barras de 'Lotes por Etapa' (TVStageFlow, componente pré-existente
+      mantido no rodapé da Visão Geral) renderizam em font-weight 500, pelo mesmo efeito da
+      .font-display. NÃO é regressão (já era 500 antes do redesign) e não é elemento do
+      instrumento. Polimento opcional para coesão total da TV.
+
+liserie_untouched: true
+test_data_cleanup: "sector_targets.CORTE restaurado a 2000; nenhuma outra escrita."
+no_commit_no_push: true
+
+notes:
+  - "Redesign aprovado: dados corretos (TV = motor), 3 estados cromáticos provados com dados reais, Visão Geral e todos os setores no mesmo design, tipografia LISION (Inter 800/600), sem tela legada."

@@ -150,8 +150,8 @@ function buildTickers(kpis: KpiResult | null) {
   const isWeighted = kpis.use_weighted_meta === true;
   return [
     {
-      label: isWeighted ? "Pontos de Meta" : "Peças hoje",
-      value: kpis.produced_today.toLocaleString("pt-BR", { maximumFractionDigits: 1 }),
+      label: isWeighted ? "Pontos de Meta" : "Produzido hoje",
+      value: (isWeighted ? kpis.produced_today : kpis.produced_today_sectors).toLocaleString("pt-BR", { maximumFractionDigits: 1 }),
       trend: 0,
     },
     { label: "Taxa defeito", value: `${kpis.defect_rate.toFixed(1)}%`, trend: 0 },
@@ -256,8 +256,8 @@ function getProjection(produced: number, shiftStart: string, shiftEnd: string, t
 function PrimaryKpisRow({ kpis, targets }: { kpis: KpiResult | null; targets: Targets }) {
   if (!kpis) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:col-span-12">
-        {[0, 1, 2, 3].map((i) => (
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 lg:col-span-12">
+        {[0, 1, 2, 3, 4].map((i) => (
           <KpiCard key={i} index={i} className="min-h-[132px]"><Skeleton className="h-20" rounded="rounded-xl" /></KpiCard>
         ))}
       </div>
@@ -268,14 +268,15 @@ function PrimaryKpisRow({ kpis, targets }: { kpis: KpiResult | null; targets: Ta
   const pctColor = pct >= 95 ? "text-success" : pct >= 80 ? "text-foreground" : "text-warning";
 
   const items = [
-    { label: "Produção do dia", value: kpis.produced_today, decimals: kpis.use_weighted_meta ? 1 : 0, support: `/ ${dailyTarget.toLocaleString("pt-BR")}`, highlight: true, valueClass: "" },
+    { label: "Produzido hoje", value: kpis.produced_today_sectors, decimals: 1, support: "soma dos setores", highlight: true, valueClass: "" },
+    { label: "Foi pro estoque", value: kpis.produced_today, decimals: kpis.use_weighted_meta ? 1 : 0, support: `/ ${dailyTarget.toLocaleString("pt-BR")}`, highlight: false, valueClass: "" },
     { label: "Lotes ativos", value: kpis.total_lots, decimals: 0, support: `meta ${targets.lotsTarget}`, highlight: false, valueClass: "" },
-    { label: "% da meta", value: pct, decimals: 1, suffix: "%", support: "do dia", highlight: false, valueClass: pctColor },
+    { label: "% da meta", value: pct, decimals: 1, suffix: "%", support: "estoque / meta", highlight: false, valueClass: pctColor },
     { label: "OPs ativas", value: kpis.active_ops, decimals: 0, support: `meta ${targets.opsTarget}`, highlight: false, valueClass: "" },
   ];
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:col-span-12">
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 lg:col-span-12">
       {items.map((it, i) => (
         <KpiCard key={it.label} highlight={it.highlight} interactive index={i} className="flex flex-col justify-between min-h-[132px]">
           <KpiLabel>{it.label}</KpiLabel>
@@ -571,8 +572,8 @@ function DefectsCard({ kpis }: { kpis: KpiResult | null }) {
       <div className="grid grid-cols-2 gap-3 mb-5">
         <Metric label="Taxa defeito" value={`${kpis.defect_rate.toFixed(1)}%`} accent />
         <Metric
-          label={kpis.use_weighted_meta ? "Pontos de Meta" : "Peças hoje"}
-          value={kpis.produced_today.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+          label={kpis.use_weighted_meta ? "Pontos de Meta" : "Produzido hoje"}
+          value={(kpis.use_weighted_meta ? kpis.produced_today : kpis.produced_today_sectors).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
         />
       </div>
       <p className="text-[12px] text-muted-foreground">

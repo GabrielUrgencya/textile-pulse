@@ -5,6 +5,7 @@ import { dbError, requireTenantId } from "@/lib/api-helpers";
 import { generateUniqueDeliveryCode } from "@/lib/delivery-code";
 import { notifyFaction, FACTION_NOTIFICATION_TYPES } from "@/lib/faction-notifications";
 import { validateLotsEligibility } from "@/lib/production-orders";
+import { localDayEnd, TENANT_TZ } from "@/lib/tz";
 
 export async function GET(request: Request) {
   const auth = await withAuth();
@@ -163,8 +164,11 @@ export async function POST(request: Request) {
       // leitores funcionarem.
       total_quantity: qty,
       sent_at: sentAt,
-      expected_return_at: body.expectedReturn,
-      expected_return: body.expectedReturn,
+      // Fix fuso: a data escolhida (YYYY-MM-DD) vira FIM do dia no fuso do tenant.
+      // Sem isso, a string crua era interpretada como meia-noite UTC = dia anterior em BRT.
+      // Ambas as colunas são timestamptz (schema), então ambas recebem o timestamp local.
+      expected_return_at: localDayEnd(String(body.expectedReturn).slice(0, 10)),
+      expected_return: localDayEnd(String(body.expectedReturn).slice(0, 10)),
       notes: body.notes || null,
       delivery_code: deliveryCode,
       delivery_code_expires_at: deliveryCodeExpiresAt,
@@ -214,7 +218,7 @@ export async function POST(request: Request) {
     }
 
     // Notificação estratégica: nova remessa disponível para a facção.
-    const prazo = new Date(body.expectedReturn).toLocaleDateString("pt-BR");
+    const prazo = new Date(localDayEnd(String(body.expectedReturn).slice(0, 10))).toLocaleDateString("pt-BR", { timeZone: TENANT_TZ });
     for (const s of created) {
       const lot = lots.find((l) => l.id === (s.lot_id as string));
       await notifyFaction(supabase, {

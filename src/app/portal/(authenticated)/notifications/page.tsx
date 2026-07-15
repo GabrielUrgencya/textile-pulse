@@ -1,4 +1,5 @@
 "use client";
+import { formatDateBR } from "@/lib/tz";
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -169,7 +170,7 @@ export default function PortalNotificationsPage() {
                     {n.message}
                   </p>
                   <p className="mt-1 text-[10px] text-muted-foreground/60">
-                    {new Date(n.created_at).toLocaleDateString("pt-BR")} ·{" "}
+                    {formatDateBR(n.created_at)} ·{" "}
                     {new Date(n.created_at).toLocaleTimeString("pt-BR", {
                       hour: "2-digit",
                       minute: "2-digit",

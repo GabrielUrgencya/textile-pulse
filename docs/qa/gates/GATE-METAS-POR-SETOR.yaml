@@ -1,0 +1,49 @@
+storyId: metas-acumulativas-por-setor
+title: "Metas acumulativas por SETOR (unificar TV ao motor persistido)"
+reviewer: "Quinn (@qa)"
+date: "2026-07-13"
+database: "produção (real) — provado com dados, tenant Fábrica Teste (liserie intocada)"
+verdict: PASS
+
+changes_validated:
+  schema:
+    - "goal_deficits: scope/stage_id/user_id-nullable + goal_deficits_scope_check + goal_deficits_sector_unique (Dara, migração aplicada e verificada)"
+  code:
+    - "src/lib/goal-deficits.ts: getActiveSectorDeficit"
+    - "src/lib/sector-kpis.ts: meta efetiva = accumulatedGoal(base, déficit persistido de setor); rollover dinâmico de 30d REMOVIDO"
+    - "src/app/api/cron/goal-closures/route.ts: fechamento diário por setor (scope='SECTOR')"
+
+evidence:
+  - id: cadeia
+    name: "Acúmulo sem teto + abate por overprodução (CORTE base 2000)"
+    result: PASS
+    numbers: "08/07: 2000−1500 → déficit 500 | 09/07: efetiva 2500−1000 → déficit 1500 (acumulou, sem teto) | 10/07: efetiva 3500−4000 → déficit 0 (abateu, piso, sem crédito)"
+  - id: leitura_vigente
+    name: "getActiveSectorDeficit lê o dia útil imediatamente anterior"
+    result: PASS
+    numbers: "hoje 2026-07-13 → period_reference 2026-07-10; déficit 0 → efetiva 2000; ajustado p/ 500 → efetiva 2500"
+  - id: cron
+    name: "Bloco do cron mede a produção real ponderada do dia fechado"
+    result: PASS
+    numbers: "CORTE 2026-07-10 = 2000 (STAGE_OUT ponderado, CANCELLED fora, fuso local)"
+  - id: tv_real
+    name: "TV real (computeSectorKpis via /api/kiosk/dashboard?stage_id=CORTE) lê o livro persistido"
+    result: PASS
+    numbers: "com déficit persistido 500 → daily_target=2500; sem linhas SECTOR (começa zerado) → daily_target=2000. NÃO usa mais o rollover de 30 dias."
+  - id: regressao
+    name: "Caminho de USUÁRIO intacto"
+    result: PASS
+    numbers: "25 linhas scope='USER' preservadas; upsert de usuário (onConflict user_id,period_type,period_reference) funciona"
+
+quality_signals:
+  tsc: clean
+  lint: clean
+  build: "compiled successfully (104/104)"
+
+notes:
+  - "O cron NÃO é escopado por tenant (por design — roda nightly para todos). NÃO foi disparado globalmente no teste para não gravar fechamentos na liserie; o bloco de setor foi reproduzido com as MESMAS queries, escopado ao CORTE/Fábrica Teste."
+  - "Pós-deploy, a liserie 'começa zerada' automaticamente: sem linhas SECTOR + sector-kpis persistido-only → a TV parte da base até o 1º fechamento noturno. O 2.519 (rollover 30d) desaparece."
+  - "Semanal/mensal de setor ficaram fora de escopo (o card da TV usa o diário) — documentado no código do cron."
+
+test_data_cleanup: "3 linhas SECTOR de teste (CORTE Fábrica Teste) removidas ao final; 0 linhas SECTOR remanescentes."
+no_commit_no_push: true

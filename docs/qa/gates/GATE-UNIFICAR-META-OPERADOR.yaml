@@ -1,0 +1,44 @@
+storyId: unificar-meta-operador
+title: "Unificar a meta do OPERADOR ao motor persistido (Frente 2.5)"
+reviewer: "Quinn (@qa)"
+date: "2026-07-13"
+database: "produção (real) — tenant Fábrica Teste; liserie INTOCADA (14→14)"
+verdict: PASS
+
+evidence:
+  - id: sem_46000
+    name: "O número absurdo (46.000) sumiu"
+    result: PASS
+    numbers: "Cron escopado pós-2.5: maior base_goal USER = 3000 (CARLOS). O operador que antes dava base 46.000 (rollover dinâmico) agora aparece com base=2000 (limpa, prod=0). Nenhuma base > 10× a base cadastrada."
+  - id: comeca_zerado
+    name: "Começa zerado (sem déficit persistido → base)"
+    result: PASS
+    numbers: "Operador de CORTE sem goal_deficit no dia útil anterior → meta = base (2000), não acumulação de 30 dias."
+  - id: acumulacao
+    name: "Acumulação segue funcionando (base + déficit persistido)"
+    result: PASS
+    numbers: "ANA: base 1000 + déficit persistido 600 (seed 2026-07-09) = meta efetiva 1600; progresso 600 → 37,5%."
+  - id: regressao_epico
+    name: "Regressão dos números do gate do épico (mesma lógica, sem dynamic)"
+    result: PASS
+    numbers: "BRUNO 2000/2000=100% (CANCELLED fora); CARLOS 1500/3000=50%; ANA 600/1600=37,5%. Idênticos ao GATE-EPICO-DIVERGENCIA-METRICAS."
+  - id: coerencia
+    name: "Operador e Setor usam o MESMO motor"
+    result: PASS
+    numbers: "Ambos: accumulatedGoal(base, getActive[Sector]Deficit.daily), persistido-only. SECTOR CORTE base 2000 e USER seguem a mesma fórmula."
+
+quality_signals:
+  tsc: clean
+  lint: clean
+  build: "compiled successfully"
+
+changes:
+  - "src/lib/user-meta.ts: removido o fallback de rollover dinâmico de 30 dias; effTarget = accumulatedGoal(base, persisted.daily); dailyDeficit = persisted.daily ?? 0."
+  - "src/lib/rollover.ts: enxugado para apenas localDay (effectiveDailyTarget/rolloverStart removidos — dead code)."
+
+notes:
+  - "Fecha a unificação: dashboard, TV, operador e setor com a MESMA fonte de verdade (goal_deficits persistido)."
+
+test_data_cleanup: "9 closures de teste removidos; Fábrica Teste voltou ao seed 07-09."
+liserie_untouched: true
+no_commit_no_push: true

@@ -7,7 +7,11 @@ export interface DateRange {
 }
 
 export interface KpiResult {
+  /** "Foi pro estoque" — peças que ENTRARAM NO ESTOQUE no período (throughput final, Story 8.19). */
   produced_today: number;
+  /** "Produzido hoje" — Σ produção ponderada de TODOS os setores (STAGE_OUT, dedupe por lote/etapa,
+   *  CANCELLED fora). Sobe assim que qualquer setor bipa a saída de um lote (Correção E2E). */
+  produced_today_sectors: number;
   defect_rate: number;
   active_ops: number;
   lots_by_stage: Array<{ stage_name: string; stage_id: string; count: number }>;
@@ -196,8 +200,49 @@ export async function computeKpis(
   const weightedPoints: number | undefined = useWeightedMeta ? weightedPieces : undefined;
   const producedToday = useWeightedMeta ? weightedPieces : producedPieces;
 
+  // Correção E2E — "Produzido hoje" = Σ produção ponderada de TODOS os setores.
+  // STAGE_OUT ponderado por reference_stage_targets, dedupe por lote POR etapa,
+  // CANCELLED fora, escopado por tenant. Distinto de produced_today (throughput ESTOQUE):
+  // este sobe assim que qualquer setor bipa a saída de um lote.
+  let producedTodaySectors = 0;
+  {
+    const { data: rst } = await supabase
+      .from("reference_stage_targets")
+      .select("stage_id, reference, coefficient");
+    const coeffMap = new Map<string, number>();
+    for (const c of rst || []) coeffMap.set(`${c.stage_id}|${c.reference}`, Number(c.coefficient) || 1);
+
+    let outQ = supabase
+      .from("scan_events")
+      .select("lot_id, stage_id, lots!inner(quantity, production_orders!inner(reference, status, tenant_id))")
+      .eq("event_type", "STAGE_OUT")
+      .neq("lots.production_orders.status", "CANCELLED")
+      .gte("scanned_at", fromStart)
+      .lte("scanned_at", toEnd);
+    if (tenantId) outQ = outQ.eq("lots.production_orders.tenant_id", tenantId);
+    const { data: outScans } = await outQ;
+
+    const seenSectorLots = new Set<string>();
+    for (const r of (outScans || []) as Array<{ lot_id: string; stage_id: string | null; lots: unknown }>) {
+      const key = `${r.stage_id}|${r.lot_id}`;
+      if (seenSectorLots.has(key)) continue; // dedupe por (etapa, lote)
+      seenSectorLots.add(key);
+      const lot = (Array.isArray(r.lots) ? r.lots[0] : r.lots) as {
+        quantity: number | string | null;
+        production_orders: { reference: string | null } | { reference: string | null }[];
+      } | null;
+      const qty = Number(lot?.quantity) || 0;
+      const poRel = lot?.production_orders;
+      const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { reference: string | null } | null;
+      const coeff = coeffMap.get(`${r.stage_id}|${po?.reference ?? ""}`) ?? 1;
+      producedTodaySectors += qty * coeff;
+    }
+    producedTodaySectors = Math.round(producedTodaySectors * 10) / 10;
+  }
+
   return {
     produced_today: producedToday,
+    produced_today_sectors: producedTodaySectors,
     defect_rate: Math.round(defectRate * 100) / 100,
     active_ops: activeOpsResult.count ?? 0,
     lots_by_stage: lotsByStage,

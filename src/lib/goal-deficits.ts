@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { prevWorkingDay, DEFAULT_CALENDAR, type WorkCalendar } from "@/lib/work-calendar";
 
 /**
  * Metas acumulativas persistidas (épico Metas — evolução da Story 9.3).
@@ -25,16 +26,10 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function isBusinessDay(dateStr: string): boolean {
-  const dow = new Date(`${dateStr}T12:00:00.000Z`).getUTCDay();
-  return dow !== 0 && dow !== 6;
-}
-
-/** Último dia ÚTIL estritamente anterior a `today` (fim de semana não penaliza). */
-export function prevBusinessDay(today: string): string {
-  let cur = addDays(today, -1);
-  while (!isBusinessDay(cur)) cur = addDays(cur, -1);
-  return cur;
+/** Último dia ÚTIL do tenant estritamente anterior a `today` (calendário do tenant;
+ *  default seg-sex mantém o comportamento legado). */
+export function prevBusinessDay(today: string, cal: WorkCalendar = DEFAULT_CALENDAR): string {
+  return prevWorkingDay(today, cal);
 }
 
 export function weekStartOf(date: string): string {
@@ -76,9 +71,10 @@ export async function getActiveDeficits(
   supabase: SupabaseClient,
   userId: string,
   today: string,
+  cal: WorkCalendar = DEFAULT_CALENDAR,
 ): Promise<ActiveDeficits> {
   const refs: Array<{ type: PeriodType; ref: string }> = [
-    { type: "daily", ref: prevBusinessDay(today) },
+    { type: "daily", ref: prevBusinessDay(today, cal) },
     { type: "weekly", ref: prevWeekStart(today) },
     { type: "monthly", ref: prevMonthStart(today) },
   ];
@@ -87,6 +83,43 @@ export async function getActiveDeficits(
     .from("goal_deficits")
     .select("period_type, period_reference, deficit")
     .eq("user_id", userId)
+    .in("period_type", refs.map((r) => r.type))
+    .in("period_reference", refs.map((r) => r.ref));
+
+  const result: ActiveDeficits = { daily: null, weekly: null, monthly: null };
+  for (const row of data || []) {
+    const match = refs.find(
+      (r) => r.type === row.period_type && r.ref === String(row.period_reference).slice(0, 10),
+    );
+    if (match) result[match.type] = Number(row.deficit) || 0;
+  }
+  return result;
+}
+
+/**
+ * Déficits vigentes de um SETOR (stage) — espelho de getActiveDeficits, mas para
+ * as linhas scope='SECTOR' (user_id NULL, stage_id preenchido). Alimenta a meta
+ * acumulada da TV de setor (mesmo livro persistido do operador).
+ */
+export async function getActiveSectorDeficit(
+  supabase: SupabaseClient,
+  tenantId: string,
+  stageId: string,
+  today: string,
+  cal: WorkCalendar = DEFAULT_CALENDAR,
+): Promise<ActiveDeficits> {
+  const refs: Array<{ type: PeriodType; ref: string }> = [
+    { type: "daily", ref: prevBusinessDay(today, cal) },
+    { type: "weekly", ref: prevWeekStart(today) },
+    { type: "monthly", ref: prevMonthStart(today) },
+  ];
+
+  const { data } = await supabase
+    .from("goal_deficits")
+    .select("period_type, period_reference, deficit")
+    .eq("scope", "SECTOR")
+    .eq("tenant_id", tenantId)
+    .eq("stage_id", stageId)
     .in("period_type", refs.map((r) => r.type))
     .in("period_reference", refs.map((r) => r.ref));
 

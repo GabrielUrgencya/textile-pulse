@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_UTC_OFFSET, todayInTz } from "@/lib/tz";
-import { effectiveDailyTarget, rolloverStart, localDay } from "@/lib/rollover";
+import { getActiveSectorDeficit, accumulatedGoal } from "@/lib/goal-deficits";
+import { getTenantCalendar, workingDaysBetween, workingDaysPerWeek } from "@/lib/work-calendar";
 
 /**
  * Épico Metas/KPIs por Setor — cálculo de KPIs de um setor (= Stage) para a TV.
@@ -55,8 +56,6 @@ export interface SectorKpis {
   top_collaborators: TopCollaborator[]; // top 3 do setor hoje — RankingWidget
 }
 
-const BUSINESS_DAYS_PER_WEEK = 5;
-
 /** Limites absolutos (timestamptz) de uma data local YYYY-MM-DD. */
 function dayStart(date: string) {
   return `${date}T00:00:00.000${TENANT_UTC_OFFSET}`;
@@ -77,20 +76,6 @@ function weekStart(date: string): string {
 /** Primeiro dia do mês de `date`. */
 function monthStart(date: string): string {
   return `${date.slice(0, 7)}-01`;
-}
-
-/** Conta dias úteis (seg–sex) entre duas datas YYYY-MM-DD inclusive. */
-function businessDaysBetween(fromDate: string, toDate: string): number {
-  const start = new Date(`${fromDate}T12:00:00.000Z`);
-  const end = new Date(`${toDate}T12:00:00.000Z`);
-  let count = 0;
-  const cur = new Date(start);
-  while (cur <= end) {
-    const dow = cur.getUTCDay();
-    if (dow !== 0 && dow !== 6) count++;
-    cur.setUTCDate(cur.getUTCDate() + 1);
-  }
-  return count;
 }
 
 interface ScanLotRow {
@@ -147,6 +132,9 @@ export async function computeSectorKpis(
     .maybeSingle();
   if (!stage) return null;
   const stageName = (stage.display_name as string) || (stage.name as string) || "Setor";
+
+  // Frente 2 — calendário de trabalho do tenant (default seg-sex)
+  const cal = await getTenantCalendar(supabase, tenantId);
 
   const today = todayInTz();
   const yesterday = (() => {
@@ -208,27 +196,13 @@ export async function computeSectorKpis(
   const dayRows = (dayScans.data || []) as DayScanRow[];
   const dayInRows = (dayInScans.data || []) as Array<{ lot_id: string; scanned_at: string }>;
 
-  // Story 9.3 — meta efetiva com rollover cumulativo (déficit dos dias úteis anteriores).
-  const { data: rolloverScans } = await supabase.from("scan_events").select(SCAN_SELECT)
-    .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
-    .neq("lots.production_orders.status", "CANCELLED")
-    .gte("scanned_at", dayStart(rolloverStart(today))).lte("scanned_at", dayEnd(yesterday));
-  const producedByDay = new Map<string, number>();
-  const seenLotDay = new Set<string>();
-  for (const r of (rolloverScans || []) as ScanLotRow[]) {
-    const day = localDay(r.scanned_at);
-    const dedupe = `${day}|${r.lot_id}`;
-    if (seenLotDay.has(dedupe)) continue;
-    seenLotDay.add(dedupe);
-    const lotRel = r.lots;
-    const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as { quantity?: number | string | null; production_orders?: unknown } | null;
-    const qty = Number(lot?.quantity) || 0;
-    const poRel = lot?.production_orders;
-    const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { reference: string | null } | null;
-    producedByDay.set(day, (producedByDay.get(day) || 0) + qty * (coeffMap.get(po?.reference ?? "") ?? 1.0));
-  }
-  const rollover = effectiveDailyTarget(dailyTarget, producedByDay, today);
-  const effectiveTarget = rollover.effective;
+  // Épico Metas por Setor — meta efetiva com déficit PERSISTIDO (goal_deficits,
+  // scope='SECTOR'). É o MESMO livro do operador; o cron (goal-closures) alimenta a
+  // dívida do setor. Sem fallback dinâmico de propósito: é o que garante "começa
+  // zerado" (sem fechamento persistido → parte da base) e "não esquece" (a cadeia
+  // de déficit é perpétua, sem a janela de 30 dias do rollover antigo).
+  const persisted = await getActiveSectorDeficit(supabase, tenantId, stageId, today, cal);
+  const effectiveTarget = dailyTarget != null ? accumulatedGoal(dailyTarget, persisted.daily) : null;
   const produced = weightedSum(dayRows, coeffMap);
   const weeklyProgress = weightedSum((weekScans.data || []) as ScanLotRow[], coeffMap);
   const monthlyProgress = weightedSum((monthScans.data || []) as ScanLotRow[], coeffMap);
@@ -242,8 +216,8 @@ export async function computeSectorKpis(
   const monthlyTarget = (st?.monthly_target as number) ?? null;
   const weekly: PeriodKpi = weeklyTarget != null
     ? { target: weeklyTarget, progress: weeklyProgress, estimated: false }
-    : { target: dailyTarget != null ? dailyTarget * BUSINESS_DAYS_PER_WEEK : null, progress: weeklyProgress, estimated: true };
-  const monthDays = businessDaysBetween(moStart, `${today.slice(0, 7)}-${String(new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0).getDate()).padStart(2, "0")}`);
+    : { target: dailyTarget != null ? dailyTarget * workingDaysPerWeek(cal) : null, progress: weeklyProgress, estimated: true };
+  const monthDays = workingDaysBetween(moStart, `${today.slice(0, 7)}-${String(new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0).getDate()).padStart(2, "0")}`, cal);
   const monthly: PeriodKpi = monthlyTarget != null
     ? { target: monthlyTarget, progress: monthlyProgress, estimated: false }
     : { target: dailyTarget != null ? dailyTarget * monthDays : null, progress: monthlyProgress, estimated: true };

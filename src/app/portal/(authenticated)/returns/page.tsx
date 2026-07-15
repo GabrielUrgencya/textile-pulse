@@ -1,4 +1,5 @@
 "use client";
+import { formatDateBR } from "@/lib/tz";
 
 import { useEffect, useState } from "react";
 
@@ -126,9 +127,9 @@ export default function PortalReturnsPage() {
                 </div>
 
                 <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
-                  <span>Prazo: {new Date(r.expected_return_at).toLocaleDateString("pt-BR")}</span>
+                  <span>Prazo: {formatDateBR(r.expected_return_at)}</span>
                   {r.faction_estimated_return && (
-                    <span>Previsão: {new Date(r.faction_estimated_return).toLocaleDateString("pt-BR")}</span>
+                    <span>Previsão: {formatDateBR(r.faction_estimated_return)}</span>
                   )}
                 </div>
 

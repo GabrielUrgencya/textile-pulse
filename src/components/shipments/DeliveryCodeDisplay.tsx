@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Copy, Check, RefreshCw, Clock } from "lucide-react";
+import { TENANT_TZ } from "@/lib/tz";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -67,7 +68,8 @@ export function DeliveryCodeDisplay({
             <Badge variant="secondary" className="gap-1">
               <Clock className="h-3 w-3" />
               Expira{" "}
-              {expiresDate.toLocaleDateString("pt-BR", {
+              {expiresDate.toLocaleString("pt-BR", {
+                timeZone: TENANT_TZ,
                 day: "2-digit",
                 month: "2-digit",
                 hour: "2-digit",
