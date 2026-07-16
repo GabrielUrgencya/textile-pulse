@@ -75,3 +75,6 @@ supabase/.temp/
 /IMAGEM RANKING.png
 /apresentacao-lision.html
 /documentos/
+
+# Backups operacionais de QA (dados reais de tenant: PII, hashes de PIN) — nunca versionar
+docs/qa/_*.json

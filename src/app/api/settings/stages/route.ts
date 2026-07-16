@@ -64,6 +64,10 @@ export async function POST(request: Request) {
     .insert({
       tenant_id: t.tenantId,
       name: body.name,
+      // FIX 500 (23502): display_name e type são NOT NULL sem default no banco —
+      // a rota não os enviava e todo insert falhava. Defaults seguros:
+      display_name: body.displayName || body.name,
+      type: body.type || "INTERNAL",
       color: body.color || null,
       order_index: nextIndex,
     })

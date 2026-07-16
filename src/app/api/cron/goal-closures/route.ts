@@ -118,19 +118,32 @@ export async function GET(request: Request) {
   // Usuários por tenant (com meta explícita OU setor definido)
   const [utRes, profRes] = await Promise.all([
     supabaseAdmin.from("user_targets").select("user_id, tenant_id"),
-    supabaseAdmin.from("profiles").select("id, tenant_id, sector"),
+    supabaseAdmin.from("profiles").select("id, tenant_id, sector, role, is_active"),
   ]);
   const usersByTenant = new Map<string, Set<string>>();
   const add = (tenantId: string, userId: string) => {
     if (!usersByTenant.has(tenantId)) usersByTenant.set(tenantId, new Set());
     usersByTenant.get(tenantId)!.add(userId);
   };
+
+  // ELEGIBILIDADE (fix da "dívida fantasma"): só acumula meta quem é chão de
+  // fábrica de verdade — OPERADOR e ATIVO. Admin não produz (não tem meta de
+  // produção) e operador desativado não produz mais, então cobrar meta deles
+  // gera dívida crescente sem sentido. Caso real: um operador desativado
+  // acumulava déficit todos os dias, e admins com `sector` preenchido só
+  // escapavam por não existir etapa com o nome do setor administrativo.
+  // A meta em si (base/teto) NÃO é alterada aqui — dívida de quem produz
+  // abaixo do alvo é informação de gestão legítima.
   const profTenant = new Map<string, string>();
+  const eligible = new Set<string>();
   for (const p of profRes.data || []) {
     profTenant.set(p.id as string, p.tenant_id as string);
+    if (p.is_active !== true || p.role !== "OPERADOR") continue;
+    eligible.add(p.id as string);
     if (p.sector != null) add(p.tenant_id as string, p.id as string);
   }
   for (const u of utRes.data || []) {
+    if (!eligible.has(u.user_id as string)) continue; // admin/desativado: pula
     const tid = (u.tenant_id as string) || profTenant.get(u.user_id as string);
     if (tid) add(tid, u.user_id as string);
   }
