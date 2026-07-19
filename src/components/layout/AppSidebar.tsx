@@ -27,6 +27,7 @@ import {
 import { showToast } from "@/lib/toast";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useFactionUnread } from "@/components/notifications/FactionUnreadProvider";
 
 import {
   Sidebar,
@@ -70,6 +71,8 @@ export function AppSidebar() {
   const pathname = usePathname() ?? "/dashboard";
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
+  // Mesma fonte que dispara o toast — badge e notificação nunca divergem.
+  const { count: unreadCount } = useFactionUnread();
   const [loggingOut, setLoggingOut] = useState(false);
   const [openingTv, setOpeningTv] = useState(false);
   const { profile } = useUserProfile();
@@ -172,6 +175,7 @@ export function AppSidebar() {
                   item={item}
                   active={isActive(item.url)}
                   collapsed={collapsed}
+                  badge={item.url === "/chat" ? unreadCount : 0}
                 />
               ))}
             </SidebarMenu>
@@ -269,13 +273,16 @@ function NavLink({
   item,
   active,
   collapsed,
+  badge = 0,
 }: {
   item: { title: string; url: string; icon: React.ReactNode };
   active: boolean;
   collapsed: boolean;
+  /** Contador de não lidas (0 = sem badge). Hoje só o Chat usa. */
+  badge?: number;
 }) {
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem className="relative">
       <SidebarMenuButton
         asChild
         tooltip={item.title}
@@ -292,6 +299,22 @@ function NavLink({
           {!collapsed && <span>{item.title}</span>}
         </Link>
       </SidebarMenuButton>
+      {/* Badge FORA do SidebarMenuButton de propósito: ele tem overflow-hidden e
+          cortaria o contador. pointer-events-none para o clique cair no link. */}
+      {badge > 0 && (
+        <span
+          aria-label={`${badge} ${badge === 1 ? "mensagem não lida" : "mensagens não lidas"}`}
+          className={cn(
+            "pointer-events-none absolute z-10 flex items-center justify-center rounded-full",
+            "bg-red-500 font-semibold text-white tabular-nums",
+            collapsed
+              ? "-right-0.5 -top-0.5 min-w-[16px] px-1 text-[10px] leading-[16px] ring-2 ring-sidebar"
+              : "right-2 top-1/2 min-w-[18px] -translate-y-1/2 px-1.5 text-[11px] leading-[18px]",
+          )}
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </SidebarMenuItem>
   );
 }

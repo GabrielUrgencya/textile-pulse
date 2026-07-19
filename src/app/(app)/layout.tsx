@@ -9,7 +9,9 @@ export default function AppGroupLayout({
   return (
     <AppShell>
       {children}
-      <Toaster position="bottom-right" />
+      {/* visibleToasts=4: a rajada máxima da notificação de facção é 3 individuais
+          + 1 resumo. Com o padrão (3), o primeiro sumiria antes de ser lido. */}
+      <Toaster position="bottom-right" visibleToasts={4} />
     </AppShell>
   );
 }

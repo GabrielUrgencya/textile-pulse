@@ -1,0 +1,99 @@
+storyId: NOTIFICACAO-MENSAGEM-FACCAO
+verdict: FAIL
+iteracao: 2
+data: 2026-07-16
+ambiente: Fábrica Teste (fabrica-teste-31ykr) · dev localhost:3001 · sessão REAL
+
+resumo: >
+  O toast continua NÃO disparando — mas a causa NÃO era a que tratamos. A correção do
+  Dex (setAuth no onAuthStateChange) está tecnicamente correta e não tem defeito; ela
+  apenas se apoia numa fundação que não existe: o cliente do navegador NUNCA consegue
+  ler a sessão, porque o middleware reescreve o cookie de auth como httpOnly.
+  Isto é um CONFLITO ARQUITETURAL, não um bug de código. Exige decisão do Gabriel.
+
+causa_raiz_definitiva:
+  arquivo: src/middleware.ts:52
+  codigo: 'response.cookies.set(name, value, { ...options, httpOnly: true, ... })'
+  efeito: >
+    O cookie de sessão é invisível ao JavaScript. createBrowserClient (@supabase/ssr)
+    lê a sessão de document.cookie — logo, jamais a encontra. Sem sessão, não há JWT
+    para entregar ao socket do Realtime; o socket fica com a anon key; a RLS nega tudo
+    (a Dara provou: anônimo recebe 0 de 41). Canal SUBSCRIBED e MUDO.
+  natureza: >
+    NÃO é defeito. httpOnly é hardening deliberado e correto: impede que um XSS roube
+    o token da sessão. O conflito é real: postgres_changes com RLS EXIGE o JWT no
+    navegador; httpOnly EXISTE para negar o token ao navegador. São mutuamente
+    exclusivos por construção.
+
+evidencia_runtime:
+  eventos_de_auth: [{ ev: INITIAL_SESSION, temToken: false }]   # dispara SEM sessão
+  getSession_do_browser: null
+  socket_realtime: "anon (não-JWT)"
+  canais: [{ topic: "realtime:faction-messages-notify", state: joined }]
+  document_cookie_auth: ausente        # httpOnly
+  localStorage: vazio
+  contraprova_servidor: >
+    O dashboard renderiza e /api/me/permissions devolve 200 com 21 permissões — o
+    SERVIDOR enxerga a sessão perfeitamente. Só o navegador não vê. Definição de httpOnly.
+
+por_que_o_teste_anterior_enganou: >
+  Na 1ª iteração o cookie ERA legível e o setAuth manual funcionou (0 → 1 evento).
+  Motivo: logo após o login o cookie é gravado pelo cliente, ainda sem httpOnly. Na
+  requisição seguinte o middleware o REESCREVE com httpOnly e ele some do JS para
+  sempre. A janela de sucesso é o intervalo entre o login e o primeiro passe pelo
+  middleware — por isso a cura pareceu comprovada e não era sustentável.
+
+pontos_do_brief:
+  1_tempo_real:      { status: FAIL, obs: "0 toasts em 2 INSERTs, canal joined" }
+  2_qualquer_aba:    { status: NAO_TESTADO, obs: "bloqueado pelo ponto 1" }
+  3_dismiss_clique:  { status: NAO_TESTADO }
+  4_nao_auto_notifica: { status: NAO_TESTADO }
+  5_isolamento:      { status: NAO_TESTADO, obs: "liserie NÃO tocada" }
+  6_permissao:       { status: NAO_TESTADO }
+  7_initial_session: { status: FAIL, obs: "É O teste da correção. Falhou porque não há sessão para o INITIAL_SESSION entregar." }
+  expiracao:         { status: NAO_TESTADO, obs: "sem sentido testar sem sessão" }
+
+decisao_necessaria_do_gabriel:
+  contexto: >
+    Escolher COMO o navegador passa a receber o evento, sabendo que o httpOnly (que a
+    auditoria endureceu) é inegociável até ele dizer o contrário.
+  opcao_A_endpoint_de_token:
+    como: "/api/me/realtime-token devolve o access_token (o servidor lê o cookie httpOnly); cliente chama setAuth(token) e renova antes de expirar."
+    isolamento: "MÁXIMO — mantém a RLS por assinante (o banco recusa cross-tenant)."
+    custo: "Expõe o access_token ao JS. Enfraquece PARTE do httpOnly: um XSS passaria a alcançar o access_token (curto, ~1h) — mas NÃO o refresh_token, que continua httpOnly."
+  opcao_B_broadcast_do_servidor:
+    como: "A rota que insere a mensagem publica em broadcast 'faction-messages:{tenantId}'; o cliente assina anônimo. É o padrão que a TV já usa (tv-config:{tenantId})."
+    isolamento: "MÉDIO — depende do segredo do UUID do tenant. Canal broadcast é público: quem souber o UUID de outro tenant assina. Sem RLS."
+    custo: "Zero exposição de token. Mantém httpOnly intacto."
+  opcao_C_polling:
+    como: "Poll global leve (ex.: 10s) num endpoint de não-lidas; toast ao detectar nova. O chat JÁ faz polling (lista 5s, conversa 2s) — é o padrão vigente do sistema."
+    isolamento: "MÁXIMO — a API é escopada por tenant no servidor, com a sessão httpOnly."
+    custo: "Latência de ~10s em vez de instantâneo. Nenhuma superfície de segurança nova."
+  recomendacao_do_QA: >
+    C, com A como segunda opção. Razões: (1) o sistema JÁ é polling no chat — C é
+    coerente com a arquitetura vigente, não inventa conceito; (2) não abre nenhuma
+    superfície nova logo depois de uma auditoria que fechou 1 CRITICAL e 1 HIGH;
+    (3) para chat de fábrica, ~10s de latência é indistinguível de "tempo real" na
+    prática. B é a que menos recomendo: troca RLS por segredo de UUID.
+
+achado_de_producao:
+  o_que: >
+    A liserie tinha 9 mensagens e agora tem 10. A extra NÃO é minha: "Oiii", da facção
+    KAUANY VITÓRIA, hoje às 18:45 (horário SP) — cliente real, enquanto trabalhávamos.
+    NÃO foi tocada.
+  significado: >
+    É a prova viva do problema: uma facção real escreveu hoje e o Gabriel não recebeu
+    aviso nenhum. A frente resolve uma dor concreta e presente, não hipotética.
+
+higiene:
+  msgs_de_teste_removidas_do_FT: 2
+  liserie: INTOCADA (10 msgs — as 9 originais + 1 REAL do cliente, preservada)
+  instrumentacao_QA: removida; supabase-browser.ts idêntico ao entregue pelo Dex; tsc limpo
+  temporarios: removidos
+  dev_server_qa_3001: encerrado
+  porta_3000_PID_9580: não tocado
+
+decisao: >
+  BLOQUEIA O COMMIT. Não é caso de devolver ao @dev para "consertar" — o código dele
+  está correto. É decisão de arquitetura/risco do Gabriel: escolher A, B ou C.
+  A correção do Dex (setAuth) deve ser MANTIDA se a escolha for A; descartada se for C.

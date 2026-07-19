@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { MessageCircle, Lock } from "lucide-react";
 import { usePermissions } from "@/hooks/use-permissions";
 import { ChatConversationList, type Conversation } from "@/components/chat/ChatConversationList";
@@ -10,12 +11,20 @@ import { ChatConversation, type ChatMessage } from "@/components/chat/ChatConver
  * Chat admin ↔ facções (Frente 3 Fase A — texto, polling).
  * Lista 5s; conversa ativa 2s. Envio otimista com merge por id.
  */
-export default function ChatPage() {
+function ChatPageContent() {
   const { can: hasPerm, isLoading } = usePermissions();
+  const searchParams = useSearchParams();
+  // ?faction=<id> — o clique no toast de nova mensagem abre a conversa direto.
+  const factionParam = searchParams.get("faction");
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
-  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const [activeId, setActiveId] = React.useState<string | null>(factionParam);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [sending, setSending] = React.useState(false);
+
+  // Reage ao param também quando a página JÁ está montada (toast clicado estando no chat).
+  React.useEffect(() => {
+    if (factionParam) setActiveId(factionParam);
+  }, [factionParam]);
 
   // Lista de conversas (polling 5s)
   React.useEffect(() => {
@@ -121,5 +130,14 @@ export default function ChatPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/** useSearchParams exige Suspense no App Router (senão o build de produção falha). */
+export default function ChatPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <ChatPageContent />
+    </React.Suspense>
   );
 }
