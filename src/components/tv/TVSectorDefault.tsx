@@ -26,11 +26,20 @@ const AREAS = `
   "wave wave rank  fac"
 `;
 
+/** Sem o painel de facção, o ranking ocupa as duas colunas — sem buraco no grid. */
+const AREAS_NO_FACTION = `
+  "hero hero metas metas"
+  "hero hero kpis  kpis"
+  "wave wave rank  rank"
+`;
+
 const gridStyle: CSSProperties = {
   gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
   gridTemplateRows: "minmax(0,1fr) minmax(0,0.6fr) minmax(0,0.95fr)",
   gridTemplateAreas: AREAS,
 };
+
+const gridStyleNoFaction: CSSProperties = { ...gridStyle, gridTemplateAreas: AREAS_NO_FACTION };
 
 function fmtMin(min: number | null | undefined): string {
   if (min == null) return "—";
@@ -45,7 +54,14 @@ function pctOf(p: { target: number | null; progress: number } | undefined): numb
   return Math.round((p.progress / p.target) * 100);
 }
 
-export function TVSectorDefault({ kpis }: { kpis: SectorKpis | null }) {
+export function TVSectorDefault({
+  kpis,
+  showFaction = true,
+}: {
+  kpis: SectorKpis | null;
+  /** Config por setor: esconde o painel de facção onde ele não faz sentido. */
+  showFaction?: boolean;
+}) {
   const percent = kpis?.percent ?? 0;
   const state = paceFromPercent(percent);
   const color = STATE_COLORS[state];
@@ -77,7 +93,7 @@ export function TVSectorDefault({ kpis }: { kpis: SectorKpis | null }) {
         }}
       />
 
-      <div className="relative grid h-full min-h-0 w-full gap-5" style={gridStyle}>
+      <div className="relative grid h-full min-h-0 w-full gap-5" style={showFaction ? gridStyle : gridStyleNoFaction}>
         {/* ── HERÓI: medidor radial + status ── */}
         <div className="flex min-h-0 min-w-0 flex-col items-center justify-center gap-4" style={{ gridArea: "hero" }}>
           <RadialGauge produced={kpis?.produced ?? 0} target={kpis?.daily_target ?? null} percent={percent} unit={unit} state={state} />
@@ -150,11 +166,13 @@ export function TVSectorDefault({ kpis }: { kpis: SectorKpis | null }) {
           <RankingList kpis={kpis} />
         </GlassPanel>
 
-        {/* ── Status da facção ── */}
-        <GlassPanel area="fac" className="justify-between p-5">
-          <PanelLabel><Truck className="mr-1.5 inline size-3.5 -translate-y-px" />Status da Facção</PanelLabel>
-          <FactionBlock kpis={kpis} />
-        </GlassPanel>
+        {/* ── Status da facção (escondível por setor na Config. da TV) ── */}
+        {showFaction && (
+          <GlassPanel area="fac" className="justify-between p-5">
+            <PanelLabel><Truck className="mr-1.5 inline size-3.5 -translate-y-px" />Status da Facção</PanelLabel>
+            <FactionBlock kpis={kpis} />
+          </GlassPanel>
+        )}
       </div>
     </div>
   );

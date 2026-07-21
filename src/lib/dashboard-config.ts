@@ -123,6 +123,37 @@ export function isValidLayout(layout: unknown): layout is KPIWidget[] {
   return Array.isArray(layout) && layout.every(isValidWidget);
 }
 
+/**
+ * O painel "Status da Facção" aparece neste setor?
+ *
+ * No redesign "Instrumento" a TV usa um layout fixo (nenhum setor tem tela
+ * diferente do outro), mas o dono precisa poder esconder a facção nos setores
+ * onde ela não faz sentido. Em vez de coluna nova, o flag É a presença do widget
+ * `faccao_status` no layout — o dado já gravado continua válido, isValidLayout
+ * não muda, e o DEFAULT_SECTOR_LAYOUT já inclui o widget, então quem nunca
+ * configurou continua VENDO o painel (comportamento atual preservado).
+ */
+export const FACTION_WIDGET_METRIC = "faccao_status";
+
+export function isFactionPanelVisible(layout: unknown): boolean {
+  if (!Array.isArray(layout)) return true; // sem config → default mostra
+  return layout.some(
+    (w) => isValidWidget(w) && w.metric === FACTION_WIDGET_METRIC,
+  );
+}
+
+/** Liga/desliga o widget de facção num layout, preservando o resto. */
+export function setFactionPanel(layout: KPIWidget[], visible: boolean): KPIWidget[] {
+  const without = layout.filter((w) => w.metric !== FACTION_WIDGET_METRIC);
+  if (!visible) return without;
+  if (without.length === layout.length) {
+    // não existia → adiciona a partir do catálogo
+    const entry = WIDGET_CATALOG.find((e) => e.metric === FACTION_WIDGET_METRIC);
+    if (entry) return [...layout, makeWidget(entry, layout.length)];
+  }
+  return layout;
+}
+
 /** Normaliza um layout desconhecido: mantém só widgets válidos; vazio → default. */
 export function normalizeLayout(layout: unknown): { layout: KPIWidget[]; usedDefault: boolean } {
   if (!Array.isArray(layout)) return { layout: DEFAULT_SECTOR_LAYOUT, usedDefault: true };

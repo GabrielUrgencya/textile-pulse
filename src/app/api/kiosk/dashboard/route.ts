@@ -5,6 +5,7 @@ import { todayInTz, localDayStart, localDayEnd } from "@/lib/tz";
 import { computeSectorKpis } from "@/lib/sector-kpis";
 import { listDayAchievements } from "@/lib/achievements";
 import { getSectorDashboardConfig } from "@/lib/dashboard-config";
+import { PORTAL_ACTIVE_STATUSES } from "@/lib/shipment-status";
 
 /**
  * GET /api/kiosk/dashboard?token=<uuid>
@@ -216,7 +217,13 @@ export async function GET(request: Request) {
       .not("status", "in", "(CREATED,IN_STOCK,PARTIALLY_STOCKED)")
       .not("current_stage_id", "is", null),
 
-    // Overdue faction shipments
+    // Overdue faction shipments — só remessas AINDA EM ABERTO (peças com a facção).
+    // Whitelist (PORTAL_ACTIVE_STATUSES), não blacklist: uma remessa CLOSED/RETURNED
+    // não pode estar "atrasada no retorno" — o ciclo dela acabou. A lista escrita à
+    // mão que existia aqui ignorava CLOSED (alarmava remessa encerrada, inclusive
+    // devolvida ANTES do prazo) e excluía PARTIALLY_RETURNED (silenciava remessa com
+    // peças realmente fora). Derivar da fonte de verdade evita a divergência voltar;
+    // se surgir um status novo de conclusão, a whitelist não o inclui por acidente.
     supabase
       .from("faction_shipments")
       .select(
@@ -227,7 +234,7 @@ export async function GET(request: Request) {
       )
       .eq("factions.tenant_id", tenantId)
       .lt("expected_return_at", now.toISOString())
-      .not("status", "in", "(RETURNED,PARTIALLY_RETURNED)"),
+      .in("status", [...PORTAL_ACTIVE_STATUSES]),
 
     // Recent activity: last 10 scan events
     supabase

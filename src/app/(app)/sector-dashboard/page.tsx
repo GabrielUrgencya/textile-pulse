@@ -18,8 +18,15 @@ import { SectorSidebar, type BuilderStage } from "@/components/dashboard-builder
 import { WidgetLibrary } from "@/components/dashboard-builder/WidgetLibrary";
 import { BuilderCanvas } from "@/components/dashboard-builder/BuilderCanvas";
 import { WidgetInspector } from "@/components/dashboard-builder/WidgetInspector";
-import { makeWidget, type KPIWidget, type WidgetCatalogEntry } from "@/lib/dashboard-config";
+import {
+  makeWidget,
+  isFactionPanelVisible,
+  setFactionPanel,
+  type KPIWidget,
+  type WidgetCatalogEntry,
+} from "@/lib/dashboard-config";
 import type { SectorKpis } from "@/lib/sector-kpis";
+import { cn } from "@/lib/utils";
 
 /* Dados de mock p/ preview WYSIWYG (mesmo renderer da TV). */
 const MOCK_KPIS: SectorKpis = {
@@ -206,6 +213,7 @@ export default function SectorDashboardBuilderPage() {
   }
 
   const selectedWidget = layout.find((w) => w.id === selectedId) ?? null;
+  const factionVisible = isFactionPanelVisible(layout);
 
   return (
     <div className="max-w-[1400px] mx-auto px-6 lg:px-10 py-6 lg:py-8">
@@ -241,6 +249,40 @@ export default function SectorDashboardBuilderPage() {
           </button>
         </div>
       </div>
+
+      {/* Controle que a TV REALMENTE aplica hoje. O layout "Instrumento" é fixo em
+          todos os setores de propósito (unidade visual); a única customização por
+          setor é esconder o painel de facção onde ele não faz sentido. */}
+      {stageId && (
+        <div className="mt-5 flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-secondary/30 p-4">
+          <div className="min-w-0">
+            <p className="text-[14px] font-medium">Mostrar &quot;Status da Facção&quot; na TV deste setor</p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              Desligue nos setores que não acompanham facção — o painel some da TV e o
+              ranking ocupa o espaço. É a única customização por setor: o restante do
+              layout é igual em todos, de propósito.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={factionVisible}
+            aria-label="Mostrar Status da Facção na TV deste setor"
+            onClick={() => setLayout((l) => setFactionPanel(l, !factionVisible))}
+            className={cn(
+              "mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors",
+              factionVisible ? "border-transparent bg-foreground" : "border-border bg-secondary",
+            )}
+          >
+            <span
+              className={cn(
+                "size-4 rounded-full bg-background transition-transform",
+                factionVisible ? "translate-x-6" : "translate-x-1",
+              )}
+            />
+          </button>
+        </div>
+      )}
 
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="mt-6 grid grid-cols-12 gap-4">

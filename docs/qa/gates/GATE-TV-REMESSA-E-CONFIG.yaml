@@ -1,0 +1,71 @@
+storyId: TV-REMESSA-ATRASADA + CONFIG-PAINEL-FACCAO
+verdict: PASS
+data: 2026-07-21
+ambiente: Fábrica Teste (fabrica-teste-31ykr) · dev localhost:3000 (preview) · provado NA TELA
+
+resumo: >
+  Os dois fixes passaram, validados na interface (não por query). O card da TV deixou
+  de acusar remessa finalizada, e o painel de facção passou a ser controlável por setor
+  com escopo correto.
+
+P1_remessa_finalizada_como_atrasada:
+  veredito: PASS
+  evidencia_na_tela:
+    - passo_1: >
+        Setor Corte, remessas Bianca (SENT, prazo 18/07) e Flávia (SENT, 19/07), ambas
+        vencidas. Card "STATUS DA FACÇÃO" exibiu "Atrasado — Bianca · 89h12 atrasado".
+        Alertas: "Facção Bianca 4d de atraso" e "Facção Flávia 3d". CORRETO (vigentes).
+    - passo_2_o_teste_do_bug: >
+        Bianca finalizada (status CLOSED). O card MUDOU para "Atrasado — Flávia · 62h12".
+        A remessa encerrada SAIU do card imediatamente. Antes do fix, ela continuaria
+        sendo acusada de atraso indefinidamente.
+    - passo_3_estado_vazio: >
+        Flávia finalizada (RETURNED). Card passou a exibir "Sem remessa vigente" e o
+        painel de alertas: "Nenhum alerta ativo — Produção fluindo normalmente".
+  observacao: >
+    O bug que o cliente enxergava estava em sector-kpis.ts (computeFactionStatus), que
+    alimenta o card — não só no alerta do kiosk que o briefing original apontava. O Dex
+    corrigiu os dois, mais um terceiro ponto (faction/shipments), todos derivando de
+    PORTAL_ACTIVE_STATUSES em vez de lista à mão.
+
+P2_controle_do_painel_de_faccao_por_setor:
+  veredito: PASS
+  evidencia_na_tela:
+    - toggle_visivel: >
+        "Mostrar 'Status da Facção' na TV deste setor" aparece na Config. da TV,
+        ligado por padrão, com texto explicando ser a única customização por setor.
+    - salvou_de_verdade: >
+        Desliguei no setor Corte → "Publicado! A TV deste setor atualiza em instantes."
+        Banco confirmou: sector_dashboard_configs do CORTE com tem_faccao=false,
+        6 widgets (o de facção saiu), updated_at de agora.
+    - tv_aplicou: >
+        TV do Corte: painel "Status da Facção" SUMIU e o "Ranking do Setor" expandiu
+        ocupando as duas colunas — sem buraco no grid, como desenhado.
+    - escopo_por_setor: >
+        CORTE  → ESCONDE (isDefault: false, configurado)
+        TRAVETE → MOSTRA (isDefault: true, nunca tocado)
+        EMBALAGEM → MOSTRA (isDefault: true)
+        A config NÃO vazou entre setores e o default seguro (mostrar) foi preservado.
+
+nao_testado:
+  - item: propagação via broadcast (<2s sem refresh)
+    motivo: >
+      A validação foi feita com recarga da TV. O broadcast tv-config:{tenant} já existia
+      e não foi alterado, mas NÃO provei o refresh automático nesta rodada — o renderer
+      do navegador travou por falta de memória (0,74 GB livres) antes desse passo.
+      Recomendo o Gabriel observar isso no teste dele: salvar com a TV aberta e ver se
+      atualiza sozinho em ~2s.
+
+higiene:
+  fabrica_teste: restaurado (as 2 remessas voltaram a SENT; config de teste do CORTE removida → volta ao default)
+  liserie: INTOCADA — verificado por timestamp (últimas alterações em 06/07 e 16/07, nenhuma de hoje 21/07)
+  temporarios: removidos
+  dev_server: encerrado
+
+nota_de_ambiente: >
+  A máquina ficou com 0,74 GB de RAM livre; o webpack registrou "Array buffer allocation
+  failed" e o renderer parou de responder a screenshots no fim da sessão. O servidor
+  continuou respondendo HTTP 200 normalmente — não é defeito do código.
+
+decisao: >
+  LIBERADO para commit, sujeito à validação local do Gabriel (regra inegociável).

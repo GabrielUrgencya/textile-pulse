@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateFactionSession } from "@/lib/faction-middleware";
 import { dbError } from "@/lib/api-helpers";
+import { PORTAL_ACTIVE_STATUSES } from "@/lib/shipment-status";
 
 /**
  * GET /api/faction/shipments?page=1&limit=20
@@ -41,7 +42,10 @@ export async function GET(request: Request) {
   query =
     view === "history"
       ? query.in("status", ["RETURNED", "CLOSED"])
-      : query.not("status", "in", "(RETURNED,CLOSED)");
+      // Ativas = o que a facção ainda tem em mãos. Usa a fonte de verdade (o
+      // PORTAL_ACTIVE_STATUSES foi criado exatamente para este filtro) em vez de
+      // lista à mão, para não divergir se surgir um status novo.
+      : query.in("status", [...PORTAL_ACTIVE_STATUSES]);
 
   const { data, count, error } = await query;
 

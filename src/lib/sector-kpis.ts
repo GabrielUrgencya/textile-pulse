@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_UTC_OFFSET, todayInTz } from "@/lib/tz";
 import { getActiveSectorDeficit, accumulatedGoal } from "@/lib/goal-deficits";
 import { getTenantCalendar, workingDaysBetween, workingDaysPerWeek } from "@/lib/work-calendar";
+import { PORTAL_ACTIVE_STATUSES } from "@/lib/shipment-status";
 
 /**
  * Épico Metas/KPIs por Setor — cálculo de KPIs de um setor (= Stage) para a TV.
@@ -359,7 +360,11 @@ async function computeFactionStatus(
     .from("faction_shipments")
     .select("expected_return_at, status, factions!inner ( name, tenant_id )")
     .eq("factions.tenant_id", tenantId)
-    .not("status", "in", "(RETURNED,PARTIALLY_RETURNED)")
+    // Só remessa VIGENTE (peças ainda com a facção). Whitelist derivada da fonte de
+    // verdade — a lista à mão anterior deixava CLOSED passar, e o card marcava como
+    // "atrasada" uma remessa já encerrada (caso real: devolvida 2 dias ANTES do
+    // prazo). Também excluía PARTIALLY_RETURNED, escondendo remessa com peças fora.
+    .in("status", [...PORTAL_ACTIVE_STATUSES])
     .not("expected_return_at", "is", null)
     .order("expected_return_at", { ascending: true })
     .limit(1);

@@ -10,7 +10,7 @@ import { TVHeaderV2 } from "@/components/tv/TVHeaderV2";
 import { TVSectorDefault } from "@/components/tv/TVSectorDefault";
 import { TVOverviewDefault } from "@/components/tv/TVOverviewDefault";
 import { subscribeToTvConfig } from "@/lib/realtime";
-import type { KPIWidget } from "@/lib/dashboard-config";
+import { isFactionPanelVisible, type KPIWidget } from "@/lib/dashboard-config";
 import type { SectorKpis } from "@/lib/sector-kpis";
 
 // ─── Types matching API response shape ─────────────────────
@@ -237,11 +237,15 @@ function TVDashboardContent() {
       <div className="flex-1 flex flex-col gap-4 px-6 pt-4 pb-6 overflow-hidden">
         {activeSector ? (
           /* ── Visão por SETOR — redesign "Instrumento" (Frente 4) ──
-             TODOS os setores usam o MESMO layout premium. A config custom por
-             setor (8.41) foi intencionalmente descontinuada na TV: não pode
-             haver setor com tela antiga e setor com tela nova. */
+             TODOS os setores usam o MESMO layout premium (não pode haver setor
+             com tela antiga e setor com tela nova). A ÚNICA customização por
+             setor é esconder o painel "Status da Facção" onde ele não faz
+             sentido — controlada em Config. da TV. */
           <div className="flex-1 min-h-0">
-            <TVSectorDefault kpis={sectorKpis} />
+            <TVSectorDefault
+              kpis={sectorKpis}
+              showFaction={isFactionPanelVisible(data.dashboard_config?.layout)}
+            />
           </div>
         ) : (
           /* ── Visão GERAL — redesign "Instrumento" (Frente 4) ──
