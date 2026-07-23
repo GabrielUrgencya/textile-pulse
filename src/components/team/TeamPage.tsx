@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Users, MoreHorizontal, Pencil, UserX } from "lucide-react";
+import { Plus, Users, MoreHorizontal, Pencil, UserX, Eraser } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard } from "@/components/ui/lision-card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -27,6 +27,7 @@ import { useTeamMembers, type TeamMember } from "@/hooks/use-team-data";
 import { MemberForm } from "@/components/team/MemberForm";
 import { PinResetPopover } from "@/components/team/PinResetPopover";
 import { showToast } from "@/lib/toast";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Admin",
@@ -67,6 +68,52 @@ function TeamPage() {
   // Deactivate dialog
   const [deactivateTarget, setDeactivateTarget] = React.useState<TeamMember | null>(null);
   const [deactivating, setDeactivating] = React.useState(false);
+  // Zerar dívida de meta: ação de gestão — mesmo gate do backend (settings:manage).
+  const { can } = usePermissions();
+  const canManage = can("settings:manage");
+  const [resetTarget, setResetTarget] = React.useState<TeamMember | null>(null);
+  const [resetDeficits, setResetDeficits] = React.useState<{ daily: number; weekly: number; monthly: number } | null>(null);
+  const [resetting, setResetting] = React.useState(false);
+
+  /** Abre a confirmação buscando a dívida atual dos TRÊS períodos (1 fetch). */
+  const askReset = async (member: TeamMember) => {
+    setResetTarget(member);
+    setResetDeficits(null);
+    try {
+      const res = await fetch(`/api/my-plan?userId=${member.id}`);
+      const json = res.ok ? await res.json() : null;
+      const d = json?.data?.meta?.deficits;
+      setResetDeficits({
+        daily: Math.round(d?.daily ?? 0),
+        weekly: Math.round(d?.weekly ?? 0),
+        monthly: Math.round(d?.monthly ?? 0),
+      });
+    } catch {
+      setResetDeficits({ daily: 0, weekly: 0, monthly: 0 });
+    }
+  };
+
+  const confirmReset = async () => {
+    if (!resetTarget) return;
+    setResetting(true);
+    try {
+      const res = await fetch("/api/my-plan/reset-goal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // "all": limpa dia + semana + mês numa só operação. Zerar só o dia
+        // deixava o operador ainda vendo dívida da semana na tela dele.
+        body: JSON.stringify({ period: "all", userId: resetTarget.id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Erro ao zerar dívida");
+      showToast("success", `Dívida de ${resetTarget.full_name} zerada (dia, semana e mês) — a meta base continua`);
+      setResetTarget(null);
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro ao zerar dívida");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handleEdit = (member: TeamMember) => {
     setEditMember(member);
@@ -169,6 +216,22 @@ function TeamPage() {
                 <PinResetPopover memberId={row.id} memberName={row.full_name} />
               </span>
             )}
+            {/* Zerar dívida: só faz sentido para quem tem meta de produção. */}
+            {row.role === "OPERADOR" && canManage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                title="Limpa o acumulado atrasado. A meta base continua valendo."
+                onClick={(e) => {
+                  e.stopPropagation();
+                  askReset(row);
+                }}
+              >
+                <Eraser className="size-3.5" />
+                Zerar dívida
+              </Button>
+            )}
             {row.is_active && (
               <Button
                 variant="ghost"
@@ -211,6 +274,12 @@ function TeamPage() {
                     }}
                   >
                     Reset PIN
+                  </DropdownMenuItem>
+                )}
+                {row.role === "OPERADOR" && canManage && (
+                  <DropdownMenuItem onClick={() => askReset(row)}>
+                    <Eraser className="size-3.5 mr-2" />
+                    Zerar dívida
                   </DropdownMenuItem>
                 )}
                 {row.is_active && (
@@ -364,6 +433,27 @@ function TeamPage() {
         confirmLabel="Desativar"
         variant="destructive"
         loading={deactivating}
+      />
+
+      <ConfirmDialog
+        open={!!resetTarget}
+        onCancel={() => setResetTarget(null)}
+        onConfirm={confirmReset}
+        title={`Zerar a dívida de ${resetTarget?.full_name}?`}
+        description={
+          resetDeficits === null
+            ? "Calculando a dívida atual…"
+            : resetDeficits.daily + resetDeficits.weekly + resetDeficits.monthly > 0
+              ? `Dívida acumulada — Dia: ${resetDeficits.daily.toLocaleString("pt-BR")} · ` +
+                `Semana: ${resetDeficits.weekly.toLocaleString("pt-BR")} · ` +
+                `Mês: ${resetDeficits.monthly.toLocaleString("pt-BR")} peças. ` +
+                "Os TRÊS períodos serão limpos. A META BASE continua valendo — a cobrança " +
+                "recomeça do valor normal, sem o atrasado."
+              : "Esta pessoa não tem dívida acumulada — não há nada a zerar."
+        }
+        confirmLabel="Zerar dívida"
+        variant="warning"
+        loading={resetting}
       />
     </div>
   );

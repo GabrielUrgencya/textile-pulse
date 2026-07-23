@@ -34,6 +34,19 @@ interface MyPlanData {
   isAdmin: boolean;
 }
 
+/** Pessoa do seletor de admin (GET /api/my-plan/users). */
+interface PlanPerson {
+  id: string;
+  full_name: string | null;
+  sector: string | null;
+}
+
+const RESET_LABELS: Record<string, string> = {
+  daily: "do dia",
+  weekly: "da semana",
+  monthly: "do mês",
+};
+
 export default function MeuPlanoPage() {
   const { can } = usePermissions();
   const isAdmin = can("settings:manage");
@@ -45,15 +58,27 @@ export default function MeuPlanoPage() {
   // Zeração manual de meta (admin): período pendente de confirmação
   const [resetTarget, setResetTarget] = useState<"daily" | "weekly" | "monthly" | null>(null);
   const [resetting, setResetting] = useState(false);
+  // Admin: escolhe DE QUEM é o plano exibido (vazio = o próprio).
+  const [people, setPeople] = useState<PlanPerson[]>([]);
+  const [viewingUserId, setViewingUserId] = useState<string>("");
 
   const load = useCallback(
     () =>
-      fetch("/api/my-plan")
+      fetch(viewingUserId ? `/api/my-plan?userId=${viewingUserId}` : "/api/my-plan")
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((json) => setData(json.data ?? null))
         .catch(() => setData(null)),
-    [],
+    [viewingUserId],
   );
+
+  // Lista de pessoas para o seletor — só admin (a rota é admin-only).
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch("/api/my-plan/users")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((json) => setPeople(json.data ?? []))
+      .catch(() => setPeople([]));
+  }, [isAdmin]);
 
   useEffect(() => {
     setLoading(true);
@@ -70,11 +95,12 @@ export default function MeuPlanoPage() {
       const res = await fetch("/api/my-plan/reset-goal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ period: resetTarget }),
+        // userId: zera a dívida de QUEM está sendo visto (vazio = o próprio admin).
+        body: JSON.stringify({ period: resetTarget, ...(viewingUserId ? { userId: viewingUserId } : {}) }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Erro ao zerar meta");
-      showToast("success", "Meta zerada — acumulado e déficit deste período removidos");
+      if (!res.ok) throw new Error(body.error || "Erro ao zerar dívida");
+      showToast("success", `Dívida ${RESET_LABELS[resetTarget]} zerada — a meta base continua valendo`);
       setResetTarget(null);
       load();
     } catch (err) {
@@ -84,12 +110,11 @@ export default function MeuPlanoPage() {
     }
   };
 
-  const RESET_LABELS: Record<string, string> = {
-    daily: "do dia",
-    weekly: "da semana",
-    monthly: "do mês",
-  };
   const today = data?.today ?? "";
+  const viewingPerson = viewingUserId ? people.find((p) => p.id === viewingUserId) ?? null : null;
+  // Dívida do período que está sendo zerado — mostrada na confirmação para o
+  // admin saber o tamanho do que está apagando.
+  const resetDeficit = resetTarget ? Math.round(meta?.deficits?.[resetTarget] ?? 0) : 0;
   const todayPlans = useMemo(
     () => (data?.plans ?? []).filter((p) => p.plan_date === today),
     [data, today],
@@ -99,7 +124,30 @@ export default function MeuPlanoPage() {
     <div className="relative space-y-6">
       {/* Fundo com grid sutil (padrão da dashboard) — dá leitura ao glass dos cards */}
       <div className="fixed inset-0 bg-grid opacity-30 pointer-events-none" aria-hidden />
-      <PageHeader eyebrow="Produção individual" title="Meu Plano" />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <PageHeader
+          eyebrow="Produção individual"
+          title={viewingPerson ? `Plano de ${viewingPerson.full_name || "operador"}` : "Meu Plano"}
+        />
+        {/* Seletor de pessoa — só admin. É o que permite zerar a dívida de OUTRO. */}
+        {isAdmin && people.length > 0 && (
+          <label className="flex items-center gap-2 text-[13px]">
+            <span className="text-muted-foreground">Ver plano de:</span>
+            <select
+              value={viewingUserId}
+              onChange={(e) => setViewingUserId(e.target.value)}
+              className="h-9 rounded-lg border border-border/60 bg-secondary/40 px-3 text-[13px] outline-none transition-colors hover:bg-secondary focus:border-foreground/30"
+            >
+              <option value="">Eu mesmo</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.full_name || "—"}{p.sector ? ` · ${p.sector}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
 
       {loading ? (
         <MeuPlanoSkeleton />
@@ -134,9 +182,14 @@ export default function MeuPlanoPage() {
         open={!!resetTarget}
         onCancel={() => setResetTarget(null)}
         onConfirm={confirmReset}
-        title={`Zerar meta ${resetTarget ? RESET_LABELS[resetTarget] : ""}?`}
-        description="Esta ação zerará o acumulado e o déficit deste período para este usuário. A automação de fechamento não será afetada."
-        confirmLabel="Confirmar zeração"
+        title={`Zerar a dívida ${resetTarget ? RESET_LABELS[resetTarget] : ""} de ${viewingPerson ? viewingPerson.full_name || "este operador" : "você mesmo"}?`}
+        description={
+          `${resetDeficit > 0 ? `Há ${resetDeficit.toLocaleString("pt-BR")} ${unit} de dívida ${resetTarget ? RESET_LABELS[resetTarget] : ""}. ` : ""}` +
+          `Limpa APENAS o período ${resetTarget ? RESET_LABELS[resetTarget] : ""} — os outros períodos continuam como estão ` +
+          "(para limpar tudo de uma vez, use \"Zerar dívida\" na tela de Equipe). " +
+          "A META BASE continua valendo. O fechamento automático não é afetado."
+        }
+        confirmLabel="Zerar dívida"
         variant="warning"
         loading={resetting}
       />
