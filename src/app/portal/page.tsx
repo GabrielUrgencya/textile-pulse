@@ -3,6 +3,17 @@
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BrandLogo } from "@/components/ui/brand-logo";
+import { InstallButton } from "./InstallButton";
+
+const TOKEN_STORAGE_KEY = "faction_portal_token";
+
+// localStorage tolerante (Safari privado / storage cheio não pode quebrar o login)
+function safeGet(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSet(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* no-op */ }
+}
 
 export default function PortalLoginPage() {
   return (
@@ -27,9 +38,43 @@ function LoginForm() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Enquanto checamos se já há sessão válida, não piscamos o formulário.
+  const [checking, setChecking] = useState(true);
+  // O token pré-preenchido pode vir do localStorage (facção que já recebeu o
+  // link antes) — o campo some quando temos token, restando só o PIN.
+  const [hasToken, setHasToken] = useState(!!tokenFromUrl);
 
+  // 1) Sessão já ativa? (cookie de 30 dias) → vai direto ao dashboard, sem
+  //    pedir token+PIN de novo. É o caso do app instalado reabrindo em /portal.
   useEffect(() => {
-    if (tokenFromUrl) setToken(tokenFromUrl);
+    let alive = true;
+    fetch("/api/faction/auth/session")
+      .then((r) => {
+        if (!alive) return;
+        if (r.ok) {
+          router.replace("/portal/dashboard");
+        } else {
+          setChecking(false);
+        }
+      })
+      .catch(() => { if (alive) setChecking(false); });
+    return () => { alive = false; };
+  }, [router]);
+
+  // 2) Memória do token: veio na URL → guarda. Não veio → recupera o guardado,
+  //    para a facção não ter que re-colar o link inteiro, só digitar o PIN.
+  useEffect(() => {
+    if (tokenFromUrl) {
+      setToken(tokenFromUrl);
+      setHasToken(true);
+      safeSet(TOKEN_STORAGE_KEY, tokenFromUrl);
+    } else {
+      const saved = safeGet(TOKEN_STORAGE_KEY);
+      if (saved) {
+        setToken(saved);
+        setHasToken(true);
+      }
+    }
   }, [tokenFromUrl]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -50,12 +95,24 @@ function LoginForm() {
         return;
       }
 
-      router.push("/portal/dashboard");
+      // Login OK → memoriza o token para os próximos acessos (além do cookie).
+      if (token) safeSet(TOKEN_STORAGE_KEY, token);
+      router.replace("/portal/dashboard");
     } catch {
       setError("Erro de conexão. Tente novamente.");
     } finally {
       setLoading(false);
     }
+  }
+
+  // Enquanto verifica a sessão existente, mostra só o spinner (evita piscar o
+  // formulário de login para quem já está autenticado).
+  if (checking) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
+    );
   }
 
   return (
@@ -71,7 +128,7 @@ function LoginForm() {
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!tokenFromUrl && (
+          {!hasToken && (
             <div className="space-y-2">
               <label
                 htmlFor="token"
@@ -126,6 +183,9 @@ function LoginForm() {
             {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
+
+        {/* Instalar como app — já no primeiro acesso (o dono pediu). */}
+        <InstallButton />
 
         <p className="text-center text-xs text-muted-foreground">
           Acesso exclusivo para facções parceiras da Liserie.
