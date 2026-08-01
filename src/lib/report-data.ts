@@ -79,7 +79,7 @@ async function stageWeightedProduction(
 
   let q = supabase
     .from("scan_events")
-    .select("lot_id, lots!inner(quantity, production_orders!inner(reference, status))")
+    .select("lot_id, lots!inner(quantity, production_orders!inner(reference, status))").is("disregarded_at", null)
     .eq("stage_id", stageId)
     .eq("event_type", "STAGE_OUT")
     .neq("lots.production_orders.status", "CANCELLED")
@@ -112,7 +112,7 @@ async function estoqueProduction(supabase: SupabaseClient, tenantId: string, fro
   if (!est?.id) return 0;
   const { data } = await supabase
     .from("scan_events")
-    .select("lot_id, lots!inner(quantity, production_orders!inner(meta_coefficient, status))")
+    .select("lot_id, lots!inner(quantity, production_orders!inner(meta_coefficient, status))").is("disregarded_at", null)
     .eq("stage_id", est.id)
     .eq("event_type", "STAGE_OUT")
     .neq("lots.production_orders.status", "CANCELLED")

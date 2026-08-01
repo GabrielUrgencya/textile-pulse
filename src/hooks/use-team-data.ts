@@ -11,6 +11,8 @@ export interface TeamMember {
   sector: string | null;
   is_active: boolean;
   created_at: string;
+  /** Bipagens produtivas de hoje que ainda contam (prévia do "Zerar progresso"). */
+  today_scans?: number;
 }
 
 export function useTeamMembers(params: {

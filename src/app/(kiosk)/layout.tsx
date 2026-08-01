@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LISION — TV Dashboard",
+  title: "Lision",
   description: "Andon Board — Painel de produção em tempo real",
 };
 

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Users, MoreHorizontal, Pencil, UserX, Eraser } from "lucide-react";
+import { Plus, Users, MoreHorizontal, Pencil, UserX, Eraser, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard } from "@/components/ui/lision-card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -112,6 +112,36 @@ function TeamPage() {
       showToast("error", err instanceof Error ? err.message : "Erro ao zerar dívida");
     } finally {
       setResetting(false);
+    }
+  };
+
+  // Zerar progresso do dia: mesma família de ação do "Zerar dívida", mesmo gate.
+  // A contagem já vem no payload da lista (today_scans) — sem fetch por linha.
+  const [progressTarget, setProgressTarget] = React.useState<TeamMember | null>(null);
+  const [clearingProgress, setClearingProgress] = React.useState(false);
+
+  const confirmResetProgress = async () => {
+    if (!progressTarget) return;
+    setClearingProgress(true);
+    try {
+      const res = await fetch("/api/my-plan/reset-progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: progressTarget.id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Erro ao zerar progresso");
+      const n = body?.data?.scans_disregarded ?? 0;
+      showToast(
+        "success",
+        `Produção de hoje de ${progressTarget.full_name} zerada (${n} ${n === 1 ? "bipagem" : "bipagens"}) — a dívida não foi alterada`,
+      );
+      setProgressTarget(null);
+      refetch();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro ao zerar progresso");
+    } finally {
+      setClearingProgress(false);
     }
   };
 
@@ -232,6 +262,22 @@ function TeamPage() {
                 Zerar dívida
               </Button>
             )}
+            {/* Zerar progresso: apaga da métrica a produção de HOJE (não a dívida). */}
+            {row.role === "OPERADOR" && canManage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                title="Faz a produção de hoje deixar de contar. O histórico do lote é preservado."
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setProgressTarget(row);
+                }}
+              >
+                <RotateCcw className="size-3.5" />
+                Zerar progresso
+              </Button>
+            )}
             {row.is_active && (
               <Button
                 variant="ghost"
@@ -280,6 +326,12 @@ function TeamPage() {
                   <DropdownMenuItem onClick={() => askReset(row)}>
                     <Eraser className="size-3.5 mr-2" />
                     Zerar dívida
+                  </DropdownMenuItem>
+                )}
+                {row.role === "OPERADOR" && canManage && (
+                  <DropdownMenuItem onClick={() => setProgressTarget(row)}>
+                    <RotateCcw className="size-3.5 mr-2" />
+                    Zerar progresso
                   </DropdownMenuItem>
                 )}
                 {row.is_active && (
@@ -454,6 +506,25 @@ function TeamPage() {
         confirmLabel="Zerar dívida"
         variant="warning"
         loading={resetting}
+      />
+
+      <ConfirmDialog
+        open={!!progressTarget}
+        onCancel={() => setProgressTarget(null)}
+        onConfirm={confirmResetProgress}
+        title={`Zerar o progresso de ${progressTarget?.full_name} hoje?`}
+        description={
+          (progressTarget?.today_scans ?? 0) > 0
+            ? `${progressTarget?.today_scans} ${(progressTarget?.today_scans ?? 0) === 1 ? "bipagem" : "bipagens"} de hoje ` +
+              "deixarão de contar — a produção do dia volta a ZERO. As bipagens continuam no " +
+              "histórico do lote; apenas saem das metas, do ranking e dos relatórios. " +
+              "Esta ação fica registrada com seu nome e NÃO afeta a dívida acumulada."
+            : "Esta pessoa não tem produção registrada hoje — não há nada a zerar."
+        }
+        confirmLabel="Zerar progresso"
+        variant="destructive"
+        loading={clearingProgress}
+        confirmDisabled={(progressTarget?.today_scans ?? 0) === 0}
       />
     </div>
   );

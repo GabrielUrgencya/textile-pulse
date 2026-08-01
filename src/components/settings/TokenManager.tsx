@@ -69,6 +69,13 @@ function TokenManager() {
   } | null>(null);
   const [revoking, setRevoking] = React.useState(false);
 
+  // Origem para montar o link do Portal. Vazio no SSR; resolvido no cliente
+  // (o botão "Copiar link" só é usado após render, então nunca fica vazio na mão).
+  const [portalOrigin, setPortalOrigin] = React.useState("");
+  React.useEffect(() => {
+    setPortalOrigin(window.location.origin);
+  }, []);
+
   // Create kiosk token dialog
   const [showCreateKiosk, setShowCreateKiosk] = React.useState(false);
   const [kioskName, setKioskName] = React.useState("");
@@ -209,6 +216,10 @@ function TokenManager() {
                 label={t.name}
                 sublabel={t.factions?.name ? `${t.factions.name} — ${formatDate(t.created_at)}` : formatDate(t.created_at)}
                 isActive={t.is_active}
+                // Frente 4: link pronto do Portal — o admin manda no WhatsApp e a
+                // facção entra só com o PIN (o token vai embutido, sem ela ver).
+                copyLink={`${portalOrigin}/portal?token=${t.token}`}
+                onCopyLink={() => showToast("success", "Link do Portal copiado")}
                 onRevoke={() => setRevokeTarget({ id: t.id, type: "faction", name: t.name })}
                 onCopy={() => copyToClipboard(t.token)}
               />

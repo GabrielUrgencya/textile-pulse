@@ -4,6 +4,7 @@ import { can } from "@/lib/effective-permissions";
 import { dbError, requireTenantId } from "@/lib/api-helpers";
 import { escapeLikePattern } from "@/lib/utils";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { todayInTz, TENANT_UTC_OFFSET } from "@/lib/tz";
 import bcrypt from "bcryptjs";
 import { randomInt } from "crypto";
 
@@ -45,7 +46,34 @@ export async function GET(request: Request) {
 
   if (error) return dbError("GET /api/team/members", error);
 
-  return NextResponse.json({ data: members || [] });
+  // Produção de HOJE por operador — a confirmação do "Zerar progresso" precisa
+  // mostrar quantas bipagens serão perdidas ANTES do admin confirmar.
+  // Uma query só para a lista inteira (nada de N+1 por linha da tabela).
+  const list = members || [];
+  const todayScans: Record<string, number> = {};
+  if (list.length > 0) {
+    const today = todayInTz();
+    const { data: scans } = await supabase
+      .from("scan_events")
+      .select("user_id")
+      .is("disregarded_at", null)
+      .eq("event_type", "STAGE_OUT")
+      .in(
+        "user_id",
+        list.map((m) => m.id),
+      )
+      .gte("scanned_at", `${today}T00:00:00${TENANT_UTC_OFFSET}`)
+      .lt("scanned_at", `${today}T23:59:59.999${TENANT_UTC_OFFSET}`);
+
+    for (const s of scans || []) {
+      const uid = (s as { user_id: string }).user_id;
+      todayScans[uid] = (todayScans[uid] || 0) + 1;
+    }
+  }
+
+  return NextResponse.json({
+    data: list.map((m) => ({ ...m, today_scans: todayScans[m.id] || 0 })),
+  });
 }
 
 export async function POST(request: Request) {

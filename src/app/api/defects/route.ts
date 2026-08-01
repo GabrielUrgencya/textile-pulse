@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     severity?: string;
     quantity?: number;
     description?: string;
+    shipment_id?: string;
   };
 
   try {
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { lot_id, defect_type, severity, quantity, description } = body;
+  const { lot_id, defect_type, severity, quantity, description, shipment_id } = body;
 
   if (!lot_id || !defect_type || !severity) {
     return NextResponse.json(
@@ -72,6 +73,10 @@ export async function POST(request: Request) {
     .from("defect_records")
     .insert({
       lot_id,
+      // Frente 3: vincula o defeito à remessa quando registrado durante a
+      // conferência (o finalize-inspection soma por shipment_id). Opcional —
+      // defeitos fora do fluxo de facção seguem sem shipment_id.
+      shipment_id: shipment_id || null,
       defect_type,
       severity,
       quantity: qty,
@@ -162,6 +167,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
   const defectType = searchParams.get("defect_type");
+  const shipmentId = searchParams.get("shipment_id");
   const from = searchParams.get("from");
   const to = searchParams.get("to");
   const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
@@ -170,7 +176,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from("defect_records")
     .select(`
-      id, lot_id, defect_type, severity, quantity, description,
+      id, lot_id, shipment_id, defect_type, severity, quantity, description,
       detected_at, resolved_at, status,
       detected_by, resolved_by,
       lots (
@@ -186,6 +192,10 @@ export async function GET(request: Request) {
   }
   if (defectType) {
     query = query.eq("defect_type", defectType);
+  }
+  // Frente 3: defeitos de uma remessa específica (conferência em andamento).
+  if (shipmentId) {
+    query = query.eq("shipment_id", shipmentId);
   }
   if (from) {
     query = query.gte("detected_at", `${from}T00:00:00`);

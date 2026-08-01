@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 // F4 (redesign mobile): navegação final com 5 itens (diretriz máx. 5).
 // "Defeitos" saiu do nav — acesso via card no Início, detalhe da remessa e avisos.
@@ -105,11 +106,9 @@ export default function AuthenticatedPortalLayout({
       <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-display text-lg font-bold tracking-tight">
-              LISION
-            </h1>
+            <BrandLogo className="h-5 w-auto" priority />
             {factionName && (
-              <p className="text-xs text-muted-foreground">{factionName}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{factionName}</p>
             )}
           </div>
           <div className="flex items-center gap-2">

@@ -76,6 +76,7 @@ enum ShipmentStatus {
   SENT
   RECEIVED_BY_FACTION
   RETURN_DECLARED
+  AWAITING_INSPECTION
   PARTIALLY_RETURNED
   RETURNED
   OVERDUE
@@ -338,6 +339,8 @@ model Profile {
   createdLots         Lot[]              @relation("LotCreatedBy")
   holdingLots         Lot[]              @relation("LotCurrentHolder")
   scanEvents          ScanEvent[]
+  /// Bipagens que este admin desconsiderou ao zerar o progresso de alguém
+  disregardedScans    ScanEvent[] @relation("ScanEventDisregardedBy")
   goalDeficits        GoalDeficit[]
   detectedDefects     DefectRecord[]     @relation("DefectDetectedBy")
   resolvedDefects     DefectRecord[]     @relation("DefectResolvedBy")
@@ -469,10 +472,16 @@ model ScanEvent {
   isOfflineSync    Boolean       @default(false) @map("is_offline_sync")
   offlineScannedAt DateTime?     @map("offline_scanned_at") @db.Timestamptz
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  /// Zerar progresso: NULL = conta nas métricas. Preenchido = desconsiderada
+  /// por um admin — sai de toda métrica, permanece no histórico do lote.
+  /// Escrita SOMENTE pela função reset_user_day_progress (SECURITY DEFINER).
+  disregardedAt    DateTime?     @map("disregarded_at") @db.Timestamptz
+  disregardedBy    String?       @map("disregarded_by") @db.Uuid
 
-  lot   Lot     @relation(fields: [lotId], references: [id])
-  stage Stage?  @relation(fields: [stageId], references: [id])
-  user  Profile @relation(fields: [userId], references: [id])
+  lot          Lot      @relation(fields: [lotId], references: [id])
+  stage        Stage?   @relation(fields: [stageId], references: [id])
+  user         Profile  @relation(fields: [userId], references: [id])
+  disregardedByUser Profile? @relation("ScanEventDisregardedBy", fields: [disregardedBy], references: [id])
 
   @@index([lotId])
   @@index([scannedAt])
@@ -669,6 +678,10 @@ model FactionShipment {
   closedBy          String?   @map("closed_by")
   /// Status anterior ao encerramento (para reabertura com log).
   statusBeforeClose String?   @map("status_before_close")
+
+  /// Frente 1 (migration 20260730120000): remessas do mesmo envio compartilham
+  /// este id e o delivery/return code. NULL = remessa individual (legado).
+  shipmentGroupId   String?   @map("shipment_group_id") @db.Uuid
 
   faction      Faction        @relation(fields: [factionId], references: [id])
   lot          Lot            @relation(fields: [lotId], references: [id])
@@ -893,6 +906,9 @@ model FactionToken {
   factionId      String    @map("faction_id") @db.Uuid
   token          String    @unique @default(uuid()) @db.Uuid
   pinHash        String    @map("pin_hash")
+  /// PIN atual em claro (6 díg.) para o admin recuperar/reenviar o acesso.
+  /// Login continua verificando por pinHash (bcrypt). Só admin lê.
+  pinPlain       String?   @map("pin_plain") @db.VarChar(6)
   name           String
   isActive       Boolean   @default(true) @map("is_active")
   lastAccessedAt DateTime? @map("last_accessed_at") @db.Timestamptz

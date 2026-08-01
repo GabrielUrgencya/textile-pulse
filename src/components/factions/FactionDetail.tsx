@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Plus, PackageCheck, Truck, Key, Copy, Check, Wallet } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, PackageCheck, Truck, Key, Wallet, Link2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -39,10 +39,10 @@ function FactionDetail({ factionId }: FactionDetailProps) {
   const [deactivateOpen, setDeactivateOpen] = React.useState(false);
   const [deactivating, setDeactivating] = React.useState(false);
   const [shipmentTab, setShipmentTab] = React.useState<"active" | "history">("active");
-  const [tokenDialogOpen, setTokenDialogOpen] = React.useState(false);
-  const [generatingToken, setGeneratingToken] = React.useState(false);
-  const [generatedToken, setGeneratedToken] = React.useState<{ portalUrl: string; pin: string } | null>(null);
-  const [copiedField, setCopiedField] = React.useState<string | null>(null);
+  // Acesso da facção ao portal (Copiar acesso / Gerar novo PIN).
+  const [copyingAccess, setCopyingAccess] = React.useState(false);
+  const [rotating, setRotating] = React.useState(false);
+  const [rotateOpen, setRotateOpen] = React.useState(false);
   // Código de entrega (tela do motorista): dialog por remessa
   const [codeTarget, setCodeTarget] = React.useState<FactionShipment | null>(null);
   const [codeData, setCodeData] = React.useState<{ deliveryCode: string | null; expiresAt: string | null; expired: boolean } | null>(null);
@@ -124,33 +124,55 @@ function FactionDetail({ factionId }: FactionDetailProps) {
     }
   };
 
-  const handleGenerateToken = async () => {
-    setGeneratingToken(true);
+  // Monta a mensagem pronta de WhatsApp (link + PIN juntos) e copia.
+  const copyAccessMessage = async (token: string, pin: string) => {
+    const link = `${window.location.origin}/portal?token=${token}`;
+    const msg = `Portal da Facção ${faction.name} 👇\n${link}\nSeu PIN: ${pin}`;
+    await navigator.clipboard.writeText(msg);
+  };
+
+  // Ação do dia a dia (momentos 1 e 2): recupera o acesso ATUAL (link + PIN) e
+  // copia. Idempotente — não troca token nem PIN. Serve para o 1º envio e para
+  // reenviar quando a facção perde, sem quebrar o link que ela já salvou.
+  const handleCopyAccess = async () => {
+    setCopyingAccess(true);
     try {
-      const res = await fetch("/api/admin/faction-tokens", {
+      const res = await fetch("/api/admin/faction-tokens/access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ faction_id: factionId, name: faction.name }),
+        body: JSON.stringify({ faction_id: factionId, action: "get" }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "Erro ao gerar token");
-      }
-      const { pin, portalUrl } = await res.json();
-      setGeneratedToken({ portalUrl, pin });
-      setTokenDialogOpen(true);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Erro ao copiar acesso");
+      await copyAccessMessage(json.data.token, json.data.pin);
+      showToast("success", "Acesso copiado (link + PIN) — cole no WhatsApp");
     } catch (err) {
-      showToast("error", err instanceof Error ? err.message : "Erro inesperado");
+      showToast("error", err instanceof Error ? err.message : "Erro ao copiar acesso");
     } finally {
-      setGeneratingToken(false);
+      setCopyingAccess(false);
     }
   };
 
-  const handleCopy = async (text: string, field: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    showToast("success", "Copiado!");
-    setTimeout(() => setCopiedField(null), 2000);
+  // Exceção (momento 3): gera um PIN novo no mesmo link e invalida o anterior.
+  // Já copia o acesso novo, pronto para reenviar.
+  const handleRotatePin = async () => {
+    setRotating(true);
+    try {
+      const res = await fetch("/api/admin/faction-tokens/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ faction_id: factionId, action: "rotate" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Erro ao gerar novo PIN");
+      await copyAccessMessage(json.data.token, json.data.pin);
+      setRotateOpen(false);
+      showToast("success", "PIN novo gerado e acesso copiado — reenvie no WhatsApp");
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Erro ao gerar novo PIN");
+    } finally {
+      setRotating(false);
+    }
   };
 
   const openDeliveryCode = async (shipment: FactionShipment) => {
@@ -268,10 +290,25 @@ function FactionDetail({ factionId }: FactionDetailProps) {
               size="sm"
               className="h-7 text-xs gap-1"
               onClick={(e) => { e.stopPropagation(); setReceiveTarget(row); }}
-              title="Conferir a devolução com o código do motorista"
+              title="Receber a devolução com o código do motorista"
             >
               <PackageCheck className="size-3.5" />
-              Conferir devolução
+              Receber devolução
+            </Button>
+          );
+        }
+        // Frente 3: remessa recebida, conferência em andamento — finalizar.
+        if (row.status === "AWAITING_INSPECTION") {
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1 text-warning hover:text-warning"
+              onClick={(e) => { e.stopPropagation(); setReceiveTarget(row); }}
+              title="Registrar defeitos e finalizar a conferência"
+            >
+              <PackageCheck className="size-3.5" />
+              Finalizar conferência
             </Button>
           );
         }
@@ -360,14 +397,27 @@ function FactionDetail({ factionId }: FactionDetailProps) {
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="size-3.5 mr-1" /> Editar
           </Button>
+          {/* Ação do dia a dia: reenviar o acesso atual (link + PIN juntos). */}
           <Button
             variant="outline"
             size="sm"
-            onClick={handleGenerateToken}
-            disabled={generatingToken}
+            onClick={handleCopyAccess}
+            disabled={copyingAccess}
+            title="Copiar link + PIN do Portal desta facção para mandar no WhatsApp"
+          >
+            <Link2 className="size-3.5 mr-1" />
+            {copyingAccess ? "Copiando..." : "Copiar acesso"}
+          </Button>
+          {/* Exceção: trocar o PIN (invalida o anterior). Discreto de propósito. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setRotateOpen(true)}
+            disabled={rotating}
+            title="Gerar um PIN novo — o acesso atual da facção deixa de funcionar"
           >
             <Key className="size-3.5 mr-1" />
-            {generatingToken ? "Gerando..." : "Gerar Token Portal"}
+            Gerar novo PIN
           </Button>
           <Button size="sm" onClick={() => setShipmentCreateOpen(true)}>
             <Plus className="size-3.5 mr-1" /> Nova Remessa
@@ -579,51 +629,20 @@ function FactionDetail({ factionId }: FactionDetailProps) {
         loading={closing}
       />
 
-      <Dialog open={tokenDialogOpen} onOpenChange={(open) => { if (!open) setGeneratedToken(null); setTokenDialogOpen(open); }}>
-        <DialogContent className="sm:max-w-[480px]">
-          <DialogHeader>
-            <DialogTitle>Token Portal Gerado</DialogTitle>
-            <DialogDescription>Credenciais de acesso ao portal da facção.</DialogDescription>
-          </DialogHeader>
-          {generatedToken && (
-            <div className="space-y-4 mt-2">
-              <div className="space-y-1.5">
-                <div className="text-xs text-muted-foreground">URL do Portal</div>
-                <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
-                  <code className="text-sm font-mono flex-1 break-all">{generatedToken.portalUrl}</code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 shrink-0"
-                    onClick={() => handleCopy(generatedToken.portalUrl, "url")}
-                  >
-                    {copiedField === "url" ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="text-xs text-muted-foreground">PIN de Acesso</div>
-                <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
-                  <code className="text-2xl font-mono font-bold tracking-[0.3em] flex-1">{generatedToken.pin}</code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 shrink-0"
-                    onClick={() => handleCopy(generatedToken.pin, "pin")}
-                  >
-                    {copiedField === "pin" ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
-                Anote o PIN — ele não será exibido novamente.
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={rotateOpen}
+        onCancel={() => setRotateOpen(false)}
+        onConfirm={handleRotatePin}
+        title={`Gerar um novo PIN para ${faction.name}?`}
+        description={
+          "Isso cria um PIN novo e o acesso atual da facção deixa de funcionar imediatamente. " +
+          "Use quando o PIN vazou ou a facção saiu. O link continua o mesmo — só o PIN muda. " +
+          "Ao confirmar, o novo acesso já é copiado para você reenviar no WhatsApp."
+        }
+        confirmLabel="Gerar novo PIN"
+        variant="warning"
+        loading={rotating}
+      />
     </>
   );
 }

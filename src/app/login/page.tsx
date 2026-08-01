@@ -4,6 +4,7 @@ import { Suspense, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { KeyRound, Mail, ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 type AuthMode = "choose" | "email" | "pin";
 
@@ -119,12 +120,9 @@ function LoginContent() {
         className="relative w-full max-w-md mx-4"
       >
         {/* Branding */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-foreground text-background font-display text-[28px] font-semibold mb-4">
-            L
-          </div>
-          <div className="font-display text-[28px] font-semibold tracking-tight">LISION</div>
-          <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground mt-0.5">
+        <div className="flex flex-col items-center text-center mb-8">
+          <BrandLogo className="h-8 w-auto mb-3" priority />
+          <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
             Rastreamento Têxtil
           </div>
         </div>

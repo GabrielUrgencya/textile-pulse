@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -66,13 +67,13 @@ export function InstallPrompt() {
   return (
     <div className="fixed bottom-20 left-4 right-4 z-50 animate-in slide-in-from-bottom-4 rounded-lg border border-border bg-card p-4 shadow-lg">
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-          L
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-foreground/5">
+          <BrandLogo variant="symbol" className="h-6 w-auto" />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-semibold">Instalar LISION</p>
+          <p className="text-sm font-semibold">Adicionar à tela inicial</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Adicione à tela inicial para acesso rápido.
+            Deixe o Portal da Facção como um atalho no seu celular.
           </p>
         </div>
       </div>
@@ -81,7 +82,7 @@ export function InstallPrompt() {
           onClick={handleInstall}
           className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
         >
-          Instalar
+          Adicionar
         </button>
         <button
           onClick={handleDismiss}

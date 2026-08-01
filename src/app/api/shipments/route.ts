@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { can } from "@/lib/effective-permissions";
@@ -99,6 +100,20 @@ export async function POST(request: Request) {
   const lotIds: string[] = Array.from(new Set(body.lotIds as string[]));
   const sentAt = new Date().toISOString();
 
+  // Frente 2: preço por peça definido na remessa (sobrescreve o cadastro).
+  // Ausente/negativo/NaN → null: cai no fallback de factions.price_per_piece no
+  // recebimento. money = 2 casas para bater com o resto do financeiro.
+  const rawPrice = Number(body.pricePerPiece);
+  const pricePerPiece = Number.isFinite(rawPrice) && rawPrice >= 0 ? rawPrice : null;
+  const money = (x: number) => Math.round(x * 100) / 100;
+
+  // Frente 1: agrupar as remessas deste envio sob um group_id + UM código
+  // compartilhado (a facção lida com um único código para o conjunto). Só faz
+  // sentido com 2+ lotes; com 1 lote é idêntico ao individual. grouped=false
+  // (ou ausente) preserva o comportamento atual (um código por lote).
+  const grouped = body.grouped === true && lotIds.length > 1;
+  const groupId = grouped ? randomUUID() : null;
+
   // Quantidades dos lotes (escopo garantido: só lotes de OPs do tenant).
   // F1 barreira 2: status/op_number para revalidar elegibilidade no submit —
   // não confiar no filtro do frontend.
@@ -140,16 +155,34 @@ export async function POST(request: Request) {
   // lote). Uma "remessa" com N lotes vira N linhas — cada sublote (fracionamento
   // por cor) é um lot com barcode próprio, então preto→facção A e branco→facção B
   // são remessas distintas. Cada linha recebe seu delivery_code único.
-  const rows: Record<string, unknown>[] = [];
-  for (const lot of lots) {
-    let deliveryCode: string | null = null;
-    let deliveryCodeExpiresAt: string | null = null;
+  // Frente 1: quando agrupado, gera UM código compartilhado antes do laço e o
+  // replica em todas as remessas do grupo (a facção recebe/devolve o conjunto
+  // com um só código). Se a geração falhar, o grupo procede sem código (a
+  // devolução tem o caminho manual, como no fluxo individual).
+  let sharedCode: string | null = null;
+  let sharedCodeExpiresAt: string | null = null;
+  if (grouped) {
     try {
       const dc = await generateUniqueDeliveryCode(supabase);
-      deliveryCode = dc.code;
-      deliveryCodeExpiresAt = dc.expiresAt;
+      sharedCode = dc.code;
+      sharedCodeExpiresAt = dc.expiresAt;
     } catch {
-      // Non-blocking: remessa procede sem código de entrega
+      // Non-blocking
+    }
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  for (const lot of lots) {
+    let deliveryCode: string | null = sharedCode;
+    let deliveryCodeExpiresAt: string | null = sharedCodeExpiresAt;
+    if (!grouped) {
+      try {
+        const dc = await generateUniqueDeliveryCode(supabase);
+        deliveryCode = dc.code;
+        deliveryCodeExpiresAt = dc.expiresAt;
+      } catch {
+        // Non-blocking: remessa procede sem código de entrega
+      }
     }
     const qty = lot.quantity || 0;
     rows.push({
@@ -158,6 +191,11 @@ export async function POST(request: Request) {
       lot_id: lot.id,
       status: "SENT",
       quantity_sent: qty,
+      // Frente 1: id do grupo (null = remessa individual).
+      shipment_group_id: groupId,
+      // Frente 2: valor da remessa = preço × quantidade. null quando não há
+      // preço informado → o recebimento usa o preço do cadastro (fallback).
+      payment_value: pricePerPiece != null ? money(pricePerPiece * qty) : null,
       // Registro COMPLETO: o admin (/api/factions/[id]) lê total_quantity e
       // expected_return (sem _at); o portal lê quantity_sent e expected_return_at.
       // Gravamos ambos (1 lote → total_quantity == quantity_sent) para todos os

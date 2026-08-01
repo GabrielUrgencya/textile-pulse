@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, Trash2 } from "lucide-react";
+import { Check, Copy, Link2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,6 +14,14 @@ interface TokenDisplayProps {
   label?: string;
   sublabel?: string;
   isActive?: boolean;
+  /**
+   * Frente 4: link pronto do Portal da Facção (ex.: .../portal?token=UUID).
+   * Quando presente, exibe um botão "Copiar link" — é o que o admin manda no
+   * WhatsApp; a facção abre e entra só com o PIN, sem lidar com "token".
+   */
+  copyLink?: string;
+  /** Callback após copiar o link (feedback/toast). */
+  onCopyLink?: () => void;
 }
 
 function maskToken(token: string): string {
@@ -47,8 +55,11 @@ function TokenDisplay({
   label,
   sublabel,
   isActive = true,
+  copyLink,
+  onCopyLink,
 }: TokenDisplayProps) {
   const [copied, setCopied] = React.useState(false);
+  const [linkCopied, setLinkCopied] = React.useState(false);
   const [showRevoke, setShowRevoke] = React.useState(false);
 
   const handleCopy = React.useCallback(() => {
@@ -58,6 +69,15 @@ function TokenDisplay({
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => {});
   }, [token, onCopy]);
+
+  const handleCopyLink = React.useCallback(() => {
+    if (!copyLink) return;
+    navigator.clipboard.writeText(copyLink).then(() => {
+      setLinkCopied(true);
+      onCopyLink?.();
+      setTimeout(() => setLinkCopied(false), 2000);
+    }).catch(() => {});
+  }, [copyLink, onCopyLink]);
 
   const expiryInfo = getExpiryInfo(expiresAt);
 
@@ -82,6 +102,22 @@ function TokenDisplay({
           <StatusBadge status={isActive ? "success" : "neutral"}>
             {isActive ? "ATIVO" : "INATIVO"}
           </StatusBadge>
+          {copyLink && isActive && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={handleCopyLink}
+              title="Copiar link de acesso do Portal da Facção"
+            >
+              {linkCopied ? (
+                <Check className="size-3.5 text-success" />
+              ) : (
+                <Link2 className="size-3.5" />
+              )}
+              <span className="text-xs">{linkCopied ? "Copiado" : "Copiar link"}</span>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

@@ -56,7 +56,7 @@ export async function GET(request: Request) {
           meta_coefficient
         )
       )
-    `)
+    `).is("disregarded_at", null)
     .eq("event_type", "STAGE_IN")
     .gte("scanned_at", periodStart);
 

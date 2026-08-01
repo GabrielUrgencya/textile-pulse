@@ -77,7 +77,7 @@ export async function GET(request: Request) {
         lots!inner ( barcode ),
         stages ( display_name ),
         profiles ( full_name )
-      `)
+      `).is("disregarded_at", null)
       .order("scanned_at", { ascending: false })
       .limit(10),
 

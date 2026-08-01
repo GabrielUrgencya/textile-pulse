@@ -75,7 +75,7 @@ export async function computeKpis(
     // Total scans in date range — Story 8.18: só STAGE_IN conta produção
     supabase
       .from("scan_events")
-      .select("id", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true }).is("disregarded_at", null)
       .eq("event_type", "STAGE_IN")
       .gte("scanned_at", fromStart)
       .lte("scanned_at", toEnd),
@@ -170,7 +170,7 @@ export async function computeKpis(
           quantity,
           production_orders!inner ( meta_coefficient, status )
         )
-      `)
+      `).is("disregarded_at", null)
       .eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .in("stage_id", estoqueIds)
@@ -214,7 +214,7 @@ export async function computeKpis(
 
     let outQ = supabase
       .from("scan_events")
-      .select("lot_id, stage_id, lots!inner(quantity, production_orders!inner(reference, status, tenant_id))")
+      .select("lot_id, stage_id, lots!inner(quantity, production_orders!inner(reference, status, tenant_id))").is("disregarded_at", null)
       .eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", fromStart)

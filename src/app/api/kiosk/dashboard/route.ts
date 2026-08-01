@@ -130,7 +130,7 @@ export async function GET(request: Request) {
       .select("id, lots!inner(production_orders!inner(tenant_id))", {
         count: "exact",
         head: true,
-      })
+      }).is("disregarded_at", null)
       .eq("lots.production_orders.tenant_id", tenantId)
       .eq("event_type", "STAGE_IN")
       .neq("lots.production_orders.status", "CANCELLED")
@@ -143,7 +143,7 @@ export async function GET(request: Request) {
       .select("id, lots!inner(production_orders!inner(tenant_id))", {
         count: "exact",
         head: true,
-      })
+      }).is("disregarded_at", null)
       .eq("lots.production_orders.tenant_id", tenantId)
       .eq("event_type", "STAGE_IN")
       .neq("lots.production_orders.status", "CANCELLED")
@@ -152,7 +152,7 @@ export async function GET(request: Request) {
     // Scans today grouped by hour (for peak rate calculation). Story 8.18: só STAGE_IN
     supabase
       .from("scan_events")
-      .select("scanned_at, lots!inner(production_orders!inner(tenant_id))")
+      .select("scanned_at, lots!inner(production_orders!inner(tenant_id))").is("disregarded_at", null)
       .eq("lots.production_orders.tenant_id", tenantId)
       .eq("event_type", "STAGE_IN")
       .neq("lots.production_orders.status", "CANCELLED")
@@ -249,7 +249,7 @@ export async function GET(request: Request) {
         stages ( display_name ),
         profiles ( full_name )
       `
-      )
+      ).is("disregarded_at", null)
       .eq("lots.production_orders.tenant_id", tenantId)
       .neq("lots.production_orders.status", "CANCELLED")
       .order("scanned_at", { ascending: false })
@@ -285,7 +285,7 @@ export async function GET(request: Request) {
           quantity,
           production_orders!inner ( meta_coefficient, tenant_id, status )
         )
-      `)
+      `).is("disregarded_at", null)
       .eq("lots.production_orders.tenant_id", tenantId)
       .neq("lots.production_orders.status", "CANCELLED")
       .eq("stages.name", "ESTOQUE")
@@ -296,7 +296,7 @@ export async function GET(request: Request) {
     // Story 8.18: eventos IN/OUT (últimos 30d) p/ tempo médio por etapa na TV
     supabase
       .from("scan_events")
-      .select("lot_id, stage_id, event_type, scanned_at, lots!inner(production_orders!inner(tenant_id, status))")
+      .select("lot_id, stage_id, event_type, scanned_at, lots!inner(production_orders!inner(tenant_id, status))").is("disregarded_at", null)
       .eq("lots.production_orders.tenant_id", tenantId)
       .neq("lots.production_orders.status", "CANCELLED")
       .in("event_type", ["STAGE_IN", "STAGE_OUT"])

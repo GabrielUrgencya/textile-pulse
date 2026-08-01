@@ -40,6 +40,11 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
   const [notes, setNotes] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [step, setStep] = React.useState<"select" | "confirm">("select");
+  // Frente 1: agrupar os lotes num código compartilhado (default) ou um por lote.
+  const [grouped, setGrouped] = React.useState(true);
+  // Frente 2: preço por peça da remessa. Pré-preenchido pela sugestão do cadastro.
+  const [priceInput, setPriceInput] = React.useState("");
+  const [suggestedPrice, setSuggestedPrice] = React.useState<number | null>(null);
   const [barcode, setBarcode] = React.useState("");
   const [addingBarcode, setAddingBarcode] = React.useState(false);
   const [recentId, setRecentId] = React.useState<string | null>(null);
@@ -66,13 +71,28 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
       setBarcode("");
       setRecentId(null);
       setStep("select");
+      setGrouped(true);
+      setPriceInput("");
+      setSuggestedPrice(null);
       // Fetch available lots
       fetch("/api/production/lots?available=true")
         .then((r) => r.json())
         .then((json) => setLots(json.data || []))
         .catch(() => setLots([]));
+      // Frente 2: sugestão de preço vinda do cadastro da facção (pré-preenche o
+      // campo, mas o admin sobrescreve por lote/grupo).
+      fetch(`/api/factions/${factionId}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((json) => {
+          const price = Number(json?.data?.faction?.price_per_piece);
+          if (Number.isFinite(price) && price > 0) {
+            setSuggestedPrice(price);
+            setPriceInput(String(price).replace(".", ","));
+          }
+        })
+        .catch(() => setSuggestedPrice(null));
     }
-  }, [open]);
+  }, [open, factionId]);
 
   const toggleLot = (id: string) => {
     setSelectedIds((prev) => {
@@ -116,6 +136,16 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
   const selectedLots = lots.filter((l) => selectedIds.has(l.id));
   const totalPieces = selectedLots.reduce((s, l) => s + l.quantity, 0);
 
+  // Frente 2: preço digitado (aceita vírgula) → número. null = sem preço (cai no
+  // fallback do cadastro no recebimento). Total a receber recalcula ao vivo.
+  const parsedPrice = (() => {
+    const n = Number(priceInput.replace(",", "."));
+    return Number.isFinite(n) && n >= 0 && priceInput.trim() !== "" ? n : null;
+  })();
+  const totalReceber = parsedPrice != null ? parsedPrice * totalPieces : null;
+  // Agrupar só é oferecido com 2+ lotes.
+  const canGroup = selectedIds.size > 1;
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
@@ -127,6 +157,10 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
           lotIds: Array.from(selectedIds),
           expectedReturn,
           notes: notes.trim() || null,
+          // Frente 1: agrupar só quando há 2+ lotes e o admin escolheu.
+          grouped: canGroup && grouped,
+          // Frente 2: preço por peça (omitido quando vazio → fallback no cadastro).
+          ...(parsedPrice != null ? { pricePerPiece: parsedPrice } : {}),
         }),
       });
 
@@ -302,12 +336,82 @@ function ShipmentCreate({ open, onOpenChange, factionId, onSuccess }: ShipmentCr
               ))}
             </div>
 
+            {/* Frente 1: como a facção acessa (só com 2+ lotes) */}
+            {canGroup && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-primary/80">
+                  Como a facção acessa
+                </p>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="grouping"
+                    className="mt-1 accent-primary"
+                    checked={grouped}
+                    onChange={() => setGrouped(true)}
+                  />
+                  <span className="text-[13px]">
+                    Um código compartilhado
+                    <span className="text-muted-foreground"> — a facção vê 1 card com os {selectedIds.size} lotes</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="grouping"
+                    className="mt-1 accent-primary"
+                    checked={!grouped}
+                    onChange={() => setGrouped(false)}
+                  />
+                  <span className="text-[13px] text-muted-foreground">
+                    Um código por lote — {selectedIds.size} códigos separados
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {/* Frente 2: preço por peça + total a receber */}
+            <div className="flex items-end gap-3">
+              <div className="flex-1 space-y-1.5">
+                <Label htmlFor="price-per-piece">Preço por peça</Label>
+                <div className="flex items-center gap-2 input-field h-10 px-3">
+                  <span className="text-sm text-muted-foreground">R$</span>
+                  <input
+                    id="price-per-piece"
+                    inputMode="decimal"
+                    className="flex-1 bg-transparent outline-none font-mono text-sm"
+                    value={priceInput}
+                    onChange={(e) => setPriceInput(e.target.value.replace(/[^\d.,]/g, ""))}
+                    placeholder="0,00"
+                  />
+                </div>
+                {suggestedPrice != null && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Sugerido do cadastro: R$ {suggestedPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} — sobrescreva por lote.
+                  </p>
+                )}
+              </div>
+              <div className="text-right pb-1.5 min-w-[120px]">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">A receber</p>
+                <p className="font-mono text-xl font-semibold">
+                  {totalReceber != null
+                    ? `R$ ${totalReceber.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                    : "—"}
+                </p>
+                {totalReceber != null && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {totalPieces} pçs × R$ {parsedPrice!.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </p>
+                )}
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep("select")} className="flex-1">
                 Voltar
               </Button>
               <Button onClick={handleSubmit} disabled={loading} className="flex-1">
-                {loading ? "Enviando..." : "Enviar Remessa"}
+                {loading ? "Enviando..." : canGroup && grouped ? "Gerar token e enviar" : "Enviar Remessa"}
               </Button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandLogo } from "@/components/ui/brand-logo";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { TVSectorSelector, type SectorOption } from "@/components/tv/TVSectorSelector";
@@ -42,8 +43,8 @@ export function TVHeaderV2({
       <div className="flex items-end justify-between gap-4">
         {/* Esquerda: marca + nome do setor grande + dropdown de setor */}
         <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
-            <span className="font-display text-[15px] font-semibold tracking-tight">LISION</span>
+          <div className="flex items-center gap-2">
+            <BrandLogo className="h-4 w-auto" />
             <span className="text-[10px] text-muted-foreground/50">· {tokenName}</span>
           </div>
           <div className="flex items-center gap-3 mt-0.5 min-w-0">

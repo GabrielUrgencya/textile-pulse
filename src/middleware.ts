@@ -90,6 +90,6 @@ export const config = {
   matcher: [
     // Only match API routes and actual page routes — skip all static assets
     "/api/:path*",
-    "/((?!_next/static|_next/image|favicon\\.ico|icons|manifest\\.json|monitoring|sw\\.js|workbox-).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|favicon-|apple-touch-icon|icons|brand|manifest\\.json|monitoring|sw\\.js|workbox-).*)",
   ],
 };

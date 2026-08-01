@@ -7,6 +7,7 @@ import { PullToRefresh } from "@/components/portal/PullToRefresh";
 interface Shipment {
   id: string;
   status: string;
+  shipment_group_id: string | null;
   quantity_sent: number;
   quantity_returned: number | null;
   sent_at: string;
@@ -23,6 +24,7 @@ interface Shipment {
 const STATUS_COLORS: Record<string, string> = {
   SENT: "bg-amber-500",
   RECEIVED_BY_FACTION: "bg-emerald-500",
+  AWAITING_INSPECTION: "bg-amber-500",
   PARTIALLY_RETURNED: "bg-blue-500",
   OVERDUE: "bg-red-500",
   PREPARING: "bg-muted-foreground",
@@ -33,6 +35,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   SENT: "Enviado",
   RECEIVED_BY_FACTION: "Recebido",
+  AWAITING_INSPECTION: "Em conferência",
   PARTIALLY_RETURNED: "Parcial",
   OVERDUE: "Atrasado",
   PREPARING: "Preparando",
@@ -77,6 +80,25 @@ export default function PortalShipmentsPage() {
       : shipments.reduce((sum, s) => sum + s.quantity_sent, 0);
   const pendingConfirm =
     view === "history" ? 0 : shipments.filter((s) => s.status === "SENT" && !s.faction_confirmed_at).length;
+
+  // Frente 1: remessas com o mesmo shipment_group_id viram UM card (a facção vê
+  // o conjunto de uma vez). Sem group_id → card individual (comportamento atual).
+  // Preserva a ordem de primeira aparição.
+  const items: Array<{ key: string; shipments: Shipment[] }> = [];
+  const groupPos = new Map<string, number>();
+  for (const s of shipments) {
+    if (s.shipment_group_id) {
+      const pos = groupPos.get(s.shipment_group_id);
+      if (pos === undefined) {
+        groupPos.set(s.shipment_group_id, items.length);
+        items.push({ key: s.shipment_group_id, shipments: [s] });
+      } else {
+        items[pos].shipments.push(s);
+      }
+    } else {
+      items.push({ key: s.id, shipments: [s] });
+    }
+  }
 
   return (
     <PullToRefresh onRefresh={load}>
@@ -143,52 +165,101 @@ export default function PortalShipmentsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {shipments.map((s) => (
-            <Link
-              key={s.id}
-              href={`/portal/shipments/${s.id}`}
-              className="block rounded-xl border border-border bg-card p-4 transition-colors active:bg-accent"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[14px] font-semibold">
-                    {s.lots?.barcode || "—"}
-                  </p>
-                  <p className="text-[12px] text-muted-foreground">
-                    {s.lots?.production_orders?.product_name || "—"} · OP {s.lots?.production_orders?.op_number || "—"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${STATUS_COLORS[s.status] || "bg-muted-foreground"}`} />
-                  <span className="text-[12px] text-muted-foreground">
-                    {STATUS_LABELS[s.status] || s.status}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-2 flex gap-4 text-[12px] text-muted-foreground">
-                <span>{s.quantity_sent} peças</span>
-                <span>Prazo: {new Date(s.expected_return_at).toLocaleDateString("pt-BR")}</span>
-              </div>
-              {!s.faction_confirmed_at && s.status === "SENT" && (
-                <p className="mt-2 text-[12px] font-medium text-amber-400">
-                  Aguardando confirmação de recebimento
-                </p>
-              )}
-              {view === "history" && (
-                <p className="mt-2 text-[12px] text-muted-foreground">
-                  Liberado: <span className="font-medium text-emerald-400">{brl(Number(s.released_value || 0))}</span>
-                  {Number(s.retained_value || 0) > 0 && (
-                    <> · Retido: <span className="font-medium text-amber-400">{brl(Number(s.retained_value || 0))}</span></>
-                  )}
-                  {s.closed_at && <> · Encerrada em {new Date(s.closed_at).toLocaleDateString("pt-BR")}</>}
-                </p>
-              )}
-            </Link>
-          ))}
+          {items.map((item) =>
+            item.shipments.length > 1 ? (
+              <GroupCard key={item.key} shipments={item.shipments} view={view} />
+            ) : (
+              <ShipmentCard key={item.key} s={item.shipments[0]} view={view} />
+            ),
+          )}
         </div>
       )}
     </div>
     </PullToRefresh>
+  );
+}
+
+/** Card de uma remessa individual (comportamento atual). */
+function ShipmentCard({ s, view }: { s: Shipment; view: "active" | "history" }) {
+  return (
+    <Link
+      href={`/portal/shipments/${s.id}`}
+      className="block rounded-xl border border-border bg-card p-4 transition-colors active:bg-accent"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[14px] font-semibold">{s.lots?.barcode || "—"}</p>
+          <p className="text-[12px] text-muted-foreground">
+            {s.lots?.production_orders?.product_name || "—"} · OP {s.lots?.production_orders?.op_number || "—"}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className={`h-2 w-2 rounded-full ${STATUS_COLORS[s.status] || "bg-muted-foreground"}`} />
+          <span className="text-[12px] text-muted-foreground">{STATUS_LABELS[s.status] || s.status}</span>
+        </div>
+      </div>
+      <div className="mt-2 flex gap-4 text-[12px] text-muted-foreground">
+        <span>{s.quantity_sent} peças</span>
+        <span>Prazo: {new Date(s.expected_return_at).toLocaleDateString("pt-BR")}</span>
+      </div>
+      {!s.faction_confirmed_at && s.status === "SENT" && (
+        <p className="mt-2 text-[12px] font-medium text-amber-400">Aguardando confirmação de recebimento</p>
+      )}
+      {view === "history" && (
+        <p className="mt-2 text-[12px] text-muted-foreground">
+          Liberado: <span className="font-medium text-emerald-400">{brl(Number(s.released_value || 0))}</span>
+          {Number(s.retained_value || 0) > 0 && (
+            <> · Retido: <span className="font-medium text-amber-400">{brl(Number(s.retained_value || 0))}</span></>
+          )}
+          {s.closed_at && <> · Encerrada em {new Date(s.closed_at).toLocaleDateString("pt-BR")}</>}
+        </p>
+      )}
+    </Link>
+  );
+}
+
+/** Frente 1: card de um GRUPO — a facção vê o conjunto num card, com os N lotes. */
+function GroupCard({ shipments, view }: { shipments: Shipment[]; view: "active" | "history" }) {
+  const total = shipments.reduce((sum, s) => sum + s.quantity_sent, 0);
+  const prazo = shipments[0]?.expected_return_at;
+  // Status do grupo: o mais "urgente" costuma bastar; usamos o do primeiro
+  // (todas as remessas do grupo compartilham o mesmo momento do fluxo).
+  const status = shipments[0]?.status;
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[14px] font-semibold">Remessa agrupada · {shipments.length} lotes</p>
+          <p className="text-[12px] text-muted-foreground">{total.toLocaleString("pt-BR")} peças no total</p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className={`h-2 w-2 rounded-full ${STATUS_COLORS[status] || "bg-muted-foreground"}`} />
+          <span className="text-[12px] text-muted-foreground">{STATUS_LABELS[status] || status}</span>
+        </div>
+      </div>
+      {prazo && (
+        <p className="mt-1 text-[12px] text-muted-foreground">
+          Prazo: {new Date(prazo).toLocaleDateString("pt-BR")}
+        </p>
+      )}
+      <div className="mt-3 space-y-1.5 border-t border-border pt-3">
+        {shipments.map((s) => (
+          <Link
+            key={s.id}
+            href={`/portal/shipments/${s.id}`}
+            className="flex items-center justify-between rounded-lg px-2 py-1.5 text-[13px] transition-colors active:bg-accent"
+          >
+            <span className="font-medium">{s.lots?.barcode || "—"}</span>
+            <span className="text-muted-foreground">
+              {s.quantity_sent} pçs
+              {view === "history" && Number(s.released_value || 0) > 0 && (
+                <> · <span className="text-emerald-400">{brl(Number(s.released_value || 0))}</span></>
+              )}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -66,7 +66,7 @@ async function sectorProducedOn(stageId: string, day: string): Promise<number> {
   );
   const { data } = await supabaseAdmin
     .from("scan_events")
-    .select("lot_id, lots!inner(quantity, production_orders!inner(reference, status))")
+    .select("lot_id, lots!inner(quantity, production_orders!inner(reference, status))").is("disregarded_at", null)
     .eq("stage_id", stageId)
     .eq("event_type", "STAGE_OUT")
     .neq("lots.production_orders.status", "CANCELLED")

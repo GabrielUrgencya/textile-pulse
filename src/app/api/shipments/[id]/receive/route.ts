@@ -71,7 +71,7 @@ export async function PATCH(
   const { data: shipment, error: fetchError } = await supabase
     .from("faction_shipments")
     .select(
-      "id, faction_id, lot_id, tenant_id, status, quantity_sent, declared_ok, declared_defect, return_code, return_code_expires_at, return_code_attempts",
+      "id, faction_id, lot_id, tenant_id, status, quantity_sent, payment_value, declared_ok, declared_defect, return_code, return_code_expires_at, return_code_attempts",
     )
     .eq("id", id)
     .single();
@@ -151,7 +151,15 @@ export async function PATCH(
     .select("price_per_piece")
     .eq("id", shipment.faction_id)
     .single();
-  const pricePerPiece = Number(faction?.price_per_piece || 0);
+  // Frente 2: o preço da REMESSA manda (payment_value ÷ quantidade enviada).
+  // Fallback ao preço do cadastro para remessas antigas (payment_value nulo) —
+  // a liserie, sem preço por remessa, continua calculando pelo cadastro.
+  const sentQty = Number(shipment.quantity_sent || 0);
+  const shipmentPrice =
+    shipment.payment_value != null && sentQty > 0
+      ? Number(shipment.payment_value) / sentQty
+      : null;
+  const pricePerPiece = shipmentPrice != null ? shipmentPrice : Number(faction?.price_per_piece || 0);
   const paymentValue = money(countedOk * pricePerPiece);
   const deductionValue = money(countedDefect * pricePerPiece);
   const releasedValue = paymentValue;

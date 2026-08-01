@@ -30,7 +30,7 @@ async function computeSectorProgress(
     supabase.from("sector_targets").select("daily_target").eq("tenant_id", tenantId).eq("stage_id", stageId).maybeSingle(),
     supabase.from("reference_stage_targets").select("reference, coefficient").eq("stage_id", stageId),
     supabase.from("scan_events")
-      .select("lot_id, lots!inner(quantity, production_orders!inner(reference, tenant_id))")
+      .select("lot_id, lots!inner(quantity, production_orders!inner(reference, tenant_id))").is("disregarded_at", null)
       .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(date)).lte("scanned_at", dayEnd(date)),

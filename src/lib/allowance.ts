@@ -56,7 +56,7 @@ export async function computeAllowance(
       .lte("detected_at", toEnd),
     supabase
       .from("scan_events")
-      .select("quantity_scanned")
+      .select("quantity_scanned").is("disregarded_at", null)
       .eq("event_type", "STAGE_IN")
       .gte("scanned_at", fromStart)
       .lte("scanned_at", toEnd),

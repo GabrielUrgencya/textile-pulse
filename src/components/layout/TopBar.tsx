@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Bell, Menu, Search, Settings } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 /* ─────────────────────── Types ─────────────────────── */
 
@@ -63,10 +64,10 @@ export function TopBar({ ticker, showSearch = true, showClock = true }: TopBarPr
           <Menu className="size-4" />
         </SidebarTrigger>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center">
           <div className="leading-tight">
-            <div className="font-display text-xl">LISION</div>
-            <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground -mt-0.5">
+            <BrandLogo className="h-6 w-auto" />
+            <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
               Rastreamento Têxtil
             </div>
           </div>

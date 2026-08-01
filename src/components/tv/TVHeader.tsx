@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandLogo } from "@/components/ui/brand-logo";
 import { useEffect, useState } from "react";
 import { Trophy } from "lucide-react";
 import { ShiftIndicator } from "@/components/tv/ShiftIndicator";
@@ -58,8 +59,8 @@ export function TVHeader({
   return (
     <header className="shrink-0 h-10 flex items-center px-5 bg-background/90 border-b border-border/40">
       {/* Left — Logo */}
-      <div className="flex items-baseline gap-2 shrink-0">
-        <span className="font-display text-[16px] font-semibold tracking-tight">LISION</span>
+      <div className="flex items-center gap-2 shrink-0">
+        <BrandLogo className="h-4 w-auto" />
         <span className="text-[10px] text-muted-foreground/50">· {tokenName}</span>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 export default function PortalLoginPage() {
   return (
@@ -61,11 +62,9 @@ function LoginForm() {
     <div className="flex min-h-dvh items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-8">
         {/* Logo */}
-        <div className="text-center">
-          <h1 className="font-display text-4xl font-bold tracking-tight">
-            LISION
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+        <div className="flex flex-col items-center text-center">
+          <BrandLogo className="h-8 w-auto" priority />
+          <p className="mt-3 text-sm text-muted-foreground">
             Portal da Facção
           </p>
         </div>

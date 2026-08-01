@@ -25,6 +25,7 @@ import {
   Users,
 } from "lucide-react";
 import { showToast } from "@/lib/toast";
+import { BrandLogo } from "@/components/ui/brand-logo";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useFactionUnread } from "@/components/notifications/FactionUnreadProvider";
@@ -150,14 +151,13 @@ export function AppSidebar() {
       className="border-r border-border/60 bg-background"
     >
       <SidebarHeader className="px-3 pt-4 pb-3">
-        <Link href="/dashboard" className="flex items-center gap-3 px-1.5">
-          <div className="size-9 shrink-0 rounded-lg bg-foreground text-background grid place-items-center font-display text-[15px] font-semibold">
-            L
-          </div>
-          {!collapsed && (
+        <Link href="/dashboard" className="flex items-center gap-2.5 px-1.5">
+          {collapsed ? (
+            <BrandLogo variant="symbol" className="size-8 shrink-0" />
+          ) : (
             <div className="leading-tight overflow-hidden">
-              <div className="font-display text-xl">LISION</div>
-              <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground -mt-0.5 truncate">
+              <BrandLogo className="h-6 w-auto" priority />
+              <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground truncate">
                 Rastreamento Têxtil
               </div>
             </div>

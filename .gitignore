@@ -72,6 +72,17 @@ supabase/.temp/
 *.mp3
 *.zip
 /tv-*.png
+
+# screenshots de QA/demonstração na raiz (nunca commitar)
+/*.png
+# projeto de vídeo (fora do build do app)
+/lision-video/
+# arquivos de logo SOLTOS (fontes originais; o build usa public/brand/)
+/LOGO*.webp
+/SÍMBOLO*.webp
+/*.webp
+# documento comercial
+/TABELA*.html
 /IMAGEM RANKING.png
 /apresentacao-lision.html
 /documentos/

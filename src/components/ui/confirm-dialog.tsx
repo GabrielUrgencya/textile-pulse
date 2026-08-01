@@ -23,6 +23,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: "destructive" | "warning" | "default";
   loading?: boolean;
+  /** Bloqueia o botão de confirmar quando não há nada a fazer (ex.: contagem zero). */
+  confirmDisabled?: boolean;
 }
 
 function ConfirmDialog({
@@ -36,6 +38,7 @@ function ConfirmDialog({
   cancelLabel = "Cancelar",
   variant = "default",
   loading = false,
+  confirmDisabled = false,
 }: ConfirmDialogProps) {
   const confirmVariant =
     variant === "destructive"
@@ -77,7 +80,7 @@ function ConfirmDialog({
           <Button
             variant={confirmVariant}
             onClick={onConfirm}
-            disabled={loading}
+            disabled={loading || confirmDisabled}
             className={cn(
               "w-full sm:w-auto",
               variant === "warning" && "border-warning text-warning hover:bg-warning/10",

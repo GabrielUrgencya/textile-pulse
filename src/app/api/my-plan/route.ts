@@ -163,7 +163,7 @@ export async function GET(request: Request) {
 
     const { data: rows } = await supabase
       .from("scan_events")
-      .select("lot_id, scanned_at, lots!inner(quantity, production_orders!inner(reference))")
+      .select("lot_id, scanned_at, lots!inner(quantity, production_orders!inner(reference))").is("disregarded_at", null)
       .eq("user_id", targetUserId)
       .eq("stage_id", stageId)
       .eq("event_type", "STAGE_OUT")

@@ -170,24 +170,24 @@ export async function computeSectorKpis(
   // Uma query STAGE_IN do dia serve só para medir tempo (início dos lotes).
   // EXCLUI OPs canceladas (status CANCELLED) de toda agregação de produção.
   const [dayScans, weekScans, monthScans, dayInScans, ydayScans] = await Promise.all([
-    supabase.from("scan_events").select(SCAN_SELECT_DAY)
+    supabase.from("scan_events").select(SCAN_SELECT_DAY).is("disregarded_at", null)
       .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(today)).lte("scanned_at", dayEnd(today)),
-    supabase.from("scan_events").select(SCAN_SELECT)
+    supabase.from("scan_events").select(SCAN_SELECT).is("disregarded_at", null)
       .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(wkStart)).lte("scanned_at", dayEnd(today)),
-    supabase.from("scan_events").select(SCAN_SELECT)
+    supabase.from("scan_events").select(SCAN_SELECT).is("disregarded_at", null)
       .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(moStart)).lte("scanned_at", dayEnd(today)),
     // STAGE_IN do dia p/ tempo médio por lote (início) e "tempo decorrido"
-    supabase.from("scan_events").select("lot_id, scanned_at")
+    supabase.from("scan_events").select("lot_id, scanned_at").is("disregarded_at", null)
       .eq("stage_id", stageId).eq("event_type", "STAGE_IN")
       .gte("scanned_at", dayStart(today)).lte("scanned_at", dayEnd(today)),
     // ONTEM (produção concluída) p/ a onda comparativa do gráfico
-    supabase.from("scan_events").select(SCAN_SELECT)
+    supabase.from("scan_events").select(SCAN_SELECT).is("disregarded_at", null)
       .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
       .neq("lots.production_orders.status", "CANCELLED")
       .gte("scanned_at", dayStart(yesterday)).lte("scanned_at", dayEnd(yesterday)),

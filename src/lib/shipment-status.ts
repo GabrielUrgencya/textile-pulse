@@ -28,6 +28,9 @@ const STATUS_META: Record<string, ShipmentStatusMeta> = {
   SENT: { label: "Enviado", tone: "warning", order: 1, group: "active" },
   RECEIVED_BY_FACTION: { label: "Com a facção", tone: "success", order: 2, group: "active" },
   RETURN_DECLARED: { label: "Devolução declarada", tone: "warning", order: 2, group: "active" },
+  // Frente 3: recebido fisicamente na fábrica, conferência em andamento (dias).
+  // Ativo e acionável: o financeiro só fecha quando a conferência é finalizada.
+  AWAITING_INSPECTION: { label: "Aguardando conferência", tone: "warning", order: 3, group: "active" },
   OVERDUE: { label: "Atrasado", tone: "destructive", order: 2, group: "active" },
   LATE: { label: "Atrasado", tone: "destructive", order: 2, group: "active" },
   PARTIALLY_RETURNED: { label: "Devolução parcial", tone: "warning", order: 3, group: "active" },
@@ -48,6 +51,8 @@ export const PORTAL_ACTIVE_STATUSES = [
   "SENT",
   "RECEIVED_BY_FACTION",
   "RETURN_DECLARED",
+  // Frente 3: a facção vê "em conferência" enquanto a fábrica confere (dias).
+  "AWAITING_INSPECTION",
   "PARTIALLY_RETURNED",
   "OVERDUE",
 ] as const;

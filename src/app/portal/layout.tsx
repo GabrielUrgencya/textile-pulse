@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { InstallPrompt } from "./install-prompt";
 
 export const metadata: Metadata = {
-  title: "LISION Portal — Facção",
+  title: "Lision",
   description: "Portal de acompanhamento para facções da Liserie",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "LISION",
+    title: "Lision",
   },
   // Substituto moderno da tag apple-mobile-web-app-capable (deprecada).
   other: {

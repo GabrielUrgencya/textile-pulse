@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { Menu } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 export function ModulePlaceholder({
   title,
@@ -20,8 +21,8 @@ export function ModulePlaceholder({
             <Menu className="size-4" />
           </SidebarTrigger>
           <div className="leading-tight">
-            <div className="font-display text-xl">LISION</div>
-            <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground -mt-0.5">
+            <BrandLogo className="h-6 w-auto" />
+            <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
               Rastreamento Têxtil
             </div>
           </div>

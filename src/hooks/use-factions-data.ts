@@ -26,8 +26,11 @@ export interface FactionKPIs {
 export interface FactionShipment {
   id: string;
   faction_id: string;
+  lot_id?: string | null;
   status: string;
   total_quantity: number;
+  quantity_sent?: number | null;
+  shipment_group_id?: string | null;
   returned_quantity: number | null;
   sent_at: string;
   expected_return: string | null;
