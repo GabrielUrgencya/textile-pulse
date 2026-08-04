@@ -11,15 +11,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createSupabaseServerClient();
+  let data;
+  let error;
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: body.email,
-    password: body.password,
-  });
+  try {
+    const supabase = createSupabaseServerClient();
+    ({ data, error } = await supabase.auth.signInWithPassword({
+      email: body.email,
+      password: body.password,
+    }));
+  } catch {
+    return NextResponse.json(
+      { error: "O serviço de autenticação está temporariamente indisponível. Tente novamente em alguns instantes." },
+      { status: 503 }
+    );
+  }
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 401 });
+  if (error || !data.user || !data.session) {
+    return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 });
   }
 
   return NextResponse.json({

@@ -265,8 +265,11 @@ export async function computeChartData(
   groupBy: "hour" | "day" = "day"
 ): Promise<ChartDataPoint[]> {
   const { from, to } = dateRange;
-  const fromStart = `${from}T00:00:00.000Z`;
-  const toEnd = `${to}T23:59:59.999Z`;
+  // O dashboard recebe datas locais do tenant. Converter os limites para
+  // instantes absolutos evita perder eventos noturnos que já caem no dia
+  // seguinte em UTC (por exemplo, 23:30 BRT = 02:30 UTC).
+  const fromStart = localDayStart(from);
+  const toEnd = localDayEnd(to);
 
   // RPC: chart data aggregated in DB — returns ~10-30 rows max
   const { data, error } = await supabase.rpc("dashboard_chart_data", {

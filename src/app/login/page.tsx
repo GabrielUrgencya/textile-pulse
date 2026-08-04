@@ -44,7 +44,11 @@ function LoginContent() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setError(data?.error || "Credenciais inválidas");
+        setError(
+          res.status === 503
+            ? "O serviço de autenticação está temporariamente indisponível. Tente novamente em alguns instantes."
+            : data?.error || "Credenciais inválidas"
+        );
         return;
       }
 

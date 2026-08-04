@@ -17,7 +17,12 @@ const UNIT_SUGGESTIONS = ["conjuntos", "peças", "pares", "travetadas", "cortes"
  */
 
 interface Stage { id: string; name: string; display_name: string; order_index: number }
-interface SectorTarget { stage_id: string; daily_target: number; unit: string | null }
+interface SectorTarget {
+  stage_id: string;
+  daily_target: number;
+  unit: string | null;
+  hourly_target?: number | null;
+}
 
 function SectorTargetsCard() {
   const { data: stages, isLoading } = useServerData<Stage[]>("/api/settings/stages");
@@ -32,17 +37,35 @@ function SectorTargetsCard() {
     [sectorTargets],
   );
 
-  const [draft, setDraft] = React.useState<Record<string, { target: string; unit: string }>>({});
+  const [draft, setDraft] = React.useState<Record<string, { target: string; unit: string; hourly: string }>>({});
   const [saving, setSaving] = React.useState<string | null>(null);
 
   function val(stageId: string) {
     const d = draft[stageId];
     if (d) return d;
     const s = map.get(stageId);
-    return { target: s ? String(s.daily_target) : "", unit: s?.unit ?? "" };
+    return {
+      target: s ? String(s.daily_target) : "",
+      unit: s?.unit ?? "",
+      hourly: s?.hourly_target != null ? String(s.hourly_target) : "",
+    };
   }
-  function set(stageId: string, key: "target" | "unit", value: string) {
-    setDraft((p) => ({ ...p, [stageId]: { ...val(stageId), [key]: value } }));
+  function set(stageId: string, key: "target" | "unit" | "hourly", value: string) {
+    setDraft((p) => {
+      const sectorTarget = map.get(stageId);
+      const current = p[stageId] ?? {
+        target: sectorTarget ? String(sectorTarget.daily_target) : "",
+        unit: sectorTarget?.unit ?? "",
+        hourly: sectorTarget?.hourly_target != null ? String(sectorTarget.hourly_target) : "",
+      };
+      return { ...p, [stageId]: { ...current, [key]: value } };
+    });
+  }
+  function handleNumberInput(stageId: string, key: "target" | "hourly") {
+    return (event: React.FormEvent<HTMLInputElement>) => {
+      const value = event.currentTarget.value;
+      set(stageId, key, value);
+    };
   }
   async function save(stageId: string) {
     const v = val(stageId);
@@ -56,12 +79,20 @@ function SectorTargetsCard() {
       showToast("error", "Informe uma meta válida");
       return;
     }
+    let hourly: number | null = null;
+    if (v.hourly.trim() !== "") {
+      hourly = parseInt(v.hourly);
+      if (Number.isNaN(hourly) || hourly <= 0) {
+        showToast("error", "Meta/hora deve ser um número > 0 (ou vazio para derivar da meta base)");
+        return;
+      }
+    }
     setSaving(stageId);
     try {
       const res = await fetch("/api/settings/sector-targets", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage_id: stageId, daily_target: target, unit: v.unit.trim() || null }),
+        body: JSON.stringify({ stage_id: stageId, daily_target: target, unit: v.unit.trim() || null, hourly_target: hourly }),
       });
       if (!res.ok) throw new Error();
       showToast("success", "Meta do processo salva");
@@ -96,6 +127,7 @@ function SectorTargetsCard() {
       </p>
       <p className="text-[11px] text-muted-foreground/50 mb-4">
         A <strong>unidade</strong> é uma palavra (ex: conjuntos, travetadas) — não um número. Deixe a meta vazia e salve, ou use a lixeira, para remover.
+        A <strong>meta/hora</strong> é opcional: vazia, deriva automaticamente da meta base ÷ horas úteis da jornada.
       </p>
       <datalist id="unit-suggestions">
         {UNIT_SUGGESTIONS.map((u) => <option key={u} value={u} />)}
@@ -109,9 +141,10 @@ function SectorTargetsCard() {
         <div className="text-center py-6 text-sm text-muted-foreground">Nenhum processo cadastrado.</div>
       ) : (
         <>
-          <div className="grid grid-cols-[1fr_120px_140px_auto] gap-2 px-0.5 mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="grid grid-cols-[1fr_110px_110px_130px_auto] gap-2 px-0.5 mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
             <span>Processo</span>
             <span>Meta/dia</span>
+            <span>Meta/hora</span>
             <span>Unidade</span>
             <span></span>
           </div>
@@ -119,7 +152,7 @@ function SectorTargetsCard() {
             {sortedStages.map((st) => {
               const v = val(st.id);
               return (
-                <div key={st.id} className="grid grid-cols-[1fr_120px_140px_auto] gap-2 items-center">
+                <div key={st.id} className="grid grid-cols-[1fr_110px_110px_130px_auto] gap-2 items-center">
                   <span className="text-[13px] font-medium">{st.display_name}</span>
                   <input
                     type="number"
@@ -127,7 +160,16 @@ function SectorTargetsCard() {
                     className="input-field tabular-nums"
                     placeholder="Ex: 200"
                     value={v.target}
-                    onChange={(e) => set(st.id, "target", e.target.value)}
+                    onInput={handleNumberInput(st.id, "target")}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    className="input-field tabular-nums"
+                    placeholder="auto"
+                    title="Opcional — vazio deriva da meta base ÷ horas úteis"
+                    value={v.hourly}
+                    onInput={handleNumberInput(st.id, "hourly")}
                   />
                   <input
                     className="input-field"

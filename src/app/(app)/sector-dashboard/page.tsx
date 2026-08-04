@@ -57,6 +57,13 @@ const MOCK_KPIS: SectorKpis = {
     { name: "Bruno Lima", produced: 360, pct: 86 },
     { name: "Carla Dias", produced: 290, pct: 69 },
   ],
+  hero_is_hour: false,
+  hourly_target: null,
+  hourly_produced: 0,
+  hourly_percent: 0,
+  hours_hit_today: 0,
+  working_hours_today: 0,
+  hour_window_label: "",
 };
 
 export default function SectorDashboardBuilderPage() {

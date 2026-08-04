@@ -18,6 +18,21 @@ export function paceFromPercent(percent: number): PaceState {
   return "below";
 }
 
+/**
+ * Frente 3 — cor do anel da META POR HORA (decisão do Gabriel):
+ *   < 60%   = vermelho (abaixo)
+ *   60–89%  = amarelo (atenção)
+ *   >= 90%  = verde (quase batendo / batida)
+ */
+export function paceFromHourPercent(percent: number): PaceState {
+  if (percent >= 90) return "on";
+  if (percent >= 60) return "warn";
+  return "below";
+}
+
+/** Dourado da celebração "hora batida" (>= 100%). */
+export const HOUR_HIT_GOLD = { main: "#ffd76a", glow: "rgba(255,215,106,0.6)", soft: "rgba(255,215,106,0.14)" };
+
 export interface StateColor {
   main: string; // cor sólida (arco, %, dot)
   light: string; // realce do gradiente

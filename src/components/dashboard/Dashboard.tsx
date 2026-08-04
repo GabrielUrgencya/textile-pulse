@@ -22,6 +22,7 @@ import type { KpiResult, ChartDataPoint, ProductionOrder, DateRange, StaleLot, A
 import type { UserProfile } from "@/hooks/use-user-profile";
 import { humanizeEvent, relativeTimestamp, type ActivityEventRaw } from "@/lib/event-templates";
 import { todayInTz } from "@/lib/tz";
+import { chartPeriodToTenantHour } from "@/lib/dashboard-chart-time";
 
 /* ------------------------------ types (re-exported from hook) ----------- */
 
@@ -403,9 +404,7 @@ function formatChartData(chart: ChartDataPoint[], shiftStart?: string, shiftEnd?
   const dataMap = new Map<string, { value: number; defects: number }>();
 
   for (const point of chart) {
-    const hour = point.period.includes("T")
-      ? `${new Date(point.period).getHours().toString().padStart(2, "0")}h`
-      : point.period;
+      const hour = chartPeriodToTenantHour(point.period);
     dataMap.set(hour, { value: point.scans, defects: point.defects });
   }
 

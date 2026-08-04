@@ -9,7 +9,7 @@ import { RadialGauge } from "@/components/tv/instrument/RadialGauge";
 import { MiniRing } from "@/components/tv/instrument/MiniRing";
 import { TVWaveChart } from "@/components/tv/instrument/TVWaveChart";
 import { GlassPanel, PanelLabel } from "@/components/tv/instrument/GlassPanel";
-import { STATE_COLORS, paceFromPercent, nf } from "@/components/tv/instrument/state";
+import { STATE_COLORS, paceFromPercent, paceFromHourPercent, HOUR_HIT_GOLD, nf } from "@/components/tv/instrument/state";
 
 /**
  * Frente 4 — Visão por SETOR, redesign "Instrumento" (design aprovado).
@@ -75,10 +75,19 @@ export function TVSectorDefault({
   const elapsedMin = kpis?.elapsed_since_first_scan_min ?? null;
   const rate = elapsedMin && elapsedMin > 0 && kpis ? Math.round((kpis.produced / (elapsedMin / 60)) * 10) / 10 : null;
 
+  const dayPct = percent; // % da meta diária — vira MiniRing "Dia" quando o herói é a hora
   const weekPct = pctOf(kpis?.weekly);
   const monthPct = pctOf(kpis?.monthly);
 
-  const metaPorHora = kpis?.daily_target && kpis.daily_target > 0 ? Math.round((kpis.daily_target / 8) * 10) / 10 : undefined;
+  // Frente 3 — meta por hora (herói condicional). Sem jornada configurada → herói = dia (atual).
+  const heroIsHour = !!kpis?.hero_is_hour;
+  const hourPct = kpis?.hourly_percent ?? 0;
+  const hourState = paceFromHourPercent(hourPct);
+  const hourHit = hourPct >= 100;
+  const hourColor = STATE_COLORS[hourState];
+  // Glow ambiente e status seguem o HERÓI (hora quando configurada; dia caso contrário).
+  const heroColor = heroIsHour ? (hourHit ? { ...hourColor, ...HOUR_HIT_GOLD } : hourColor) : color;
+  const metaPorHora = kpis?.hourly_target ?? undefined; // linha "Meta/h" da onda usa a meta real
 
   return (
     <div className="relative h-full min-h-0 w-full">
@@ -87,31 +96,60 @@ export function TVSectorDefault({
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
-          background: `radial-gradient(60% 55% at 30% 0%, ${color.glow} 0%, transparent 60%)`,
+          background: `radial-gradient(60% 55% at 30% 0%, ${heroColor.glow} 0%, transparent 60%)`,
           opacity: 0.5,
           transition: "background 0.8s ease, opacity 0.8s ease",
         }}
       />
 
       <div className="relative grid h-full min-h-0 w-full gap-5" style={showFaction ? gridStyle : gridStyleNoFaction}>
-        {/* ── HERÓI: medidor radial + status ── */}
+        {/* ── HERÓI: anel da HORA (se jornada configurada) OU do DIA (fallback atual) ── */}
         <div className="flex min-h-0 min-w-0 flex-col items-center justify-center gap-4" style={{ gridArea: "hero" }}>
-          <RadialGauge produced={kpis?.produced ?? 0} target={kpis?.daily_target ?? null} percent={percent} unit={unit} state={state} />
-          <div
-            className="flex items-center gap-2.5 rounded-full border px-5 py-2"
-            style={{ background: color.soft, borderColor: color.main, color: color.main }}
-          >
-            <span className="size-2.5 rounded-full tv-live-ping-dot" style={{ background: color.main }} />
-            <span className="font-display uppercase tabular-nums" style={{ fontSize: "clamp(0.8rem,1.9vh,1.15rem)", fontWeight: 800, letterSpacing: "0.1em" }}>
-              {color.label} — {statusDetail}
-            </span>
-          </div>
+          {heroIsHour ? (
+            <>
+              <span className="font-display uppercase text-muted-foreground" style={{ fontSize: "clamp(0.7rem,1.5vh,1rem)", fontWeight: 700, letterSpacing: "0.14em" }}>
+                {kpis?.hour_window_label}
+              </span>
+              <RadialGauge produced={kpis?.hourly_produced ?? 0} target={kpis?.hourly_target ?? null} percent={hourPct} unit={unit} state={hourState} />
+              <div
+                className="flex items-center gap-2.5 rounded-full border px-5 py-2"
+                style={{ background: heroColor.soft, borderColor: heroColor.main, color: heroColor.main }}
+              >
+                <span className="size-2.5 rounded-full tv-live-ping-dot" style={{ background: heroColor.main }} />
+                <span className="font-display uppercase tabular-nums" style={{ fontSize: "clamp(0.8rem,1.9vh,1.15rem)", fontWeight: 800, letterSpacing: "0.1em" }}>
+                  {hourHit ? "HORA BATIDA 🎉" : `NA HORA — FALTAM ${nf(Math.max(0, (kpis?.hourly_target ?? 0) - (kpis?.hourly_produced ?? 0)))}`}
+                </span>
+              </div>
+              <HourPipsStrip hit={kpis?.hours_hit_today ?? 0} total={kpis?.working_hours_today ?? 0} />
+            </>
+          ) : (
+            <>
+              <RadialGauge produced={kpis?.produced ?? 0} target={kpis?.daily_target ?? null} percent={percent} unit={unit} state={state} />
+              <div
+                className="flex items-center gap-2.5 rounded-full border px-5 py-2"
+                style={{ background: color.soft, borderColor: color.main, color: color.main }}
+              >
+                <span className="size-2.5 rounded-full tv-live-ping-dot" style={{ background: color.main }} />
+                <span className="font-display uppercase tabular-nums" style={{ fontSize: "clamp(0.8rem,1.9vh,1.15rem)", fontWeight: 800, letterSpacing: "0.1em" }}>
+                  {color.label} — {statusDetail}
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* ── Metas de período (anéis) ── */}
         <GlassPanel area="metas" className="items-stretch p-5">
           <PanelLabel>Metas do Período</PanelLabel>
           <div className="flex flex-1 items-center justify-around gap-4">
+            {heroIsHour && (
+              <div className="flex flex-col items-center gap-1">
+                <MiniRing label="Dia" percent={dayPct} />
+                <span className="font-display tabular-nums text-muted-foreground/70" style={{ fontSize: "clamp(0.6rem,1.1vh,0.72rem)" }}>
+                  {nf(kpis?.produced ?? 0)} / {kpis?.daily_target != null ? nf(kpis.daily_target) : "—"}
+                </span>
+              </div>
+            )}
             <div className="flex flex-col items-center gap-1">
               <MiniRing label="Semana" percent={weekPct} estimated={kpis?.weekly.estimated} />
               <span className="font-display tabular-nums text-muted-foreground/70" style={{ fontSize: "clamp(0.6rem,1.1vh,0.72rem)" }}>
@@ -173,6 +211,34 @@ export function TVSectorDefault({
             <FactionBlock kpis={kpis} />
           </GlassPanel>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Frente 3: tira de horas batidas ("★ X/Y" + pips), legível de longe ── */
+function HourPipsStrip({ hit, total }: { hit: number; total: number }) {
+  if (total <= 0) return null;
+  const gold = HOUR_HIT_GOLD.main;
+  return (
+    <div className="flex items-center gap-3">
+      <span className="font-display tabular-nums" style={{ fontSize: "clamp(1.1rem,2.6vh,1.7rem)", fontWeight: 800, color: gold }}>
+        ★ {hit}/{total}
+      </span>
+      <div className="flex items-center gap-2">
+        {Array.from({ length: total }).map((_, i) => (
+          <span
+            key={i}
+            className="rounded-full"
+            style={{
+              width: "clamp(11px,1.5vh,16px)",
+              height: "clamp(11px,1.5vh,16px)",
+              background: i < hit ? gold : "transparent",
+              border: `2px solid ${i < hit ? gold : "rgba(255,255,255,0.18)"}`,
+              boxShadow: i < hit ? `0 0 12px ${HOUR_HIT_GOLD.glow}` : "none",
+            }}
+          />
+        ))}
       </div>
     </div>
   );

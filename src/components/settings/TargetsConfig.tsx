@@ -7,6 +7,9 @@ import { useServerData } from "@/hooks/use-server-data";
 import { showToast } from "@/lib/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectorTargetsCard } from "./SectorTargetsCard";
+import { SectorResetCard } from "./SectorResetCard";
+import { confirmsTargetTimeSave } from "@/lib/target-settings-confirmation";
+import { type TargetTimeField, withTargetTimeValue } from "@/lib/target-time-input";
 
 interface Targets {
   dailyPiecesTarget: number;
@@ -16,10 +19,24 @@ interface Targets {
   defectTolerance: number;
   shiftStart: string;
   shiftEnd: string;
+  hourlyMetaEnabled: boolean;
+  lunchStart: string;
+  lunchEnd: string;
+}
+
+/** Horas úteis = (fim − início − almoço), em horas com 1 casa. null = jornada inválida. */
+function workingHours(start: string, end: string, lunchStart: string, lunchEnd: string): number | null {
+  const min = (v: string) => (/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v) ? Number(v.slice(0, 2)) * 60 + Number(v.slice(3, 5)) : null);
+  const s = min(start), e = min(end);
+  if (s == null || e == null || e <= s) return null;
+  const ls = min(lunchStart), le = min(lunchEnd);
+  const lunch = ls != null && le != null && le > ls ? le - ls : 0;
+  const h = (e - s - lunch) / 60;
+  return h > 0 ? Math.round(h * 10) / 10 : null;
 }
 
 function TargetsConfig() {
-  const { data, isLoading } = useServerData<Targets>("/api/settings/targets");
+  const { data, isLoading, refetch } = useServerData<Targets>("/api/settings/targets");
   const [form, setForm] = React.useState<Targets>({
     dailyPiecesTarget: 1000,
     weeklyPointsTarget: 5000,
@@ -28,15 +45,24 @@ function TargetsConfig() {
     defectTolerance: 3,
     shiftStart: "07:00",
     shiftEnd: "17:00",
+    hourlyMetaEnabled: false,
+    lunchStart: "",
+    lunchEnd: "",
   });
   const [saving, setSaving] = React.useState(false);
+  const uteis = workingHours(form.shiftStart, form.shiftEnd, form.lunchStart, form.lunchEnd);
 
   React.useEffect(() => {
     if (data) setForm(data);
   }, [data]);
 
-  const update = (key: keyof Targets, value: string | number) => {
+  const update = (key: keyof Targets, value: string | number | boolean) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleTimeInput = (field: TargetTimeField) => (event: React.FormEvent<HTMLInputElement>) => {
+    const value = event.currentTarget.value;
+    setForm((prev) => withTargetTimeValue(prev, field, value));
   };
 
   const handleSave = async () => {
@@ -47,7 +73,11 @@ function TargetsConfig() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error();
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !confirmsTargetTimeSave(payload?.data?.settings, form)) {
+        throw new Error();
+      }
+      await refetch();
       showToast("success", "Metas atualizadas");
     } catch {
       showToast("error", "Erro ao salvar metas");
@@ -155,7 +185,7 @@ function TargetsConfig() {
               type="time"
               className="input-field"
               value={form.shiftStart}
-              onChange={(e) => update("shiftStart", e.target.value)}
+              onInput={handleTimeInput("shiftStart")}
             />
           </div>
           <div>
@@ -166,9 +196,40 @@ function TargetsConfig() {
               type="time"
               className="input-field"
               value={form.shiftEnd}
-              onChange={(e) => update("shiftEnd", e.target.value)}
+              onInput={handleTimeInput("shiftEnd")}
             />
           </div>
+        </div>
+
+        {/* Frente 3 — Jornada / meta por hora (compartilhada por tenant) */}
+        <div className="rounded-lg border border-border/60 p-4 space-y-4">
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="size-4 accent-foreground"
+              checked={form.hourlyMetaEnabled}
+              onChange={(e) => update("hourlyMetaEnabled", e.target.checked)}
+            />
+            <span className="text-sm font-medium">Ativar meta por hora na TV</span>
+          </label>
+          <p className="text-[11px] text-muted-foreground/60 -mt-2">
+            O herói da TV passa a ser o anel da meta da hora (produção da hora vs meta). Sem ativar, a TV mantém o herói do dia.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Início do almoço</label>
+              <input type="time" className="input-field" value={form.lunchStart} onInput={handleTimeInput("lunchStart")} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Fim do almoço</label>
+              <input type="time" className="input-field" value={form.lunchEnd} onInput={handleTimeInput("lunchEnd")} />
+            </div>
+          </div>
+          <p className="text-sm">
+            Horas úteis:{" "}
+            <span className="font-semibold tabular-nums">{uteis != null ? `${uteis} h` : "— (jornada inválida)"}</span>
+            <span className="text-muted-foreground/60"> — a meta da hora deriva da meta base do setor ÷ horas úteis.</span>
+          </p>
         </div>
 
         <p className="text-xs text-muted-foreground/60">
@@ -183,6 +244,9 @@ function TargetsConfig() {
 
     {/* Story 8.23: meta por processo na mesma aba "Metas" */}
     <SectorTargetsCard />
+
+    {/* Frente 1: zerar meta do setor (progresso/dívida × hora/dia/semana/mês) */}
+    <SectorResetCard />
     </div>
   );
 }

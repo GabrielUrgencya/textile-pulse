@@ -19,7 +19,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("sector_targets")
-    .select("id, stage_id, daily_target, unit, stages(name, display_name, order_index)")
+    .select("id, stage_id, daily_target, unit, shift_start, shift_end, lunch_start, lunch_end, hourly_target, stages(name, display_name, order_index)")
     .eq("tenant_id", t.tenantId);
 
   if (error) return dbError("GET /api/settings/sector-targets", error);
@@ -48,6 +48,16 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "daily_target deve ser inteiro >= 0" }, { status: 400 });
   }
 
+  // Frente 3 — override opcional de jornada e meta/hora por setor (nullable = herda/deriva).
+  const hhmm = (v: unknown): string | null => {
+    const s = v == null ? "" : String(v).trim();
+    return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(s) ? s : null;
+  };
+  const hourly = body.hourly_target === "" || body.hourly_target == null ? null : Math.trunc(Number(body.hourly_target));
+  if (hourly != null && (Number.isNaN(hourly) || hourly <= 0)) {
+    return NextResponse.json({ error: "hourly_target deve ser inteiro > 0 ou vazio" }, { status: 400 });
+  }
+
   const { data, error } = await supabase
     .from("sector_targets")
     .upsert(
@@ -56,10 +66,15 @@ export async function PUT(request: Request) {
         stage_id: body.stage_id,
         daily_target: dailyTarget,
         unit: body.unit?.toString().trim() || null,
+        shift_start: hhmm(body.shift_start),
+        shift_end: hhmm(body.shift_end),
+        lunch_start: hhmm(body.lunch_start),
+        lunch_end: hhmm(body.lunch_end),
+        hourly_target: hourly,
       },
       { onConflict: "tenant_id,stage_id" },
     )
-    .select("id, stage_id, daily_target, unit")
+    .select("id, stage_id, daily_target, unit, shift_start, shift_end, lunch_start, lunch_end, hourly_target")
     .single();
 
   if (error) return dbError("PUT /api/settings/sector-targets", error);

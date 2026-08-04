@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isActiveHourlyTargetWindow } from "@/lib/hourly-target-window";
 import { TENANT_UTC_OFFSET, todayInTz } from "@/lib/tz";
 import { getActiveSectorDeficit, accumulatedGoal } from "@/lib/goal-deficits";
-import { getTenantCalendar, workingDaysBetween, workingDaysPerWeek } from "@/lib/work-calendar";
+import { parseCalendar, isWorkingDay, workingDaysBetween, workingDaysPerWeek } from "@/lib/work-calendar";
 import { PORTAL_ACTIVE_STATUSES } from "@/lib/shipment-status";
 
 /**
@@ -55,6 +56,21 @@ export interface SectorKpis {
   faction_status: FactionStatus | null;
   hourly: HourlyPoint[]; // produção por hora (últimas 8h) — ChartWidget
   top_collaborators: TopCollaborator[]; // top 3 do setor hoje — RankingWidget
+  // Frente 3 — Meta por HORA (motivacional; não toca goal_deficits; deriva da BASE).
+  /** true = a TV deve usar o anel da HORA como herói (jornada configurada + dia útil + meta/hora válida). */
+  hero_is_hour: boolean;
+  /** Meta do setor por hora útil (override manual OU base_diária ÷ horas úteis). null = não configurada. */
+  hourly_target: number | null;
+  /** Produção ponderada do setor NESTA hora (zera na virada). */
+  hourly_produced: number;
+  /** % da meta da hora (produzido_na_hora ÷ meta_hora). */
+  hourly_percent: number;
+  /** Horas úteis já batidas hoje (produzido ≥ meta_hora). */
+  hours_hit_today: number;
+  /** Total de horas úteis do dia (pips). */
+  working_hours_today: number;
+  /** Rótulo da janela corrente, ex.: "14h–15h". */
+  hour_window_label: string;
 }
 
 /** Limites absolutos (timestamptz) de uma data local YYYY-MM-DD. */
@@ -134,8 +150,10 @@ export async function computeSectorKpis(
   if (!stage) return null;
   const stageName = (stage.display_name as string) || (stage.name as string) || "Setor";
 
-  // Frente 2 — calendário de trabalho do tenant (default seg-sex)
-  const cal = await getTenantCalendar(supabase, tenantId);
+  // Frente 2/3 — settings do tenant: calendário de trabalho + jornada (meta por hora)
+  const { data: tenantRow } = await supabase.from("tenants").select("settings").eq("id", tenantId).maybeSingle();
+  const tSettings = (tenantRow?.settings ?? {}) as Record<string, unknown>;
+  const cal = parseCalendar(tSettings);
 
   const today = todayInTz();
   const yesterday = (() => {
@@ -149,7 +167,7 @@ export async function computeSectorKpis(
   // Metas do setor
   const { data: st } = await supabase
     .from("sector_targets")
-    .select("daily_target, weekly_target, monthly_target, unit")
+    .select("daily_target, weekly_target, monthly_target, unit, shift_start, shift_end, lunch_start, lunch_end, hourly_target")
     .eq("tenant_id", tenantId)
     .eq("stage_id", stageId)
     .maybeSingle();
@@ -327,6 +345,73 @@ export async function computeSectorKpis(
     pct: topProduced > 0 ? Math.round((r.produced / topProduced) * 100) : 0,
   }));
 
+  // ── Frente 3: META POR HORA (motivacional; deriva da BASE; NÃO toca goal_deficits) ──
+  const hhmm = (v: unknown): number | null => {
+    if (typeof v !== "string" || !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v)) return null;
+    const [h, m] = v.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const hourlyEnabled = tSettings.hourlyMetaEnabled === true;
+  // Jornada efetiva do setor: override do setor ?? jornada do tenant.
+  const jStart = hhmm(st?.shift_start) ?? hhmm(tSettings.shiftStart);
+  const jEnd = hhmm(st?.shift_end) ?? hhmm(tSettings.shiftEnd);
+  const jLunchStart = hhmm(st?.lunch_start) ?? hhmm(tSettings.lunchStart);
+  const jLunchEnd = hhmm(st?.lunch_end) ?? hhmm(tSettings.lunchEnd);
+  const lunchMin = jLunchStart != null && jLunchEnd != null && jLunchEnd > jLunchStart ? jLunchEnd - jLunchStart : 0;
+  const workingMinutes = jStart != null && jEnd != null && jEnd > jStart ? jEnd - jStart - lunchMin : 0;
+  const workingHours = workingMinutes / 60;
+
+  // Slots de horas úteis (inteiros) — pips e contagem de batidas (exclui o almoço).
+  const slots: number[] = [];
+  if (jStart != null && jEnd != null && jEnd > jStart) {
+    const sh = Math.floor(jStart / 60);
+    const eh = Math.ceil(jEnd / 60);
+    const lsh = jLunchStart != null ? Math.floor(jLunchStart / 60) : null;
+    const leh = jLunchEnd != null ? Math.ceil(jLunchEnd / 60) : null;
+    for (let h = sh; h < eh; h++) {
+      const inLunch = lsh != null && leh != null && h >= lsh && h < leh;
+      if (!inLunch) slots.push(h);
+    }
+  }
+
+  // Meta/hora = override manual do setor OU meta BASE diária ÷ horas úteis (NÃO a acumulada).
+  const baseDaily = (st?.daily_target as number) ?? null;
+  const manualHourly = (st?.hourly_target as number | null) ?? null;
+  const hourlyTarget =
+    manualHourly != null
+      ? manualHourly
+      : baseDaily != null && workingHours > 0
+        ? Math.round(baseDaily / workingHours)
+        : null;
+
+  const nowMinutes = nowHour * 60 + new Date().getUTCMinutes();
+  const hourlyWindowActive = isActiveHourlyTargetWindow(
+    nowMinutes,
+    jStart,
+    jEnd,
+    jLunchStart,
+    jLunchEnd,
+  );
+  const heroIsHour =
+    hourlyEnabled &&
+    isWorkingDay(today, cal) &&
+    hourlyTarget != null &&
+    hourlyTarget > 0 &&
+    workingHours > 0 &&
+    hourlyWindowActive;
+  const hourlyProduced = heroIsHour ? Math.round((hourBucket.get(nowHour) || 0) * 10) / 10 : 0;
+  const hourlyPercent = heroIsHour && hourlyTarget && hourlyTarget > 0
+    ? Math.round((hourlyProduced / hourlyTarget) * 1000) / 10
+    : 0;
+  const hoursHitToday =
+    hourlyTarget && hourlyTarget > 0
+      ? slots.filter((h) => h <= nowHour && (hourBucket.get(h) || 0) >= hourlyTarget).length
+      : 0;
+  const workingHoursToday = slots.length;
+  const hourWindowLabel = heroIsHour
+    ? `${String(nowHour).padStart(2, "0")}h–${String((nowHour + 1) % 24).padStart(2, "0")}h`
+    : "";
+
   // Status da facção (quando há remessa vigente do tenant — surfacing da mais urgente)
   const factionStatus = await computeFactionStatus(supabase, tenantId);
 
@@ -345,6 +430,13 @@ export async function computeSectorKpis(
     faction_status: factionStatus,
     hourly,
     top_collaborators: topCollaborators,
+    hero_is_hour: heroIsHour,
+    hourly_target: heroIsHour ? hourlyTarget : null,
+    hourly_produced: hourlyProduced,
+    hourly_percent: hourlyPercent,
+    hours_hit_today: hoursHitToday,
+    working_hours_today: workingHoursToday,
+    hour_window_label: hourWindowLabel,
   };
 }
 
