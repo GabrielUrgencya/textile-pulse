@@ -53,6 +53,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Usuário não encontrado neste tenant" }, { status: 404 });
   }
 
+  const references = periods.map(refOf);
+  const { data: atomicReset, error: atomicError } = await supabase.rpc("reset_goal_debts_atomic_v1", {
+    p_scope: "USER",
+    p_entity_id: targetUserId,
+    p_period_types: periods,
+    p_period_references: references,
+    p_carried_to: today,
+    p_context: { requested_period: period, tenant_id: t.tenantId, actor_id: user.id, target_user: profile.full_name ?? targetUserId },
+  });
+  if (atomicError) return NextResponse.json({ error: "Falha ao zerar a dívida; nenhuma alteração foi confirmada" }, { status: 500 });
+  return NextResponse.json({ data: { period, periods, user_id: targetUserId, deficit: 0, result: atomicReset } });
+
+  /* Legacy non-atomic implementation retained temporarily for migration review.
+
   // Zera cada período: UPDATE se a linha da referência existe; senão INSERT com
   // deficit=0. O INSERT é essencial — também desliga o fallback dinâmico do
   // rollover (user-meta prefere o persistido quando ele existe).
@@ -129,4 +143,5 @@ export async function POST(request: Request) {
   return NextResponse.json({
     data: { period, periods, cleared, user_id: targetUserId, deficit: 0 },
   });
+  */
 }

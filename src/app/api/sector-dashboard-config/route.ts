@@ -49,18 +49,17 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Invalid layout shape" }, { status: 400 });
   }
 
+  const row: Record<string, unknown> = {
+    tenant_id: tenantId,
+    stage_id: body.stage_id,
+    layout: body.layout,
+    updated_by: user.id,
+    updated_at: new Date().toISOString(),
+  };
+  // Frente 2: flag opcional de meta por hora do setor (default true no banco).
   const { error } = await supabase
     .from("sector_dashboard_configs")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        stage_id: body.stage_id,
-        layout: body.layout,
-        updated_by: user.id,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "tenant_id,stage_id" },
-    );
+    .upsert(row, { onConflict: "tenant_id,stage_id" });
 
   if (error) return dbError("PUT /api/sector-dashboard-config", error);
 

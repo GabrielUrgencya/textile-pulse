@@ -210,10 +210,10 @@ function TargetsConfig() {
               checked={form.hourlyMetaEnabled}
               onChange={(e) => update("hourlyMetaEnabled", e.target.checked)}
             />
-            <span className="text-sm font-medium">Ativar meta por hora na TV</span>
+            <span className="text-sm font-medium">Disponibilizar meta por hora na TV</span>
           </label>
           <p className="text-[11px] text-muted-foreground/60 -mt-2">
-            O herói da TV passa a ser o anel da meta da hora (produção da hora vs meta). Sem ativar, a TV mantém o herói do dia.
+            Esta opção só disponibiliza o recurso. A TV usa a meta da hora apenas nos setores em Automática ou Manual com configuração válida; setores em Sem meta continuam mostrando o herói do Dia.
           </p>
           <div className="grid grid-cols-2 gap-4">
             <div>

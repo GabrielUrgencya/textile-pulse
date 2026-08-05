@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { can } from "@/lib/effective-permissions";
-import { dbError } from "@/lib/api-helpers";
 import { notifyFaction, FACTION_NOTIFICATION_TYPES, brl } from "@/lib/faction-notifications";
-import { logShipmentEvent, actorNameFromUser } from "@/lib/shipment-events";
+import { actorNameFromUser } from "@/lib/shipment-events";
 
 /**
  * PATCH /api/shipments/[id]/finalize-inspection — Frente 3.
@@ -62,6 +61,32 @@ export async function PATCH(
 
   // Defeito = soma dos defect_records registrados durante a conferência (não
   // recriamos defeito aqui; eles já notificaram a facção quando lançados).
+  const { data: result, error: reconciliationError } = await supabase.rpc("reconcile_shipment_return_v1", {
+    p_shipment_id: id,
+    p_expected_status: "AWAITING_INSPECTION",
+    p_counted_ok: countedOk,
+    p_counted_defect: null,
+    p_use_recorded_defects: true,
+    p_actor_name: actorNameFromUser(user),
+  });
+  if (reconciliationError) {
+    const message = reconciliationError.message || "Falha ao finalizar a conferÃªncia";
+    const status = /OVER_COUNT|INVALID_COUNT/i.test(message) ? 400 : /CONFLICT|STATUS/i.test(message) ? 409 : 500;
+    return NextResponse.json({ error: /OVER_COUNT/i.test(message) ? "OVER_COUNT" : "RECONCILIATION_FAILED", message }, { status });
+  }
+  const settled = (result ?? {}) as {
+    status: "RETURNED" | "PARTIALLY_RETURNED";
+    reconciliationStatus: "OK" | "SHORTAGE" | "DISCREPANCY";
+    shortageQty: number;
+    countedOk: number;
+    countedDefect: number;
+    paymentValue: number;
+    releasedValue: number;
+    retainedValue: number;
+    paymentStatus: "RELEASED" | "PARTIALLY_RELEASED";
+  };
+
+  /* Legacy multi-write reconciliation replaced by the atomic RPC.
   const { data: defects } = await supabase
     .from("defect_records")
     .select("quantity")
@@ -150,6 +175,7 @@ export async function PATCH(
   }
 
   // Notificações (informativas, não-bloqueantes).
+  */
   try {
     const base = { tenantId: shipment.tenant_id as string, factionId: shipment.faction_id as string };
     await notifyFaction(supabase, {
@@ -160,21 +186,21 @@ export async function PATCH(
       entityType: "shipment",
       entityId: id,
     });
-    if (paymentStatus === "RELEASED" && releasedValue > 0) {
+    if (settled.paymentStatus === "RELEASED" && settled.releasedValue > 0) {
       await notifyFaction(supabase, {
         ...base,
         type: FACTION_NOTIFICATION_TYPES.PAYMENT_RELEASED,
         title: "Pagamento liberado",
-        message: `Pagamento de R$ ${brl(releasedValue)} liberado para a remessa.`,
+        message: `Pagamento de R$ ${brl(settled.releasedValue)} liberado para a remessa.`,
         entityType: "financial",
         entityId: id,
       });
-    } else if (paymentStatus === "PARTIALLY_RELEASED") {
+    } else if (settled.paymentStatus === "PARTIALLY_RELEASED") {
       await notifyFaction(supabase, {
         ...base,
         type: FACTION_NOTIFICATION_TYPES.PAYMENT_PARTIAL,
         title: "Pagamento parcial liberado",
-        message: `Pagamento parcial: R$ ${brl(releasedValue)}. R$ ${brl(retainedValue)} retidos por defeitos.`,
+        message: `Pagamento parcial: R$ ${brl(settled.releasedValue)}. R$ ${brl(settled.retainedValue)} retidos por defeitos.`,
         entityType: "financial",
         entityId: id,
       });
@@ -183,17 +209,5 @@ export async function PATCH(
     console.error("[finalize-inspection] notifications:", e);
   }
 
-  return NextResponse.json({
-    data: {
-      status: newStatus,
-      reconciliationStatus: reconciliation,
-      shortageQty: shortage,
-      countedOk,
-      countedDefect,
-      paymentValue,
-      releasedValue,
-      retainedValue,
-      paymentStatus,
-    },
-  });
+  return NextResponse.json({ data: settled });
 }

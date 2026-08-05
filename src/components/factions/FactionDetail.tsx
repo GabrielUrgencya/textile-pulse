@@ -18,6 +18,7 @@ import { ShipmentCreate } from "@/components/factions/ShipmentCreate";
 import { ShipmentReceive } from "@/components/factions/ShipmentReceive";
 import { ShipmentPaymentDialog } from "@/components/factions/ShipmentPaymentDialog";
 import { ShipmentDrawer } from "@/components/factions/ShipmentDrawer";
+import { ShipmentGroupedTable } from "@/components/factions/ShipmentGroupedTable";
 import { DeliveryCodeDisplay } from "@/components/shipments/DeliveryCodeDisplay";
 import { useFactionDetail, type FactionShipment } from "@/hooks/use-factions-data";
 import { formatDateBR } from "@/lib/tz";
@@ -39,6 +40,9 @@ function FactionDetail({ factionId }: FactionDetailProps) {
   const [deactivateOpen, setDeactivateOpen] = React.useState(false);
   const [deactivating, setDeactivating] = React.useState(false);
   const [shipmentTab, setShipmentTab] = React.useState<"active" | "history">("active");
+  // Agrupar remessas do mesmo envio (shipment_group_id) na exibição. Padrão =
+  // agrupado (foi enviado junto); "separado" volta à lista plana de hoje.
+  const [shipmentView, setShipmentView] = React.useState<"grouped" | "separated">("grouped");
   // Acesso da facção ao portal (Copiar acesso / Gerar novo PIN).
   const [copyingAccess, setCopyingAccess] = React.useState(false);
   const [rotating, setRotating] = React.useState(false);
@@ -469,37 +473,74 @@ function FactionDetail({ factionId }: FactionDetailProps) {
             eyebrow="Remessas"
             title="Envios"
             right={
-              <div className="flex gap-1">
-                <Button
-                  variant={shipmentTab === "active" ? "default" : "ghost"}
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setShipmentTab("active")}
-                >
-                  Ativas ({activeShipments.length})
-                </Button>
-                <Button
-                  variant={shipmentTab === "history" ? "default" : "ghost"}
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setShipmentTab("history")}
-                >
-                  Histórico ({historyShipments.length})
-                </Button>
+              <div className="flex items-center gap-2">
+                {/* Agrupado / Separado (só exibição) */}
+                <div className="flex gap-1 rounded-lg bg-secondary/40 p-0.5">
+                  <Button
+                    variant={shipmentView === "grouped" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => setShipmentView("grouped")}
+                    title="Juntar as remessas do mesmo envio num card só"
+                  >
+                    Agrupado
+                  </Button>
+                  <Button
+                    variant={shipmentView === "separated" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => setShipmentView("separated")}
+                    title="Ver cada remessa (lote) em uma linha"
+                  >
+                    Separado
+                  </Button>
+                </div>
+                <div className="h-4 w-px bg-border/60" />
+                <div className="flex gap-1">
+                  <Button
+                    variant={shipmentTab === "active" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setShipmentTab("active")}
+                  >
+                    Ativas ({activeShipments.length})
+                  </Button>
+                  <Button
+                    variant={shipmentTab === "history" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setShipmentTab("history")}
+                  >
+                    Histórico ({historyShipments.length})
+                  </Button>
+                </div>
               </div>
             }
           />
-          <DataTable
-            columns={shipmentColumns}
-            data={displayedShipments}
-            keyExtractor={(row) => row.id}
-            onRowClick={(row) => setDrawerTarget(row.id)}
-            emptyState={{
-              icon: Truck,
-              title: shipmentTab === "active" ? "Sem remessas ativas" : "Sem histórico",
-              description: "Crie uma nova remessa para esta facção",
-            }}
-          />
+          {shipmentView === "grouped" ? (
+            <ShipmentGroupedTable
+              columns={shipmentColumns}
+              shipments={displayedShipments}
+              onRowClick={(row) => setDrawerTarget(row.id)}
+              emptyState={{
+                icon: Truck,
+                title: shipmentTab === "active" ? "Sem remessas ativas" : "Sem histórico",
+                description: "Crie uma nova remessa para esta facção",
+              }}
+            />
+          ) : (
+            <DataTable
+              columns={shipmentColumns}
+              data={displayedShipments}
+              keyExtractor={(row) => row.id}
+              onRowClick={(row) => setDrawerTarget(row.id)}
+              emptyState={{
+                icon: Truck,
+                title: shipmentTab === "active" ? "Sem remessas ativas" : "Sem histórico",
+                description: "Crie uma nova remessa para esta facção",
+              }}
+            />
+          )}
         </LisionCard>
 
         {/* Defects */}

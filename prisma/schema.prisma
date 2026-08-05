@@ -246,6 +246,14 @@ model SectorTarget {
   weeklyTarget  Int?     @map("weekly_target")
   monthlyTarget Int?     @map("monthly_target")
   unit          String?
+  /// Frente 3 — override de jornada do setor (HH:MM). NULL = herda de tenants.settings.
+  shiftStart    String?  @map("shift_start")
+  shiftEnd      String?  @map("shift_end")
+  lunchStart    String?  @map("lunch_start")
+  lunchEnd      String?  @map("lunch_end")
+  /// Valor manual usado somente em MANUAL. NULL nunca implica AUTO.
+  hourlyTarget  Int?     @map("hourly_target")
+  hourlyTargetMode String? @default("NONE") @map("hourly_target_mode")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -262,6 +270,8 @@ model SectorDashboardConfig {
   tenantId  String   @map("tenant_id") @db.Uuid
   stageId   String   @map("stage_id") @db.Uuid
   layout    Json     @default("[]")
+  /// Legado deprecated: default histórico true; sem efeito funcional na meta/hora.
+  hourlyGoalEnabled Boolean @default(true) @map("hourly_goal_enabled")
   updatedBy String?  @map("updated_by") @db.Uuid
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -366,6 +376,8 @@ model Stage {
   orderIndex            Int      @map("order_index")
   type                  String
   isMandatory           Boolean  @default(true) @map("is_mandatory")
+  /// Soft-delete (Frente 1): false = etapa desativada (fora da lista ativa; histórico preservado).
+  isActive              Boolean  @default(true) @map("is_active")
   expectedDurationHours Decimal? @map("expected_duration_hours") @db.Decimal(6, 2)
   color                 String?
   icon                  String?
@@ -598,6 +610,7 @@ model FactionLedger {
   amount       Decimal  @db.Decimal(12, 2)
   balanceAfter Decimal  @map("balance_after") @db.Decimal(12, 2)
   description  String?
+  idempotencyKey String? @map("idempotency_key")
   createdById  String?  @map("created_by") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
@@ -906,8 +919,7 @@ model FactionToken {
   factionId      String    @map("faction_id") @db.Uuid
   token          String    @unique @default(uuid()) @db.Uuid
   pinHash        String    @map("pin_hash")
-  /// PIN atual em claro (6 díg.) para o admin recuperar/reenviar o acesso.
-  /// Login continua verificando por pinHash (bcrypt). Só admin lê.
+  pinCiphertext  String?   @map("pin_ciphertext")
   pinPlain       String?   @map("pin_plain") @db.VarChar(6)
   name           String
   isActive       Boolean   @default(true) @map("is_active")

@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isActiveHourlyTargetWindow } from "@/lib/hourly-target-window";
 import { TENANT_UTC_OFFSET, todayInTz } from "@/lib/tz";
 import { getActiveSectorDeficit, accumulatedGoal } from "@/lib/goal-deficits";
 import { parseCalendar, isWorkingDay, workingDaysBetween, workingDaysPerWeek } from "@/lib/work-calendar";
 import { PORTAL_ACTIVE_STATUSES } from "@/lib/shipment-status";
+import { resolveHourlyTarget, type HourlyTargetMode } from "@/lib/hourly-target-mode";
+import { getProductionAggregates, stageProduced } from "@/lib/production-aggregates";
 
 /**
  * Épico Metas/KPIs por Setor — cálculo de KPIs de um setor (= Stage) para a TV.
@@ -61,6 +64,7 @@ export interface SectorKpis {
   hero_is_hour: boolean;
   /** Meta do setor por hora útil (override manual OU base_diária ÷ horas úteis). null = não configurada. */
   hourly_target: number | null;
+  hourly_target_mode: HourlyTargetMode;
   /** Produção ponderada do setor NESTA hora (zera na virada). */
   hourly_produced: number;
   /** % da meta da hora (produzido_na_hora ÷ meta_hora). */
@@ -95,6 +99,7 @@ function monthStart(date: string): string {
   return `${date.slice(0, 7)}-01`;
 }
 
+// Legacy client-side scan aggregation retained for migration comparison only.
 interface ScanLotRow {
   lot_id: string;
   scanned_at: string;
@@ -167,7 +172,7 @@ export async function computeSectorKpis(
   // Metas do setor
   const { data: st } = await supabase
     .from("sector_targets")
-    .select("daily_target, weekly_target, monthly_target, unit, shift_start, shift_end, lunch_start, lunch_end, hourly_target")
+    .select("daily_target, weekly_target, monthly_target, unit, shift_start, shift_end, lunch_start, lunch_end, hourly_target, hourly_target_mode")
     .eq("tenant_id", tenantId)
     .eq("stage_id", stageId)
     .maybeSingle();
@@ -175,18 +180,18 @@ export async function computeSectorKpis(
   const unit = (st?.unit as string) ?? null;
 
   // Coeficientes referência×etapa
-  const { data: coeffs } = await supabase
-    .from("reference_stage_targets")
-    .select("reference, coefficient")
-    .eq("stage_id", stageId);
-  const coeffMap = new Map<string, number>(
-    (coeffs || []).map((c) => [String(c.reference), Number(c.coefficient) || 1.0]),
-  );
+  const [dayAgg, weekAgg, monthAgg, ydayAgg] = await Promise.all([
+    getProductionAggregates(supabase, { tenantId, stageId, from: dayStart(today), to: dayEnd(today) }),
+    getProductionAggregates(supabase, { tenantId, stageId, from: dayStart(wkStart), to: dayEnd(today) }),
+    getProductionAggregates(supabase, { tenantId, stageId, from: dayStart(moStart), to: dayEnd(today) }),
+    getProductionAggregates(supabase, { tenantId, stageId, from: dayStart(yesterday), to: dayEnd(yesterday) }),
+  ]);
 
   // Story 9.2 — PRODUÇÃO conta no FIM do lote (STAGE_OUT), não no início.
   // Bipagens STAGE_OUT do setor (dia, semana, mês, ontem) = produção concluída.
   // Uma query STAGE_IN do dia serve só para medir tempo (início dos lotes).
   // EXCLUI OPs canceladas (status CANCELLED) de toda agregação de produção.
+  /* Replaced by production_aggregates_v1 to avoid PostgREST row truncation.
   const [dayScans, weekScans, monthScans, dayInScans, ydayScans] = await Promise.all([
     supabase.from("scan_events").select(SCAN_SELECT_DAY).is("disregarded_at", null)
       .eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
@@ -214,6 +219,7 @@ export async function computeSectorKpis(
   // dayRows = STAGE_OUT (produção do dia); dayInRows = STAGE_IN (início, p/ tempo)
   const dayRows = (dayScans.data || []) as DayScanRow[];
   const dayInRows = (dayInScans.data || []) as Array<{ lot_id: string; scanned_at: string }>;
+  */
 
   // Épico Metas por Setor — meta efetiva com déficit PERSISTIDO (goal_deficits,
   // scope='SECTOR'). É o MESMO livro do operador; o cron (goal-closures) alimenta a
@@ -222,9 +228,9 @@ export async function computeSectorKpis(
   // de déficit é perpétua, sem a janela de 30 dias do rollover antigo).
   const persisted = await getActiveSectorDeficit(supabase, tenantId, stageId, today, cal);
   const effectiveTarget = dailyTarget != null ? accumulatedGoal(dailyTarget, persisted.daily) : null;
-  const produced = weightedSum(dayRows, coeffMap);
-  const weeklyProgress = weightedSum((weekScans.data || []) as ScanLotRow[], coeffMap);
-  const monthlyProgress = weightedSum((monthScans.data || []) as ScanLotRow[], coeffMap);
+  const produced = stageProduced(dayAgg, stageId);
+  const weeklyProgress = stageProduced(weekAgg, stageId);
+  const monthlyProgress = stageProduced(monthAgg, stageId);
 
   // Story 9.3 — distância/percentual usam a meta EFETIVA (com rollover)
   const distanceDaily = effectiveTarget && effectiveTarget > 0 ? Math.max(0, Math.round((effectiveTarget - produced) * 10) / 10) : 0;
@@ -242,6 +248,35 @@ export async function computeSectorKpis(
     : { target: dailyTarget != null ? dailyTarget * monthDays : null, progress: monthlyProgress, estimated: true };
 
   // Tempo decorrido desde a 1ª bipagem (início) do dia
+  const dayTiming = dayAgg.stage_timing.find((row) => row.stage_id === stageId);
+  const elapsedMin = dayTiming?.first_in_at
+    ? Math.max(0, Math.round((Date.now() - new Date(dayTiming.first_in_at).getTime()) / 60000))
+    : null;
+  const avgPerLotMin = dayTiming?.avg_per_lot_min == null ? null : Number(dayTiming.avg_per_lot_min);
+  const hourBucket = new Map(dayAgg.hourly_stage.filter((row) => row.stage_id === stageId).map((row) => [Number(row.hour_local), Number(row.produced)]));
+  const hourBucketYday = new Map(ydayAgg.hourly_stage.filter((row) => row.stage_id === stageId).map((row) => [Number(row.hour_local), Number(row.produced)]));
+  const nowHour = (new Date().getUTCHours() - 3 + 24) % 24;
+  const hourly: HourlyPoint[] = [];
+  for (let i = 7; i >= 0; i--) {
+    const hour = (nowHour - i + 24) % 24;
+    hourly.push({
+      label: `${String(hour).padStart(2, "0")}h`,
+      value: Math.round((hourBucket.get(hour) || 0) * 10) / 10,
+      value_prev: Math.round((hourBucketYday.get(hour) || 0) * 10) / 10,
+    });
+  }
+  const ranked = dayAgg.user_totals
+    .filter((row) => row.stage_id === stageId && row.user_id)
+    .sort((a, b) => Number(b.produced) - Number(a.produced))
+    .slice(0, 3);
+  const topProduced = Number(ranked[0]?.produced) || 0;
+  const topCollaborators: TopCollaborator[] = ranked.map((row) => ({
+    name: row.full_name || "Colaborador",
+    produced: Number(row.produced) || 0,
+    pct: topProduced > 0 ? Math.round(((Number(row.produced) || 0) / topProduced) * 100) : 0,
+  }));
+
+  /* Legacy client-side timing/hour/user aggregation removed in favor of production_aggregates_v1.
   let elapsedMin: number | null = null;
   if (dayInRows.length > 0) {
     const firstAt = dayInRows.reduce((min, r) => (r.scanned_at < min ? r.scanned_at : min), dayInRows[0].scanned_at);
@@ -344,6 +379,7 @@ export async function computeSectorKpis(
     produced: r.produced,
     pct: topProduced > 0 ? Math.round((r.produced / topProduced) * 100) : 0,
   }));
+  */
 
   // ── Frente 3: META POR HORA (motivacional; deriva da BASE; NÃO toca goal_deficits) ──
   const hhmm = (v: unknown): number | null => {
@@ -376,13 +412,14 @@ export async function computeSectorKpis(
 
   // Meta/hora = override manual do setor OU meta BASE diária ÷ horas úteis (NÃO a acumulada).
   const baseDaily = (st?.daily_target as number) ?? null;
-  const manualHourly = (st?.hourly_target as number | null) ?? null;
-  const hourlyTarget =
-    manualHourly != null
-      ? manualHourly
-      : baseDaily != null && workingHours > 0
-        ? Math.round(baseDaily / workingHours)
-        : null;
+  const resolvedHourly = resolveHourlyTarget({
+    mode: st?.hourly_target_mode,
+    manualTarget: st?.hourly_target,
+    baseDailyTarget: baseDaily,
+    usefulHours: workingHours,
+    globalFeatureEnabled: hourlyEnabled,
+  });
+  const hourlyTarget = resolvedHourly.target;
 
   const nowMinutes = nowHour * 60 + new Date().getUTCMinutes();
   const hourlyWindowActive = isActiveHourlyTargetWindow(
@@ -393,7 +430,7 @@ export async function computeSectorKpis(
     jLunchEnd,
   );
   const heroIsHour =
-    hourlyEnabled &&
+    resolvedHourly.effectiveMode !== "NONE" &&
     isWorkingDay(today, cal) &&
     hourlyTarget != null &&
     hourlyTarget > 0 &&
@@ -432,6 +469,7 @@ export async function computeSectorKpis(
     top_collaborators: topCollaborators,
     hero_is_hour: heroIsHour,
     hourly_target: heroIsHour ? hourlyTarget : null,
+    hourly_target_mode: resolvedHourly.effectiveMode,
     hourly_produced: hourlyProduced,
     hourly_percent: hourlyPercent,
     hours_hit_today: hoursHitToday,

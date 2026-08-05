@@ -7,11 +7,15 @@ export async function GET() {
   const auth = await withAuth();
   if (auth.error) return auth.error;
 
-  const { supabase } = auth;
+  const { supabase, user } = auth;
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
 
   const { data: stages, error } = await supabase
     .from("stages")
     .select("*")
+    .eq("tenant_id", t.tenantId)
+    .eq("is_active", true)
     .order("order_index", { ascending: true });
 
   if (error) return dbError("GET /api/settings/stages", error);
@@ -42,6 +46,8 @@ export async function POST(request: Request) {
   const { data: existingStage } = await supabase
     .from("stages")
     .select("id")
+    .eq("tenant_id", t.tenantId)
+    .eq("is_active", true)
     .ilike("name", body.name)
     .limit(1)
     .maybeSingle();
@@ -54,6 +60,7 @@ export async function POST(request: Request) {
   const { data: existing } = await supabase
     .from("stages")
     .select("order_index")
+    .eq("tenant_id", t.tenantId)
     .order("order_index", { ascending: false })
     .limit(1);
 

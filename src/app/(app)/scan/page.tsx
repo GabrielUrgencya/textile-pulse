@@ -13,6 +13,7 @@ import {
   Loader2,
   Volume2,
   VolumeX,
+  Camera,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/page-header";
@@ -20,6 +21,7 @@ import { LisionCard, LisionCardHeader } from "@/components/ui/lision-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { MetricBox } from "@/components/ui/metric-box";
 import { DefectModal } from "@/components/defects/DefectModal";
+import { CameraScanner } from "@/components/scan/CameraScanner";
 
 /* ────────────── Types ────────────── */
 
@@ -139,6 +141,7 @@ function ScanPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [sessionStats, setSessionStats] = useState({ total: 0, success: 0, warnings: 0, errors: 0 });
   const [defectModalOpen, setDefectModalOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<number>(0);
@@ -362,6 +365,18 @@ function ScanPage() {
       {/* Header */}
       <PageHeader eyebrow="Bipagem" title="Scan de Lotes">
         <div className="flex items-center gap-2">
+          {/* Frente 5: bipagem por câmera do celular (mesmo fluxo do leitor) */}
+          <button
+            onClick={() => {
+              getAudioContext(); // libera o beep no primeiro gesto do usuário
+              setCameraOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border/40 hover:bg-secondary/50 transition-colors"
+            title="Ler código com a câmera do celular"
+          >
+            <Camera className="size-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Câmera</span>
+          </button>
           {/* Sound toggle */}
           <button
             onClick={() => {
@@ -687,6 +702,14 @@ function ScanPage() {
           </LisionCard>
         </motion.div>
       )}
+
+      {/* Frente 5: leitor por câmera — decodifica Code128 e cai no MESMO handleScan */}
+      <CameraScanner
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onDecode={handleScan}
+        paused={scanning}
+      />
 
       {/* Defect Modal */}
       {lastResult?.lotId && (

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_UTC_OFFSET } from "@/lib/tz";
 import { getActiveDeficits, accumulatedGoal } from "@/lib/goal-deficits";
 import { getTenantCalendar, workingDaysBetween, workingDaysPerWeek, DEFAULT_CALENDAR } from "@/lib/work-calendar";
+import { getProductionAggregates, userProduced } from "@/lib/production-aggregates";
 
 export interface PeriodProgress {
   target: number | null;
@@ -56,6 +57,7 @@ function monthEnd(date: string): string {
   return `${date.slice(0, 7)}-${String(last).padStart(2, "0")}`;
 }
 
+/* Legacy client-side scan aggregation retained for migration comparison only.
 interface ScanRow {
   scanned_at: string;
   lots:
@@ -75,6 +77,7 @@ function weightedSum(rows: ScanRow[], coeffMap: Map<string, number>): number {
   }
   return Math.round(total * 10) / 10;
 }
+*/
 
 /**
  * Story 8.21 + 8.37 — Meta personalizada do usuário logado (por setor/etapa).
@@ -158,22 +161,21 @@ export async function computeUserMeta(
   if (unit === null) unit = (st?.unit as string) ?? null;
 
   // Coeficientes por referência para a etapa
-  const { data: coeffs } = await supabase
-    .from("reference_stage_targets")
-    .select("reference, coefficient")
-    .eq("stage_id", stageId);
-  const coeffMap = new Map<string, number>(
-    (coeffs || []).map((c) => [String(c.reference), Number(c.coefficient) || 1.0]),
-  );
-
   // Janelas de semana/mês ancoradas em `to`
   const wkStart = weekStart(to);
   const moStart = monthStart(to);
   const moEnd = monthEnd(to);
 
+  if (!stageRow?.tenant_id) throw new Error("Tenant is required for canonical user production aggregation");
+  const [dayAgg, weekAgg, monthAgg] = await Promise.all([
+    getProductionAggregates(supabase, { tenantId: stageRow.tenant_id as string, stageId, userId, from: fromStart, to: toEnd }),
+    getProductionAggregates(supabase, { tenantId: stageRow.tenant_id as string, stageId, userId, from: dayStartAbs(wkStart), to: dayEndAbs(to) }),
+    getProductionAggregates(supabase, { tenantId: stageRow.tenant_id as string, stageId, userId, from: dayStartAbs(moStart), to: dayEndAbs(to) }),
+  ]);
+
   // Bipagens STAGE_IN do usuário: período (from..to), semana, mês + STAGE_OUT do dia
-  const SEL = "scanned_at, lots!inner(quantity, production_orders!inner(reference))";
   // EXCLUI OPs canceladas (status CANCELLED) da meta individual.
+  /* Replaced by production_aggregates_v1.
   const [dayRes, weekRes, monthRes, outRes] = await Promise.all([
     supabase.from("scan_events").select(SEL).is("disregarded_at", null)
       .eq("user_id", userId).eq("stage_id", stageId).eq("event_type", "STAGE_OUT")
@@ -192,8 +194,10 @@ export async function computeUserMeta(
       .gte("scanned_at", fromStart).lte("scanned_at", toEnd),
   ]);
 
-  const dayRows = (dayRes.data || []) as ScanRow[];
-  const progress = weightedSum(dayRows, coeffMap);
+  */
+  const dayRows: Array<{ scanned_at: string }> = [];
+  const outRes = { data: [] as Array<{ lot_id: string; scanned_at: string }> };
+  const progress = userProduced(dayAgg, stageId, userId);
 
   // Frente 2.5 — meta efetiva do operador = déficit PERSISTIDO (goal_deficits),
   // MESMO motor do setor: começa zerado (sem fechamento → parte da base). O rollover
@@ -210,8 +214,8 @@ export async function computeUserMeta(
   const monthlyBase = (st?.monthly_target as number) ?? (target != null ? target * workingDaysBetween(moStart, moEnd, cal) : null);
   const weeklyEstimated = (st?.weekly_target as number) == null;
   const monthlyEstimated = (st?.monthly_target as number) == null;
-  const weeklyProgress = weightedSum((weekRes.data || []) as ScanRow[], coeffMap);
-  const monthlyProgress = weightedSum((monthRes.data || []) as ScanRow[], coeffMap);
+  const weeklyProgress = userProduced(weekAgg, stageId, userId);
+  const monthlyProgress = userProduced(monthAgg, stageId, userId);
   const weekly: PeriodProgress = {
     target: weeklyBase != null ? accumulatedGoal(weeklyBase, persisted.weekly) : null,
     progress: weeklyProgress,
@@ -224,7 +228,10 @@ export async function computeUserMeta(
   };
 
   // Tempo decorrido desde a 1ª bipagem do dia
-  let elapsedMin: number | null = null;
+  const userTiming = dayAgg.user_timing.find((row) => row.stage_id === stageId && row.user_id === userId);
+  let elapsedMin: number | null = userTiming?.first_in_at
+    ? Math.max(0, Math.round((Date.now() - new Date(userTiming.first_in_at).getTime()) / 60000))
+    : null;
   if (dayRows.length > 0) {
     const firstAt = dayRows.reduce((min, r) => (r.scanned_at < min ? r.scanned_at : min), dayRows[0].scanned_at);
     elapsedMin = Math.max(0, Math.round((Date.now() - new Date(firstAt).getTime()) / 60000));
@@ -232,7 +239,7 @@ export async function computeUserMeta(
 
   // Tempo médio por lote do dia (pareia 1º IN com 1º OUT por lote — IN já vem do dayRes,
   // mas precisamos do lot_id; refazemos leitura leve com lot_id para o pareamento).
-  let avgPerLotMin: number | null = null;
+  let avgPerLotMin: number | null = userTiming?.avg_per_lot_min == null ? null : Number(userTiming.avg_per_lot_min);
   const outByLot = new Map<string, string>();
   for (const o of (outRes.data || []) as Array<{ lot_id: string; scanned_at: string }>) {
     if (!outByLot.has(o.lot_id) || o.scanned_at < (outByLot.get(o.lot_id) as string)) outByLot.set(o.lot_id, o.scanned_at);

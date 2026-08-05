@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { localDayStart, localDayEnd } from "@/lib/tz";
+import { getProductionAggregates } from "@/lib/production-aggregates";
 
 export interface DateRange {
   from: string; // YYYY-MM-DD
@@ -61,6 +62,8 @@ export async function computeKpis(
   // Story 8.29: limites do dia LOCAL (fuso do tenant), não UTC.
   const toEnd = localDayEnd(to);
   const fromStart = localDayStart(from);
+  if (!tenantId) throw new Error("tenantId is required for canonical production aggregation");
+  const aggregates = await getProductionAggregates(supabase, { tenantId, from: fromStart, to: toEnd });
 
   // Run all queries in parallel — 3 lightweight COUNTs + 2 RPCs + 1 COUNT
   const [
@@ -154,48 +157,8 @@ export async function computeKpis(
   // Conta cada lote uma única vez (na entrada do estoque), não por bipagem/etapa.
   // Escopo de tenant: "ESTOQUE" existe em cada tenant — sem o filtro, estoqueIds
   // pegaria a etapa de todos os tenants e a produção somaria dados de outro tenant.
-  let estoqueQuery = supabase.from("stages").select("id").eq("name", "ESTOQUE");
-  if (tenantId) estoqueQuery = estoqueQuery.eq("tenant_id", tenantId);
-  const { data: estoqueStages } = await estoqueQuery;
-  const estoqueIds = (estoqueStages || []).map((s) => s.id as string);
-
-  let producedPieces = 0;
-  let weightedPieces = 0;
-  if (estoqueIds.length > 0) {
-    const { data: stockScans } = await supabase
-      .from("scan_events")
-      .select(`
-        lot_id,
-        lots!inner (
-          quantity,
-          production_orders!inner ( meta_coefficient, status )
-        )
-      `).is("disregarded_at", null)
-      .eq("event_type", "STAGE_OUT")
-      .neq("lots.production_orders.status", "CANCELLED")
-      .in("stage_id", estoqueIds)
-      .gte("scanned_at", fromStart)
-      .lte("scanned_at", toEnd);
-
-    const seenLots = new Set<string>();
-    for (const scan of stockScans || []) {
-      const lotId = scan.lot_id as string;
-      if (seenLots.has(lotId)) continue; // lote entra no estoque uma vez
-      seenLots.add(lotId);
-      const lotRel = scan.lots as unknown;
-      const lot = (Array.isArray(lotRel) ? lotRel[0] : lotRel) as {
-        quantity: number | string | null;
-        production_orders: { meta_coefficient: string | number | null } | { meta_coefficient: string | number | null }[];
-      } | null;
-      const qty = Number(lot?.quantity) || 0;
-      const poRel = lot?.production_orders;
-      const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { meta_coefficient: string | number | null } | null;
-      const coeff = Number(po?.meta_coefficient) || 1.0;
-      producedPieces += qty;
-      weightedPieces += qty * coeff;
-    }
-    weightedPieces = Math.round(weightedPieces * 10) / 10;
-  }
+  const producedPieces = Number(aggregates.stock.pieces) || 0;
+  const weightedPieces = Number(aggregates.stock.weighted) || 0;
 
   const weightedPoints: number | undefined = useWeightedMeta ? weightedPieces : undefined;
   const producedToday = useWeightedMeta ? weightedPieces : producedPieces;
@@ -204,41 +167,7 @@ export async function computeKpis(
   // STAGE_OUT ponderado por reference_stage_targets, dedupe por lote POR etapa,
   // CANCELLED fora, escopado por tenant. Distinto de produced_today (throughput ESTOQUE):
   // este sobe assim que qualquer setor bipa a saída de um lote.
-  let producedTodaySectors = 0;
-  {
-    const { data: rst } = await supabase
-      .from("reference_stage_targets")
-      .select("stage_id, reference, coefficient");
-    const coeffMap = new Map<string, number>();
-    for (const c of rst || []) coeffMap.set(`${c.stage_id}|${c.reference}`, Number(c.coefficient) || 1);
-
-    let outQ = supabase
-      .from("scan_events")
-      .select("lot_id, stage_id, lots!inner(quantity, production_orders!inner(reference, status, tenant_id))").is("disregarded_at", null)
-      .eq("event_type", "STAGE_OUT")
-      .neq("lots.production_orders.status", "CANCELLED")
-      .gte("scanned_at", fromStart)
-      .lte("scanned_at", toEnd);
-    if (tenantId) outQ = outQ.eq("lots.production_orders.tenant_id", tenantId);
-    const { data: outScans } = await outQ;
-
-    const seenSectorLots = new Set<string>();
-    for (const r of (outScans || []) as Array<{ lot_id: string; stage_id: string | null; lots: unknown }>) {
-      const key = `${r.stage_id}|${r.lot_id}`;
-      if (seenSectorLots.has(key)) continue; // dedupe por (etapa, lote)
-      seenSectorLots.add(key);
-      const lot = (Array.isArray(r.lots) ? r.lots[0] : r.lots) as {
-        quantity: number | string | null;
-        production_orders: { reference: string | null } | { reference: string | null }[];
-      } | null;
-      const qty = Number(lot?.quantity) || 0;
-      const poRel = lot?.production_orders;
-      const po = (Array.isArray(poRel) ? poRel[0] : poRel) as { reference: string | null } | null;
-      const coeff = coeffMap.get(`${r.stage_id}|${po?.reference ?? ""}`) ?? 1;
-      producedTodaySectors += qty * coeff;
-    }
-    producedTodaySectors = Math.round(producedTodaySectors * 10) / 10;
-  }
+  const producedTodaySectors = Math.round(aggregates.stage_totals.reduce((sum, row) => sum + (Number(row.produced) || 0), 0) * 10) / 10;
 
   return {
     produced_today: producedToday,

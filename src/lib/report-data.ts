@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { localDayStart, localDayEnd, todayInTz } from "@/lib/tz";
 import { getActiveDeficits, getActiveSectorDeficit, accumulatedGoal } from "@/lib/goal-deficits";
 import { getTenantCalendar, workingDaysBetween } from "@/lib/work-calendar";
+import { getProductionAggregates, stageProduced, userProduced } from "@/lib/production-aggregates";
 
 /**
  * Frente 1 — Motor de dados do RELATÓRIO de produção.
@@ -64,6 +65,8 @@ function pickPo(lot: LotRel | null) {
 }
 
 /** Σ ponderada por reference_stage_targets (dedupe por lote) de STAGE_OUT numa etapa/período. */
+// Legacy row-by-row implementation retained for migration comparison only.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function stageWeightedProduction(
   supabase: SupabaseClient,
   stageId: string,
@@ -101,6 +104,7 @@ async function stageWeightedProduction(
 }
 
 /** Produção de peças que ENTRARAM no ESTOQUE (mesma métrica do card do dashboard). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function estoqueProduction(supabase: SupabaseClient, tenantId: string, from: string, to: string): Promise<number> {
   const { data: est } = await supabase
     .from("stages")
@@ -139,6 +143,11 @@ export async function computeProductionReport(
   const today = todayInTz();
   const cal = await getTenantCalendar(supabase, tenantId);
   const businessDays = Math.max(1, workingDaysBetween(from, to, cal));
+  const aggregates = await getProductionAggregates(supabase, {
+    tenantId,
+    from: localDayStart(from),
+    to: localDayEnd(to),
+  });
 
   // Empresa
   const { data: tenant } = await supabase.from("tenants").select("name").eq("id", tenantId).maybeSingle();
@@ -155,7 +164,7 @@ export async function computeProductionReport(
     const nome = stageRel?.display_name || stageRel?.name || "Setor";
     const base = Number(st.daily_target) || 0;
     const metaBase = base * businessDays;
-    const realizado = await stageWeightedProduction(supabase, st.stage_id as string, from, to);
+    const realizado = stageProduced(aggregates, st.stage_id as string);
     const persisted = await getActiveSectorDeficit(supabase, tenantId, st.stage_id as string, today, cal);
     const deficit = Math.round(persisted.daily ?? 0);
     const meta = accumulatedGoal(metaBase, deficit); // meta EFETIVA (base do período + déficit)
@@ -206,7 +215,7 @@ export async function computeProductionReport(
     if (!stageId || base == null) continue; // não-produtivo (sem meta) fica fora do relatório de operadores
     const stageRow = (stages || []).find((s) => s.id === stageId);
     const setorNome = (stageRow?.display_name as string) || (stageRow?.name as string) || "—";
-    const realizado = await stageWeightedProduction(supabase, stageId, from, to, p.id as string);
+    const realizado = userProduced(aggregates, stageId, p.id as string);
     const metaBase = base * businessDays;
     const persisted = await getActiveDeficits(supabase, p.id as string, today, cal);
     const deficit = Math.round(persisted.daily ?? 0);
@@ -224,7 +233,7 @@ export async function computeProductionReport(
   operadores.sort((a, b) => b.realizado - a.realizado);
 
   // Resumo
-  const producao_total = await estoqueProduction(supabase, tenantId, from, to);
+  const producao_total = Number(aggregates.stock.weighted) || 0;
   const { count: defeitos } = await supabase
     .from("defect_records")
     .select("id", { count: "exact", head: true })

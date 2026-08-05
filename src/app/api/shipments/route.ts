@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { can } from "@/lib/effective-permissions";
@@ -97,22 +96,25 @@ export async function POST(request: Request) {
   const t = requireTenantId(user);
   if (t.error) return t.error;
 
-  const lotIds: string[] = Array.from(new Set(body.lotIds as string[]));
-  const sentAt = new Date().toISOString();
+  if (!Array.isArray(body.lotIds) || body.lotIds.some((id: unknown) => typeof id !== "string" || !id)) {
+    return NextResponse.json({ error: "lotIds deve conter identificadores vÃ¡lidos" }, { status: 400 });
+  }
+  if (new Set(body.lotIds).size !== body.lotIds.length) {
+    return NextResponse.json({ error: "lotIds nÃ£o pode conter lotes duplicados" }, { status: 400 });
+  }
+  const lotIds = body.lotIds as string[];
 
   // Frente 2: preço por peça definido na remessa (sobrescreve o cadastro).
   // Ausente/negativo/NaN → null: cai no fallback de factions.price_per_piece no
   // recebimento. money = 2 casas para bater com o resto do financeiro.
   const rawPrice = Number(body.pricePerPiece);
   const pricePerPiece = Number.isFinite(rawPrice) && rawPrice >= 0 ? rawPrice : null;
-  const money = (x: number) => Math.round(x * 100) / 100;
 
   // Frente 1: agrupar as remessas deste envio sob um group_id + UM código
   // compartilhado (a facção lida com um único código para o conjunto). Só faz
   // sentido com 2+ lotes; com 1 lote é idêntico ao individual. grouped=false
   // (ou ausente) preserva o comportamento atual (um código por lote).
   const grouped = body.grouped === true && lotIds.length > 1;
-  const groupId = grouped ? randomUUID() : null;
 
   // Quantidades dos lotes (escopo garantido: só lotes de OPs do tenant).
   // F1 barreira 2: status/op_number para revalidar elegibilidade no submit —
@@ -171,8 +173,9 @@ export async function POST(request: Request) {
     }
   }
 
-  const rows: Record<string, unknown>[] = [];
-  for (const lot of lots) {
+  const deliveryCodes: Array<string | null> = [];
+  const deliveryExpiryTimestamps: Array<string | null> = [];
+  for (let index = 0; index < lots.length; index += 1) {
     let deliveryCode: string | null = sharedCode;
     let deliveryCodeExpiresAt: string | null = sharedCodeExpiresAt;
     if (!grouped) {
@@ -184,13 +187,14 @@ export async function POST(request: Request) {
         // Non-blocking: remessa procede sem código de entrega
       }
     }
-    const qty = lot.quantity || 0;
-    rows.push({
+    deliveryCodes.push(deliveryCode);
+    deliveryExpiryTimestamps.push(deliveryCodeExpiresAt);
+    /* rows.push({
       tenant_id: t.tenantId,
       faction_id: body.factionId,
       lot_id: lot.id,
       status: "SENT",
-      quantity_sent: qty,
+      quantity_sent: lot.quantity || 0,
       // Frente 1: id do grupo (null = remessa individual).
       shipment_group_id: groupId,
       // Frente 2: valor da remessa = preço × quantidade. null quando não há
@@ -210,19 +214,38 @@ export async function POST(request: Request) {
       notes: body.notes || null,
       delivery_code: deliveryCode,
       delivery_code_expires_at: deliveryCodeExpiresAt,
-    });
+    }); */
   }
 
-  const { data: created, error } = await supabase
-    .from("faction_shipments")
-    .insert(rows)
-    .select("id, lot_id, delivery_code");
-
-  if (error) return dbError("POST /api/shipments", error);
+  const actorName =
+    (user as { profile?: { full_name?: string | null } }).profile?.full_name ??
+    (user as { email?: string | null }).email ??
+    null;
+  const { data: result, error } = await supabase.rpc("create_faction_shipments_atomic_v1", {
+    p_faction_id: body.factionId,
+    p_lot_ids: lotIds,
+    p_expected_return: localDayEnd(String(body.expectedReturn).slice(0, 10)),
+    p_price_per_piece: pricePerPiece,
+    p_notes: body.notes || null,
+    p_grouped: grouped,
+    p_delivery_codes: deliveryCodes,
+    p_delivery_code_expires_at: deliveryExpiryTimestamps,
+    p_actor_name: actorName,
+  });
+  if (error) {
+    const message = error.message || "Falha ao criar remessa";
+    const status = /LOT_ALREADY_IN_ACTIVE_SHIPMENT|SHIPMENT_STATUS_CONFLICT/i.test(message) ? 409 :
+      /LOT_PO_NOT_ELIGIBLE|LOT_NOT_FOUND|FACTION_NOT_FOUND|INVALID_/i.test(message) ? 422 : 500;
+    return NextResponse.json({ error: message }, { status });
+  }
+  const created = Array.isArray((result as { shipments?: unknown[] } | null)?.shipments)
+    ? (result as { shipments: Array<{ id: string; lot_id: string; delivery_code: string | null }> }).shipments
+    : [];
 
   // Junção shipment_lots: o /api/factions/[id] liga defeitos aos lotes por aqui.
   // 1 remessa = 1 lote, então cada remessa gera 1 linha na junção.
   if (created && created.length > 0) {
+    /* Atomic RPC already writes shipment_lots, CREATED events and the audit row.
     const junction = created.map((s) => {
       const lot = lots.find((l) => l.id === (s.lot_id as string));
       return { shipment_id: s.id, lot_id: s.lot_id, quantity: lot?.quantity || 0 };
@@ -256,6 +279,7 @@ export async function POST(request: Request) {
     }
 
     // Notificação estratégica: nova remessa disponível para a facção.
+    */
     const prazo = new Date(localDayEnd(String(body.expectedReturn).slice(0, 10))).toLocaleDateString("pt-BR", { timeZone: TENANT_TZ });
     for (const s of created) {
       const lot = lots.find((l) => l.id === (s.lot_id as string));
@@ -272,7 +296,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(
-    { data: { shipments: created, count: created?.length || 0 } },
+    { data: { shipments: created, count: created.length, shipment_group_id: (result as { shipment_group_id?: string | null } | null)?.shipment_group_id ?? null } },
     { status: 201 },
   );
 }

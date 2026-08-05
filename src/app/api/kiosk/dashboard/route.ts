@@ -190,6 +190,7 @@ export async function GET(request: Request) {
       .from("stages")
       .select("id, name, display_name, order_index, color")
       .eq("tenant_id", tenantId)
+      .eq("is_active", true)
       .order("order_index", { ascending: true }),
 
     // Lots with current stage (for lots_by_stage grouping)

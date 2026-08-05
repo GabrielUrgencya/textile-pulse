@@ -1,0 +1,2 @@
+-- Deliberately non-destructive. Restoring AUTO inferred from a historical
+-- DEFAULT true would recreate the defect fixed by this append-only migration.

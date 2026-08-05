@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth-middleware";
 import { can } from "@/lib/effective-permissions";
-import { dbError } from "@/lib/api-helpers";
 import { validateDeliveryCode } from "@/lib/delivery-code";
-import { logShipmentEvent, actorNameFromUser } from "@/lib/shipment-events";
+import { actorNameFromUser } from "@/lib/shipment-events";
 
 /**
  * PATCH /api/shipments/[id]/hold-inspection — Frente 3.
@@ -82,6 +81,18 @@ export async function PATCH(
     );
   }
 
+  const { data: result, error: transitionError } = await supabase.rpc("hold_shipment_inspection_v1", {
+    p_shipment_id: id,
+    p_actor_name: actorNameFromUser(user),
+  });
+  if (transitionError) {
+    return NextResponse.json(
+      { error: "INVALID_STATUS", message: transitionError.message || "Falha ao receber a remessa para conferÃªncia" },
+      { status: 409 },
+    );
+  }
+
+  /* Legacy multi-write implementation replaced by the atomic RPC.
   const { error: updateError } = await supabase
     .from("faction_shipments")
     .update({
@@ -105,5 +116,6 @@ export async function PATCH(
     });
   }
 
-  return NextResponse.json({ data: { status: "AWAITING_INSPECTION" } });
+  */
+  return NextResponse.json({ data: result ?? { status: "AWAITING_INSPECTION" } });
 }

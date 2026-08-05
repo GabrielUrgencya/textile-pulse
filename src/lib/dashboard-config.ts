@@ -49,6 +49,8 @@ export interface KPIWidget {
 export interface SectorDashboardConfig {
   sectorId: string;
   layout: KPIWidget[];
+  /** @deprecated Legado com default histórico true. Somente leitura; não decide meta/hora. */
+  hourlyGoalEnabled: boolean;
   updatedAt: string | null;
   updatedBy: string | null;
   isDefault: boolean;
@@ -173,18 +175,21 @@ export async function getSectorDashboardConfig(
 ): Promise<SectorDashboardConfig> {
   const { data } = await supabase
     .from("sector_dashboard_configs")
-    .select("layout, updated_at, updated_by")
+    .select("layout, hourly_goal_enabled, updated_at, updated_by")
     .eq("tenant_id", tenantId)
     .eq("stage_id", stageId)
     .maybeSingle();
 
   if (!data) {
-    return { sectorId: stageId, layout: DEFAULT_SECTOR_LAYOUT, updatedAt: null, updatedBy: null, isDefault: true };
+    // Valor legado exposto apenas para compatibilidade; não decide o contrato da meta/hora.
+    return { sectorId: stageId, layout: DEFAULT_SECTOR_LAYOUT, hourlyGoalEnabled: false, updatedAt: null, updatedBy: null, isDefault: true };
   }
   const { layout, usedDefault } = normalizeLayout(data.layout);
   return {
     sectorId: stageId,
     layout,
+    // Deprecated: leitura compatível, sem consumidor funcional na TV/KPI.
+    hourlyGoalEnabled: data.hourly_goal_enabled === true,
     updatedAt: (data.updated_at as string) ?? null,
     updatedBy: (data.updated_by as string) ?? null,
     isDefault: usedDefault,

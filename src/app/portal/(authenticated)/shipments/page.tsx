@@ -221,10 +221,14 @@ function ShipmentCard({ s, view }: { s: Shipment; view: "active" | "history" }) 
 /** Frente 1: card de um GRUPO — a facção vê o conjunto num card, com os N lotes. */
 function GroupCard({ shipments, view }: { shipments: Shipment[]; view: "active" | "history" }) {
   const total = shipments.reduce((sum, s) => sum + s.quantity_sent, 0);
-  const prazo = shipments[0]?.expected_return_at;
-  // Status do grupo: o mais "urgente" costuma bastar; usamos o do primeiro
-  // (todas as remessas do grupo compartilham o mesmo momento do fluxo).
-  const status = shipments[0]?.status;
+  const prazo = shipments
+    .map((shipment) => shipment.expected_return_at)
+    .filter((value): value is string => Boolean(value))
+    .sort()[0];
+  const statusCounts = Array.from(shipments.reduce((counts, shipment) => {
+    counts.set(shipment.status, (counts.get(shipment.status) || 0) + 1);
+    return counts;
+  }, new Map<string, number>()));
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-start justify-between">
@@ -232,9 +236,13 @@ function GroupCard({ shipments, view }: { shipments: Shipment[]; view: "active" 
           <p className="text-[14px] font-semibold">Remessa agrupada · {shipments.length} lotes</p>
           <p className="text-[12px] text-muted-foreground">{total.toLocaleString("pt-BR")} peças no total</p>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className={`h-2 w-2 rounded-full ${STATUS_COLORS[status] || "bg-muted-foreground"}`} />
-          <span className="text-[12px] text-muted-foreground">{STATUS_LABELS[status] || status}</span>
+        <div className="flex max-w-[55%] flex-wrap justify-end gap-x-2 gap-y-1">
+          {statusCounts.map(([status, count]) => (
+            <span key={status} className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <span className={`h-2 w-2 rounded-full ${STATUS_COLORS[status] || "bg-muted-foreground"}`} />
+              {count}× {STATUS_LABELS[status] || status}
+            </span>
+          ))}
         </div>
       </div>
       {prazo && (

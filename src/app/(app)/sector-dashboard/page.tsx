@@ -1,163 +1,120 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  DndContext, PointerSensor, useSensor, useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
-import { Lock, Save, Eye, X, Loader2, Tv } from "lucide-react";
+import { Lock, Save, Loader2, Tv } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/page-header";
-import { LisionCard } from "@/components/ui/lision-card";
 import { useUserProfile } from "@/hooks/use-user-profile";
 import { usePermissions } from "@/hooks/use-permissions";
-import { BentoGrid, BentoCell } from "@/components/ui/bento-grid";
-import { WidgetRenderer } from "@/components/tv/widgets/WidgetRenderer";
-import { SectorSidebar, type BuilderStage } from "@/components/dashboard-builder/SectorSidebar";
-import { WidgetLibrary } from "@/components/dashboard-builder/WidgetLibrary";
-import { BuilderCanvas } from "@/components/dashboard-builder/BuilderCanvas";
-import { WidgetInspector } from "@/components/dashboard-builder/WidgetInspector";
 import {
-  makeWidget,
   isFactionPanelVisible,
   setFactionPanel,
+  DEFAULT_SECTOR_LAYOUT,
   type KPIWidget,
-  type WidgetCatalogEntry,
 } from "@/lib/dashboard-config";
-import type { SectorKpis } from "@/lib/sector-kpis";
 import { cn } from "@/lib/utils";
 
-/* Dados de mock p/ preview WYSIWYG (mesmo renderer da TV). */
-const MOCK_KPIS: SectorKpis = {
-  stage_id: "preview",
-  stage_name: "Pré-visualização",
-  unit: "pç",
-  produced: 1240,
-  daily_target: 1500,
-  distance_daily: 260,
-  percent: 82.7,
-  weekly: { target: 7500, progress: 5200, estimated: false },
-  monthly: { target: 30000, progress: 18400, estimated: true },
-  elapsed_since_first_scan_min: 312,
-  avg_per_lot_min: 18.5,
-  faction_status: {
-    status: "at_risk",
-    faction_name: "Facção Modelo",
-    expected_return_at: new Date(Date.now() + 18 * 3600e3).toISOString(),
-    hours_remaining: 18,
-  },
-  hourly: [
-    { label: "08h", value: 120 }, { label: "09h", value: 180 }, { label: "10h", value: 240 },
-    { label: "11h", value: 210 }, { label: "12h", value: 90 }, { label: "13h", value: 160 },
-    { label: "14h", value: 220 }, { label: "15h", value: 200 },
-  ],
-  top_collaborators: [
-    { name: "Ana Souza", produced: 420, pct: 100 },
-    { name: "Bruno Lima", produced: 360, pct: 86 },
-    { name: "Carla Dias", produced: 290, pct: 69 },
-  ],
-  hero_is_hour: false,
-  hourly_target: null,
-  hourly_produced: 0,
-  hourly_percent: 0,
-  hours_hit_today: 0,
-  working_hours_today: 0,
-  hour_window_label: "",
-};
+/**
+ * Config. da TV (redesign): a TV nova ("Instrumento") usa layout FIXO em todos os
+ * setores de propósito (unidade visual). A única coisa editável por setor são os
+ * toggles que a TV REALMENTE aplica — e cada um obedece de verdade:
+ *   • Status da Facção (presença do widget faccao_status no layout).
+ * O builder antigo de widgets foi aposentado (a TV o ignorava → "salvava e não
+ * aplicava"). Nada de tela que mente: só mostramos o que a TV honra.
+ */
 
-export default function SectorDashboardBuilderPage() {
+interface Stage {
+  id: string;
+  name: string;
+  display_name?: string;
+}
+
+function Switch({ checked, onClick, label }: { checked: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors",
+        checked ? "border-transparent bg-foreground" : "border-border bg-secondary",
+      )}
+    >
+      <span className={cn("size-4 rounded-full bg-background transition-transform", checked ? "translate-x-6" : "translate-x-1")} />
+    </button>
+  );
+}
+
+export default function SectorDashboardConfigPage() {
   const { profile, isLoading: profileLoading } = useUserProfile();
   const { can: hasPerm, isLoading: permsLoading } = usePermissions();
   const tvAllowed = permsLoading ? profile?.role === "ADMIN" : hasPerm("tv:config");
 
-  const [stages, setStages] = useState<BuilderStage[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
   const [stageId, setStageId] = useState<string | null>(null);
+  // Guardamos o layout só para preservar o widget de facção (a TV lê a presença dele).
   const [layout, setLayout] = useState<KPIWidget[]>([]);
-  const [savedJson, setSavedJson] = useState<string>("[]");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [factionOn, setFactionOn] = useState(true);
+  const [saved, setSaved] = useState<string>("");
   const [loadingCfg, setLoadingCfg] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [preview, setPreview] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [openingTv, setOpeningTv] = useState(false);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const dirty = useMemo(() => JSON.stringify(layout) !== savedJson, [layout, savedJson]);
+  const snapshot = useMemo(() => JSON.stringify({ factionOn }), [factionOn]);
+  const dirty = saved !== "" && snapshot !== saved;
 
-  // Carrega setores
+  // Setores (ativos)
   useEffect(() => {
     fetch("/api/settings/stages", { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((j) => {
-        const list = (j.data || []) as BuilderStage[];
+        const list = (j.data || []) as Stage[];
         setStages(list);
-        if (list.length && !stageId) setStageId(list[0].id);
+        setStageId((cur) => cur ?? (list[0]?.id ?? null));
       })
       .catch(() => setStages([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Carrega config do setor selecionado
+  // Config do setor selecionado
   useEffect(() => {
     if (!stageId) return;
     setLoadingCfg(true);
-    setSelectedId(null);
+    setFeedback(null);
     fetch(`/api/sector-dashboard-config?stage_id=${stageId}`, { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
-        const l = (j?.data?.layout || []) as KPIWidget[];
+        const l = (j?.data?.layout || DEFAULT_SECTOR_LAYOUT) as KPIWidget[];
+        const fOn = isFactionPanelVisible(l);
         setLayout(l);
-        setSavedJson(JSON.stringify(l));
+        setFactionOn(fOn);
+        setSaved(JSON.stringify({ factionOn: fOn }));
       })
-      .catch(() => { setLayout([]); setSavedJson("[]"); })
+      .catch(() => {
+        setLayout(DEFAULT_SECTOR_LAYOUT);
+        setFactionOn(true);
+        setSaved(JSON.stringify({ factionOn: true }));
+      })
       .finally(() => setLoadingCfg(false));
   }, [stageId]);
-
-  const addWidget = useCallback((entry: WidgetCatalogEntry) => {
-    setLayout((l) => [...l, makeWidget(entry, l.length)]);
-  }, []);
-
-  const onDragEnd = useCallback((e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over) return;
-    const data = active.data.current as { kind?: string; entry?: WidgetCatalogEntry } | undefined;
-    if (data?.kind === "library" && data.entry) {
-      setLayout((l) => [...l, makeWidget(data.entry as WidgetCatalogEntry, l.length)]);
-      return;
-    }
-    if (active.id !== over.id) {
-      setLayout((l) => {
-        const oldI = l.findIndex((w) => w.id === active.id);
-        const newI = l.findIndex((w) => w.id === over.id);
-        if (oldI < 0 || newI < 0) return l;
-        return arrayMove(l, oldI, newI);
-      });
-    }
-  }, []);
-
-  const updateWidget = useCallback((w: KPIWidget) => {
-    setLayout((l) => l.map((x) => (x.id === w.id ? w : x)));
-  }, []);
-
-  const removeWidget = useCallback((id: string) => {
-    setLayout((l) => l.filter((x) => x.id !== id));
-    setSelectedId((s) => (s === id ? null : s));
-  }, []);
 
   const save = useCallback(async () => {
     if (!stageId) return;
     setSaving(true);
     setFeedback(null);
     try {
+      const nextLayout = setFactionPanel(layout.length ? layout : DEFAULT_SECTOR_LAYOUT, factionOn);
       const res = await fetch("/api/sector-dashboard-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ stage_id: stageId, layout }),
+        body: JSON.stringify({ stage_id: stageId, layout: nextLayout }),
       });
       if (res.ok) {
-        setSavedJson(JSON.stringify(layout));
+        setLayout(nextLayout);
+        setSaved(JSON.stringify({ factionOn }));
         setFeedback("Publicado! A TV deste setor atualiza em instantes.");
       } else {
         const j = await res.json().catch(() => null);
@@ -168,9 +125,8 @@ export default function SectorDashboardBuilderPage() {
     } finally {
       setSaving(false);
     }
-  }, [stageId, layout]);
+  }, [stageId, layout, factionOn]);
 
-  // Story 9.1 — abre a TV travada NESTE setor (token de kiosk, sem sessão de admin)
   const openSectorTv = useCallback(async () => {
     if (!stageId || openingTv) return;
     setOpeningTv(true);
@@ -196,11 +152,8 @@ export default function SectorDashboardBuilderPage() {
           token = created.token;
         }
       }
-      if (token) {
-        window.open(`/tv?token=${token}&stage=${stageId}`, "_blank", "noopener");
-      } else {
-        setFeedback("Não foi possível gerar o link da TV.");
-      }
+      if (token) window.open(`/tv?token=${token}&stage=${stageId}`, "_blank", "noopener");
+      else setFeedback("Não foi possível gerar o link da TV.");
     } catch {
       setFeedback("Erro ao abrir a TV do setor.");
     } finally {
@@ -208,7 +161,6 @@ export default function SectorDashboardBuilderPage() {
     }
   }, [stageId, openingTv]);
 
-  // Story 9.x: guard por permissão dinâmica (tv:config) — editável na tela de permissões
   if (!profileLoading && profile && !tvAllowed) {
     return (
       <div className="max-w-[900px] mx-auto px-6 py-16 text-center">
@@ -219,31 +171,20 @@ export default function SectorDashboardBuilderPage() {
     );
   }
 
-  const selectedWidget = layout.find((w) => w.id === selectedId) ?? null;
-  const factionVisible = isFactionPanelVisible(layout);
-
   return (
-    <div className="max-w-[1400px] mx-auto px-6 lg:px-10 py-6 lg:py-8">
+    <div className="max-w-[900px] mx-auto px-6 lg:px-10 py-6 lg:py-8">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <PageHeader eyebrow="Tela de TV" title="Configuração de KPIs por Setor" />
+        <PageHeader eyebrow="Tela de TV" title="Configuração da TV por Setor" />
         <div className="flex items-center gap-2">
           {feedback && <span className="text-[12px] text-muted-foreground">{feedback}</span>}
           <button
             type="button"
             onClick={openSectorTv}
             disabled={!stageId || openingTv}
-            title="Abre a TV travada neste setor (sem precisar manter o admin logado)"
+            title="Abre a TV travada neste setor"
             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary/60 border border-border/50 hover:bg-secondary transition-colors text-[13px] disabled:opacity-50"
           >
             {openingTv ? <Loader2 className="size-4 animate-spin" /> : <Tv className="size-4" />} Abrir TV do setor
-          </button>
-          <button
-            type="button"
-            onClick={() => setPreview(true)}
-            disabled={layout.length === 0}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary/60 border border-border/50 hover:bg-secondary transition-colors text-[13px] disabled:opacity-50"
-          >
-            <Eye className="size-4" /> Preview
           </button>
           <button
             type="button"
@@ -257,91 +198,42 @@ export default function SectorDashboardBuilderPage() {
         </div>
       </div>
 
-      {/* Controle que a TV REALMENTE aplica hoje. O layout "Instrumento" é fixo em
-          todos os setores de propósito (unidade visual); a única customização por
-          setor é esconder o painel de facção onde ele não faz sentido. */}
-      {stageId && (
-        <div className="mt-5 flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-secondary/30 p-4">
-          <div className="min-w-0">
-            <p className="text-[14px] font-medium">Mostrar &quot;Status da Facção&quot; na TV deste setor</p>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">
-              Desligue nos setores que não acompanham facção — o painel some da TV e o
-              ranking ocupa o espaço. É a única customização por setor: o restante do
-              layout é igual em todos, de propósito.
-            </p>
-          </div>
+      {/* Seletor de setor */}
+      <div className="mt-5 flex flex-wrap gap-2">
+        {stages.map((s) => (
           <button
+            key={s.id}
             type="button"
-            role="switch"
-            aria-checked={factionVisible}
-            aria-label="Mostrar Status da Facção na TV deste setor"
-            onClick={() => setLayout((l) => setFactionPanel(l, !factionVisible))}
+            onClick={() => setStageId(s.id)}
             className={cn(
-              "mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors",
-              factionVisible ? "border-transparent bg-foreground" : "border-border bg-secondary",
+              "h-9 rounded-lg border px-3 text-[13px] transition-colors",
+              s.id === stageId ? "border-foreground/30 bg-foreground text-background" : "border-border/60 bg-secondary/40 hover:bg-secondary",
             )}
           >
-            <span
-              className={cn(
-                "size-4 rounded-full bg-background transition-transform",
-                factionVisible ? "translate-x-6" : "translate-x-1",
-              )}
-            />
+            {s.display_name || s.name}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
 
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        <div className="mt-6 grid grid-cols-12 gap-4">
-          {/* Sidebar de setores */}
-          <LisionCard className="col-span-12 lg:col-span-2">
-            <SectorSidebar stages={stages} selectedId={stageId} onSelect={setStageId} dirty={dirty} />
-          </LisionCard>
+      <p className="mt-4 text-[12px] text-muted-foreground">
+        A TV usa o mesmo layout em todos os setores (unidade visual). Aqui você ajusta,
+        por setor, só o que a TV realmente aplica — cada opção obedece na hora.
+      </p>
 
-          {/* Canvas/preview */}
-          <div className="col-span-12 lg:col-span-7">
-            {loadingCfg ? (
-              <div className="h-[420px] rounded-2xl bg-secondary/30 animate-pulse" />
-            ) : (
-              <BuilderCanvas
-                layout={layout}
-                mockKpis={MOCK_KPIS}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                onRemove={removeWidget}
-              />
-            )}
-          </div>
-
-          {/* Biblioteca + inspector */}
-          <div className="col-span-12 lg:col-span-3 flex flex-col gap-4">
-            <LisionCard>
-              <WidgetLibrary onAdd={addWidget} />
-            </LisionCard>
-            <LisionCard>
-              <WidgetInspector widget={selectedWidget} onChange={updateWidget} onRemove={removeWidget} />
-            </LisionCard>
-          </div>
-        </div>
-      </DndContext>
-
-      {/* Preview em tamanho TV */}
-      {preview && (
-        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col p-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[13px] text-muted-foreground">Pré-visualização (tamanho TV) — dados de exemplo</span>
-            <button type="button" onClick={() => setPreview(false)} className="size-9 grid place-items-center rounded-lg bg-secondary/60 border border-border/50 hover:bg-secondary">
-              <X className="size-4" />
-            </button>
-          </div>
-          <div className="flex-1 min-h-0 rounded-2xl border border-border/50 bg-background bg-grid p-4 overflow-hidden">
-            <BentoGrid mode="tv" className="h-full">
-              {layout.map((w, i) => (
-                <BentoCell key={w.id} size={w.size}>
-                  <WidgetRenderer widget={w} kpis={MOCK_KPIS} index={i} />
-                </BentoCell>
-              ))}
-            </BentoGrid>
+      {loadingCfg ? (
+        <div className="mt-4 h-40 rounded-xl bg-secondary/30 animate-pulse" />
+      ) : (
+        <div className="mt-4 space-y-3">
+          {/* Toggle: Status da Facção */}
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-secondary/30 p-4">
+            <div className="min-w-0">
+              <p className="text-[14px] font-medium">Mostrar &quot;Status da Facção&quot; na TV</p>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">
+                Desligue nos setores que não acompanham facção — o painel some da TV e o
+                ranking ocupa o espaço.
+              </p>
+            </div>
+            <Switch checked={factionOn} onClick={() => setFactionOn((v) => !v)} label="Mostrar Status da Facção na TV" />
           </div>
         </div>
       )}

@@ -61,6 +61,7 @@ export function TVSectorDefault({
   kpis: SectorKpis | null;
   /** Config por setor: esconde o painel de facção onde ele não faz sentido. */
   showFaction?: boolean;
+  /** Frente 2: setor sem meta por hora → herói cai no Dia (não mostra anel de hora). */
 }) {
   const percent = kpis?.percent ?? 0;
   const state = paceFromPercent(percent);
@@ -79,7 +80,7 @@ export function TVSectorDefault({
   const weekPct = pctOf(kpis?.weekly);
   const monthPct = pctOf(kpis?.monthly);
 
-  // Frente 3 — meta por hora (herói condicional). Sem jornada configurada → herói = dia (atual).
+  // O contrato resolvido pelo KPI é a única fonte: NONE/fallback usa o Dia.
   const heroIsHour = !!kpis?.hero_is_hour;
   const hourPct = kpis?.hourly_percent ?? 0;
   const hourState = paceFromHourPercent(hourPct);
@@ -87,7 +88,7 @@ export function TVSectorDefault({
   const hourColor = STATE_COLORS[hourState];
   // Glow ambiente e status seguem o HERÓI (hora quando configurada; dia caso contrário).
   const heroColor = heroIsHour ? (hourHit ? { ...hourColor, ...HOUR_HIT_GOLD } : hourColor) : color;
-  const metaPorHora = kpis?.hourly_target ?? undefined; // linha "Meta/h" da onda usa a meta real
+  const metaPorHora = heroIsHour ? (kpis?.hourly_target ?? undefined) : undefined;
 
   return (
     <div className="relative h-full min-h-0 w-full">

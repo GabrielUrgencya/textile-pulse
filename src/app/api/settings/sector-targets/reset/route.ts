@@ -163,6 +163,19 @@ export async function POST(request: Request) {
   const ref =
     period === "day" ? prevBusinessDay(today) : period === "week" ? prevWeekStart(today) : prevMonthStart(today);
 
+  const { data: atomicReset, error: atomicError } = await supabase.rpc("reset_goal_debts_atomic_v1", {
+    p_scope: "SECTOR",
+    p_entity_id: stageId,
+    p_period_types: [periodType],
+    p_period_references: [ref],
+    p_carried_to: today,
+    p_context: { requested_period: period, tenant_id: t.tenantId, actor_id: user.id, sector: stage.display_name ?? stageId },
+  });
+  if (atomicError) return NextResponse.json({ error: "Falha ao zerar a dívida; nenhuma alteração foi confirmada" }, { status: 500 });
+  return NextResponse.json({ data: { stage_id: stageId, period, target, result: atomicReset } });
+
+  /* Legacy non-atomic implementation retained temporarily for migration review.
+
   const { data: existing } = await supabase
     .from("goal_deficits")
     .select("id, deficit")
@@ -221,4 +234,5 @@ export async function POST(request: Request) {
   if (auditError) console.error("[sector reset debt] audit_log:", auditError);
 
   return NextResponse.json({ data: { stage_id: stageId, period, target, cleared_deficit: clearedDeficit } });
+  */
 }

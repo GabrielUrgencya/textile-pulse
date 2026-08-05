@@ -112,7 +112,8 @@ function StageManager() {
   const [stages, setStages] = React.useState<Stage[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<Stage | null>(null);
   const [deleting, setDeleting] = React.useState(false);
-  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
+  const reorderTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
+  const renameTimersRef = React.useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -123,9 +124,14 @@ function StageManager() {
     if (data) setStages(data);
   }, [data]);
 
+  React.useEffect(() => () => {
+    if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
+    renameTimersRef.current.forEach(clearTimeout);
+  }, []);
+
   const saveReorder = React.useCallback((updated: Stage[]) => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
+    if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
+    reorderTimerRef.current = setTimeout(async () => {
       const payload = updated.map((s, i) => ({ id: s.id, order_index: i }));
       const res = await fetch("/api/settings/stages/reorder", {
         method: "PATCH",
@@ -133,9 +139,12 @@ function StageManager() {
         body: JSON.stringify({ stages: payload }),
       });
       if (res.ok) showToast("success", "Ordem salva");
-      else showToast("error", "Erro ao reordenar");
+      else {
+        showToast("error", "Erro ao reordenar; a ordem anterior foi restaurada");
+        refetch();
+      }
     }, 1000);
-  }, []);
+  }, [refetch]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -150,26 +159,38 @@ function StageManager() {
     });
   };
 
-  const handleNameChange = async (id: string, name: string) => {
+  const handleNameChange = (id: string, name: string) => {
     setStages((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
-    // Debounced save inline
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      await fetch(`/api/settings/stages/${id}`, {
+    const previousTimer = renameTimersRef.current.get(id);
+    if (previousTimer) clearTimeout(previousTimer);
+    const timer = setTimeout(async () => {
+      const res = await fetch(`/api/settings/stages/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
+      renameTimersRef.current.delete(id);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        showToast("error", body.error || "Erro ao renomear; o nome anterior foi restaurado");
+        refetch();
+      }
     }, 1000);
+    renameTimersRef.current.set(id, timer);
   };
 
   const handleColorChange = async (id: string, color: string) => {
     setStages((prev) => prev.map((s) => (s.id === id ? { ...s, color } : s)));
-    await fetch(`/api/settings/stages/${id}`, {
+    const res = await fetch(`/api/settings/stages/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ color }),
     });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      showToast("error", body.error || "Erro ao alterar a cor; a cor anterior foi restaurada");
+      refetch();
+    }
   };
 
   const handleAdd = async () => {
@@ -191,12 +212,12 @@ function StageManager() {
     setDeleting(true);
     const res = await fetch(`/api/settings/stages/${deleteTarget.id}`, { method: "DELETE" });
     if (res.ok) {
-      showToast("success", "Etapa removida");
+      showToast("success", "Etapa desativada");
       setDeleteTarget(null);
       refetch();
     } else {
       const body = await res.json().catch(() => ({}));
-      showToast("error", body.error || "Erro ao remover");
+      showToast("error", body.error || "Erro ao desativar");
     }
     setDeleting(false);
   };
@@ -256,10 +277,10 @@ function StageManager() {
         open={!!deleteTarget}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
-        title={`Remover "${deleteTarget?.name}"?`}
-        description="Esta ação não pode ser desfeita."
-        consequences={["Se a etapa possui bipagens, a remoção será bloqueada."]}
-        confirmLabel="Remover"
+        title={`Desativar "${deleteTarget?.name}"?`}
+        description="A etapa sai da lista, da TV e do scan. O histórico (bipagens, defeitos, metas) é preservado."
+        consequences={["O histórico permanece vinculado a esta etapa, mas ela não poderá ser reativada nesta tela."]}
+        confirmLabel="Desativar"
         variant="destructive"
         loading={deleting}
       />
