@@ -144,7 +144,13 @@ function ScanPage() {
   const [cameraOpen, setCameraOpen] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraButtonRef = useRef<HTMLButtonElement>(null);
   const debounceRef = useRef<number>(0);
+
+  const closeCamera = useCallback(() => {
+    setCameraOpen(false);
+    requestAnimationFrame(() => cameraButtonRef.current?.focus());
+  }, []);
 
   // T1: Load stages from API (authenticated via session cookies)
   useEffect(() => {
@@ -367,6 +373,7 @@ function ScanPage() {
         <div className="flex items-center gap-2">
           {/* Frente 5: bipagem por câmera do celular (mesmo fluxo do leitor) */}
           <button
+            ref={cameraButtonRef}
             onClick={() => {
               getAudioContext(); // libera o beep no primeiro gesto do usuário
               setCameraOpen(true);
@@ -706,9 +713,10 @@ function ScanPage() {
       {/* Frente 5: leitor por câmera — decodifica Code128 e cai no MESMO handleScan */}
       <CameraScanner
         open={cameraOpen}
-        onClose={() => setCameraOpen(false)}
+        onClose={closeCamera}
         onDecode={handleScan}
         paused={scanning}
+        feedbackSoundEnabled={soundEnabled}
       />
 
       {/* Defect Modal */}
