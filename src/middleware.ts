@@ -84,18 +84,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Authenticated user on login page → redirect to dashboard
-  if (isLoginPage && user) {
+  // Authenticated user on the MAIN login page → redirect to dashboard.
+  // O /vendas/login NÃO rebate autenticados de propósito: o módulo "LISION Vendas"
+  // manda quem NÃO tem vínculo para cá (para entrar com outra conta que tenha acesso).
+  // Assim não há loop nem "acesso não habilitado" surpresa.
+  if (isMainLoginPage && user) {
     const dashUrl = request.nextUrl.clone();
     const requestedRedirect = request.nextUrl.searchParams.get("redirect");
-    const safeRedirect = isSalesLoginPage
-      ? requestedRedirect === "/vendas" || requestedRedirect?.startsWith("/vendas/")
-        ? requestedRedirect
-        : null
-      : requestedRedirect?.startsWith("/") && !requestedRedirect.startsWith("//")
-        ? requestedRedirect
-        : null;
-    dashUrl.pathname = isSalesLoginPage ? safeRedirect ?? "/vendas" : safeRedirect ?? "/dashboard";
+    const safeRedirect = requestedRedirect?.startsWith("/") && !requestedRedirect.startsWith("//")
+      ? requestedRedirect
+      : null;
+    dashUrl.pathname = safeRedirect ?? "/dashboard";
     dashUrl.search = "";
     return NextResponse.redirect(dashUrl);
   }

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { showToast } from "@/lib/toast";
 import { BrandLogo } from "@/components/ui/brand-logo";
+import { SalesSidebarLink } from "@/components/sales/SalesSidebarLink";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useFactionUnread } from "@/components/notifications/FactionUnreadProvider";
@@ -187,6 +188,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
+              <SalesSidebarLink collapsed={collapsed} />
               {canOpenTv && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
