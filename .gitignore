@@ -89,3 +89,15 @@ supabase/.temp/
 
 # Backups operacionais de QA (dados reais de tenant: PII, hashes de PIN) — nunca versionar
 docs/qa/_*.json
+
+# --- Blindagem (Gage): segredos e junk que nunca devem ser versionados ---
+# Arquivo com credenciais do tenant de teste
+/Login do admin*.txt
+# Notas de contexto locais
+/CONTEXTO*.md
+# Landing page (projeto separado, fora do build do app)
+/LANDING PAGE/
+# Logs de servidor de desenvolvimento
+/devserver*
+# Scripts temporários de rollout
+/.tmp-*

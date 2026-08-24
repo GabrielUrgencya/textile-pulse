@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const read = (path) => readFileSync(path, "utf8");
+const ui = read("src/components/sales/admin/SalesPeriodClosure.tsx"); const page = read("src/app/vendas/admin/fechamento/page.tsx"); const nav = read("src/components/sales/admin/SalesAdminSubnavigation.tsx");
+assert.match(page, /SalesAdminRoute/); assert.match(page, /SalesPeriodClosure/); assert.match(nav, /\/vendas\/admin\/fechamento/);
+for (const text of ["Revisar fechamento", "Fechar período e iniciar próximo ciclo", "Fechando período com segurança", "Verificar resultado", "Fechamento recuperado", "Ir para o novo período", "Ver histórico fechado", "Preview desatualizado", "Período sobreposto"]) assert.ok(ui.includes(text), `${text} must be rendered`);
+assert.match(ui, /sessionStorage\.getItem/); assert.match(ui, /sessionStorage\.setItem/); assert.match(ui, /crypto\.randomUUID/); assert.match(ui, /submitting\.current/);
+assert.match(ui, /role="status"/); assert.match(ui, /aria-live="polite"/); assert.match(ui, /role="alert"|Alert variant="destructive"/); assert.match(ui, /min-h-11/); assert.match(ui, /w-full md:w-auto/);
+assert.match(ui, /periodRevision: preview\.periodRevision/); assert.match(ui, /idempotencyKey: key/); assert.match(ui, /idempotencyKey: attemptKey/);
+assert.match(ui, /function intentionKeyFrom\(periodId: string, startsOn: string, endsOn: string\)/); assert.doesNotMatch(ui, /intentionKeyFrom\(open\.id, open\.revision/); assert.ok(ui.includes("NEXT_PERIOD_NOT_EMPTY")); assert.ok(ui.includes("já possui atividade comercial"));
+assert.doesNotMatch(ui, /tenantId|actorId|DELETE|TRUNCATE|reset.*=.*0/i); assert.doesNotMatch(ui, /setInterval|progress.*%/i);
+console.log("PASS: period-close UI covers safe confirmation, stable retry/recovery, conflicts, a11y and mobile.");

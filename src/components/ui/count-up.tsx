@@ -13,11 +13,14 @@ export function CountUp({
   decimals = 0,
   duration = 0.8,
   className,
+  format,
 }: {
   value: number;
   decimals?: number;
   duration?: number;
   className?: string;
+  /** Formatador opcional do valor animado (ex.: moeda). Sem ele, usa pt-BR + decimals. */
+  format?: (value: number) => string;
 }) {
   const reduce = useReducedMotion();
   const [display, setDisplay] = useState(value);
@@ -40,7 +43,7 @@ export function CountUp({
 
   return (
     <span className={className}>
-      {display.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+      {format ? format(display) : display.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
     </span>
   );
 }

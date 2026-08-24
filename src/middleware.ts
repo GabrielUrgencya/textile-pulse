@@ -25,6 +25,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // LISION Vendas TV has its own kiosk-token authorization.
+  if (path === "/vendas/tv" || path.startsWith("/vendas/tv/")) {
+    return NextResponse.next();
+  }
+
   // --- Dev-only: preview de UI (loop visual da @ux); a página dá 404 em prod ---
   if (process.env.NODE_ENV !== "production" && path.startsWith("/meu-plano/preview")) {
     return NextResponse.next();
@@ -66,12 +71,15 @@ export async function middleware(request: NextRequest) {
   const user = session?.user ?? null;
 
   // --- Protect page routes ---
-  const isLoginPage = path === "/login" || path.startsWith("/login/");
+  const isMainLoginPage = path === "/login" || path.startsWith("/login/");
+  const isSalesLoginPage = path === "/vendas/login" || path.startsWith("/vendas/login/");
+  const isLoginPage = isMainLoginPage || isSalesLoginPage;
+  const isSalesPage = path === "/vendas" || path.startsWith("/vendas/");
 
   // Unauthenticated user on protected page → redirect to login
   if (!isLoginPage && !user) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
+    loginUrl.pathname = isSalesPage ? "/vendas/login" : "/login";
     loginUrl.searchParams.set("redirect", path);
     return NextResponse.redirect(loginUrl);
   }
@@ -79,7 +87,16 @@ export async function middleware(request: NextRequest) {
   // Authenticated user on login page → redirect to dashboard
   if (isLoginPage && user) {
     const dashUrl = request.nextUrl.clone();
-    dashUrl.pathname = "/dashboard";
+    const requestedRedirect = request.nextUrl.searchParams.get("redirect");
+    const safeRedirect = isSalesLoginPage
+      ? requestedRedirect === "/vendas" || requestedRedirect?.startsWith("/vendas/")
+        ? requestedRedirect
+        : null
+      : requestedRedirect?.startsWith("/") && !requestedRedirect.startsWith("//")
+        ? requestedRedirect
+        : null;
+    dashUrl.pathname = isSalesLoginPage ? safeRedirect ?? "/vendas" : safeRedirect ?? "/dashboard";
+    dashUrl.search = "";
     return NextResponse.redirect(dashUrl);
   }
 

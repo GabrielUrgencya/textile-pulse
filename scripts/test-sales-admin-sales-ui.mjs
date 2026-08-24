@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const dashboard = read("src/components/sales/admin/SalesAdminDashboard.tsx");
+const list = read("src/components/sales/admin/SalesAdminSalesList.tsx");
+const detail = read("src/components/sales/admin/SalesAdminSaleDetail.tsx");
+const routes = ["src/app/vendas/admin/page.tsx", "src/app/vendas/admin/vendas/page.tsx", "src/app/vendas/admin/vendas/nova/page.tsx", "src/app/vendas/admin/vendas/[saleId]/page.tsx"].map(read).join("\n");
+
+assert.match(routes, /SalesAdminRoute/g, "all routes must reuse the authenticated sales shell");
+for (const text of ["Realizado · vendas CLOSED", "Pipeline · vendas OPEN", "Ticket médio por venda", "Ranking realizado"]) assert.ok(dashboard.includes(text), `${text} must be visible`);
+assert.match(dashboard, /data\.tickets\.sale/); assert.match(dashboard, /data\.ranking/);
+assert.match(dashboard, /items=\{data\.installments\.closed\}/, "CLOSED installments must be rendered");
+assert.match(dashboard, /items=\{data\.installments\.open\}/, "OPEN installments must be rendered");
+assert.match(dashboard, /SalesDashboard\["installments"\]\["closed" \| "open"\]/, "installment renderer must accept both dashboard groups");
+assert.doesNotMatch(dashboard, /metric\(realized, "realized_value"\)\s*[/*]\s*metric\(realized, "sales_count"\)/, "tickets must not be calculated in the client");
+assert.match(list, /URLSearchParams/); assert.match(list, /mobile|md:hidden/); assert.match(list, /<table/); assert.match(list, /Limpar filtros/);
+for (const text of ["Somente leitura — período encerrado", "Peças, comissão, tickets", "Cancelar venda", "Motivo obrigatório", "idempotencyKey", "expectedRevision"]) assert.ok(detail.includes(text), `${text} must be implemented`);
+assert.doesNotMatch(detail + list + dashboard, /tenantId|actorId|DELETE|Excluir venda/, "UI must not send tenant/actor or expose deletion");
+assert.match(detail, /disabled=\{saving\}/, "duplicate submissions must be blocked");
+assert.match(detail, /role="alert"/); assert.match(detail, /aria-live="polite"/);
+console.log("PASS sales admin UI: routes, URL filters, CLOSED/OPEN, server tickets/ranking, audited mutations, responsive and a11y states");

@@ -145,6 +145,31 @@
 :root:not(.dark) ::-webkit-scrollbar-thumb { background: oklch(0.82 0 0); border: 2px solid var(--color-background); }
 :root:not(.dark) ::-webkit-scrollbar-thumb:hover { background: oklch(0.72 0 0); }
 
+/* LISION Vendas: tema claro local. A cascata termina junto com o layout /vendas. */
+/* LISION Vendas herda o MESMO tema (dark) do Lision principal — sem paleta
+   própria. Antes esta classe forçava uma paleta clara, o que fazia o Vendas
+   destoar do produto. Agora é um marcador neutro (usado por dialogs portalados
+   que precisam do escopo do tema) e apenas alinha o color-scheme ao dark. */
+.sales-theme {
+  color-scheme: dark;
+}
+
+.sales-theme :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sales-theme *,
+  .sales-theme *::before,
+  .sales-theme *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-border);

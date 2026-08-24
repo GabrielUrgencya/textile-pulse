@@ -22,7 +22,7 @@ interface TVPodiumProps {
 }
 
 /* ─── Shield colors per position: gold, silver, bronze ─── */
-const SHIELD_THEMES = [
+export const SHIELD_THEMES = [
   {
     // 1st — Gold
     gradient: "linear-gradient(160deg, #D4A843 0%, #F5D978 25%, #C9A94E 50%, #A8882A 75%, #D4A843 100%)",
@@ -47,7 +47,7 @@ const SHIELD_THEMES = [
 ];
 
 /* ─── Display config: [2nd, 1st, 3rd] ─── */
-const POSITIONS = [
+export const POSITIONS = [
   { themeIdx: 1, shieldSize: 130, photoSize: 80, platformH: 120, delay: 1.8, label: "2" },
   { themeIdx: 0, shieldSize: 170, photoSize: 110, platformH: 160, delay: 2.3, label: "crown" },
   { themeIdx: 2, shieldSize: 120, photoSize: 72, platformH: 100, delay: 2.0, label: "3" },
@@ -171,7 +171,7 @@ interface ShieldBadgeProps {
   isFirst: boolean;
 }
 
-function ShieldBadge({ avatarUrl, initials, size, photoSize, theme, isFirst }: ShieldBadgeProps) {
+export function ShieldBadge({ avatarUrl, initials, size, photoSize, theme, isFirst }: ShieldBadgeProps) {
   const halfSize = size / 2;
 
   return (
@@ -310,7 +310,7 @@ interface Platform3DProps {
   isFirst: boolean;
 }
 
-function Platform3D({ height, accent, glow, isFirst }: Platform3DProps) {
+export function Platform3D({ height, accent, glow, isFirst }: Platform3DProps) {
   const width = isFirst ? 160 : 130;
 
   return (
