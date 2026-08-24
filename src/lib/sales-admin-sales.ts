@@ -49,6 +49,12 @@ export const salesCancelInputSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 }).strict();
 
+// D1: exclusão definitiva (hard delete) — apenas ADM.
+export const salesDeleteInputSchema = z.object({
+  expectedRevision: z.number().int().nonnegative().safe(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+}).strict();
+
 const saleItemSchema = z.object({
   id: uuid,
   pv_number: z.string(),
@@ -133,5 +139,11 @@ export async function upsertSalesSale(supabase: SupabaseClient, input: SalesUpse
 
 export async function cancelSalesSale(supabase: SupabaseClient, saleId: string, input: SalesCancelInput): Promise<SalesAdminResult<unknown>> {
   const { data, error } = await supabase.rpc("sales_admin_cancel_sale_v2", { p_sale_id: saleId, p_expected_revision: input.expectedRevision, p_reason: input.reason, p_idempotency_key: input.idempotencyKey });
+  return error ? rpcError(error) : { data, error: null };
+}
+
+export type SalesDeleteInput = z.infer<typeof salesDeleteInputSchema>;
+export async function deleteSalesSale(supabase: SupabaseClient, saleId: string, input: SalesDeleteInput): Promise<SalesAdminResult<unknown>> {
+  const { data, error } = await supabase.rpc("sales_admin_delete_sale_v1", { p_sale_id: saleId, p_expected_revision: input.expectedRevision, p_idempotency_key: input.idempotencyKey });
   return error ? rpcError(error) : { data, error: null };
 }

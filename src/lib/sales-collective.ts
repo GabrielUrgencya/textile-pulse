@@ -105,6 +105,9 @@ const available = z
         sales_count: z.union([z.number(), z.string()]),
         pieces_total: z.union([z.number(), z.string()]),
         freight_share_percent: decimal,
+        // L1: presente após a migration _sales_collective_freight_total; opcional
+        // para não quebrar antes de aplicá-la (forward-compatible).
+        freight_total: decimal.optional(),
       })
       .strict(),
     installments: z

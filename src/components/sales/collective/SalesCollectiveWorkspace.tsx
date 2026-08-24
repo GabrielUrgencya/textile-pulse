@@ -19,6 +19,10 @@ const number = (value: unknown) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(
     Number(value) || 0,
   );
+const money = (value: unknown) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+    Number(value) || 0,
+  );
 const pct = (value: unknown) => Number(value) || 0;
 
 export function SalesCollectiveWorkspace() {
@@ -266,6 +270,7 @@ function Collective({
   page: (value: number) => void;
 }) {
   const empty = Number(data.aggregates.sales_count) === 0;
+  const hitGoals = data.goals.filter((g) => g.available && !g.suppressed && Number(g.progress_percent) >= 100);
   const achieved = pct(data.pace.achieved_percent);
   const ideal = pct(data.pace.ideal_pace_percent);
   const state = paceFromPercent(achieved);
@@ -277,6 +282,17 @@ function Collective({
   );
   return (
     <div className="space-y-8">
+      {hitGoals.length > 0 && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-success/40 bg-success/10 p-4">
+          <span className="text-2xl" aria-hidden>🎉</span>
+          <div>
+            <p className="font-display text-lg font-semibold text-success">Parabéns, equipe! Meta batida.</p>
+            <p className="text-sm text-muted-foreground">
+              {hitGoals.map((g) => `${g.label} (${number(g.progress_percent)}%)`).join(" · ")}
+            </p>
+          </div>
+        </div>
+      )}
       <p
         role="status"
         className="rounded-lg border border-border/60 bg-secondary/30 p-3 text-sm text-muted-foreground"
@@ -339,7 +355,7 @@ function Collective({
       <SectionHeader label="Agregados operacionais" />
       <section aria-labelledby="aggregates">
         <h2 id="aggregates" className="sr-only">Agregados operacionais</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
             label="Vendas realizadas"
             value={number(data.aggregates.sales_count)}
@@ -350,6 +366,13 @@ function Collective({
             value={number(data.aggregates.pieces_total)}
             help="Agregado do tenant neste período"
           />
+          {data.aggregates.freight_total !== undefined && (
+            <Metric
+              label="Frete total"
+              value={money(data.aggregates.freight_total)}
+              help="Soma dos fretes do tenant neste período"
+            />
+          )}
           <Metric
             label="Participação do frete"
             value={`${number(data.aggregates.freight_share_percent)}%`}

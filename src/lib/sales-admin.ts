@@ -17,6 +17,16 @@ export const salesPaymentMethodInputSchema = z
   })
   .strict();
 
+// D2: dados da consultora escopados ao Vendas.
+export const salesConsultantDetailsInputSchema = z
+  .object({
+    profileId: z.string().uuid(),
+    displayName: z.string().trim().max(120).nullable(),
+    phone: z.string().trim().max(40).nullable(),
+    notes: z.string().trim().max(2000).nullable(),
+  })
+  .strict();
+
 export const salesPaymentMethodReorderInputSchema = z
   .object({
     orderedMethodIds: z.array(z.string().uuid()).max(500),
@@ -35,6 +45,8 @@ export const salesPaymentMethodReorderInputSchema = z
   });
 
 export type SalesMembershipInput = z.infer<typeof salesMembershipInputSchema>;
+export type SalesConsultantDetailsInput = z.infer<typeof salesConsultantDetailsInputSchema>;
+export interface SalesConsultantDetails { profileId: string; displayName: string | null; phone: string | null; notes: string | null; }
 export type SalesPaymentMethodInput = z.infer<
   typeof salesPaymentMethodInputSchema
 >;
@@ -224,6 +236,9 @@ const ERROR_CONTRACTS: Record<
   sales_invalid_payment_method: { code: "INVALID_PAYMENT_METHOD", message: "O método de pagamento não está disponível.", status: 422 },
   sales_idempotency_mismatch: { code: "IDEMPOTENCY_MISMATCH", message: "Esta tentativa já foi usada com outros dados.", status: 409 },
   sales_cancellation_conflict: { code: "CONFLICT", message: "A venda já foi cancelada com outro motivo.", status: 409 },
+  sales_delete_validation: { code: "VALIDATION", message: "Dados de exclusão inválidos.", status: 400 },
+  sales_consultant_not_in_scope: { code: "RESOURCE_NOT_FOUND", message: "Consultora indisponível para esta operação.", status: 404 },
+  sales_consultant_details_validation: { code: "INVALID_INPUT", message: "Dados da consultora inválidos.", status: 400 },
 };
 
 function parseOrderDetails(details?: string | null) {
@@ -400,4 +415,19 @@ export async function reorderSalesAdminPaymentMethods(
     },
     error: null,
   };
+}
+
+interface ConsultantDetailsRpcResult { profile_id?: string; display_name?: string | null; phone?: string | null; notes?: string | null; }
+function detailsFrom(row: ConsultantDetailsRpcResult): SalesConsultantDetails {
+  return { profileId: row.profile_id ?? "", displayName: row.display_name ?? null, phone: row.phone ?? null, notes: row.notes ?? null };
+}
+export async function loadSalesConsultantDetails(supabase: SupabaseClient, profileId: string): Promise<SalesAdminResult<SalesConsultantDetails>> {
+  const { data, error } = await supabase.rpc("sales_admin_consultant_details_v1", { p_profile_id: profileId });
+  if (error) return { data: null, error: mapSalesAdminRpcError(error) };
+  return { data: detailsFrom((data ?? {}) as ConsultantDetailsRpcResult), error: null };
+}
+export async function setSalesConsultantDetails(supabase: SupabaseClient, input: SalesConsultantDetailsInput): Promise<SalesAdminResult<SalesConsultantDetails>> {
+  const { data, error } = await supabase.rpc("sales_admin_set_consultant_details_v1", { p_profile_id: input.profileId, p_display_name: input.displayName, p_phone: input.phone, p_notes: input.notes });
+  if (error) return { data: null, error: mapSalesAdminRpcError(error) };
+  return { data: detailsFrom((data ?? {}) as ConsultantDetailsRpcResult), error: null };
 }

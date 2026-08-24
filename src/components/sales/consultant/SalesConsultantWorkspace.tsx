@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KpiCard, KpiLabel, KpiValue, KpiSupport } from "@/components/ui/kpi-card";
+import { MiniRing } from "@/components/tv/instrument/MiniRing";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
@@ -630,6 +631,36 @@ function Dashboard({
             value={currency(dashboard.accumulated.realized_value)}
           />
         </div>
+      </section>
+      <section aria-labelledby="goal-rings">
+        <h2 id="goal-rings" className="text-xl font-semibold">
+          Progresso das metas
+        </h2>
+        <p className="text-muted-foreground text-sm">Seu avanço em cada meta — a cor responde antes do número (verde = no ritmo, âmbar = atenção, vermelho = abaixo).</p>
+        <KpiCard className="mt-3 flex flex-wrap items-start justify-around gap-x-6 gap-y-4 py-6">
+          {regularGoals.map((goal, index) => (
+            <div key={String(goal.goal_id)} className="flex min-w-[120px] flex-col items-center gap-1 text-center">
+              <MiniRing label={`Meta ${index + 1}`} percent={Number(goal.progress_percent) || 0} />
+              <span className="text-[11px] text-muted-foreground">{currency(goal.target_value)}</span>
+            </div>
+          ))}
+          {challenges.map((goal) => (
+            <div key={String(goal.goal_id)} className="flex min-w-[120px] flex-col items-center gap-1 text-center">
+              <MiniRing label="Desafio" percent={Number(goal.progress_percent) || 0} />
+              <span className="text-[11px] text-muted-foreground">{currency(goal.target_value)}</span>
+            </div>
+          ))}
+          <div className="flex min-w-[120px] flex-col items-center gap-1 text-center">
+            <MiniRing label="Trimestral" percent={Number(dashboard.quarterly.progress_percent) || 0} />
+            <span className="text-[11px] text-muted-foreground">{currency(dashboard.quarterly.target_value)}</span>
+          </div>
+          {dashboard.collective.allowed && (
+            <div className="flex min-w-[120px] flex-col items-center gap-1 text-center">
+              <MiniRing label="Coletiva" percent={Number(dashboard.collective.progress_percent) || 0} />
+              <span className="text-[11px] text-muted-foreground">sua contribuição</span>
+            </div>
+          )}
+        </KpiCard>
       </section>
       <section aria-labelledby="goals">
         <h2 id="goals" className="text-xl font-semibold">

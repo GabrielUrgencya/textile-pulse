@@ -89,7 +89,24 @@ export function SalesAdminDashboard() {
     return () => { cancelled = true; };
   }, [periodId, consultantId]);
 
+  // Comparação entre vendedoras (L3) — busca o dashboard de uma 2ª consultora no mesmo período.
+  const [compareId, setCompareId] = useState("");
+  const [compareData, setCompareData] = useState<SalesDashboard | null>(null);
+  useEffect(() => {
+    if (!compareId || !periodId) { setCompareData(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const qs = new URLSearchParams({ period: periodId, consultant: compareId });
+        const d = await salesAdminConfigurationRequest<SalesDashboard>(`/api/vendas/admin/dashboard?${qs}`);
+        if (!cancelled) setCompareData(d);
+      } catch { if (!cancelled) setCompareData(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [compareId, periodId]);
+
   function change(name: "period" | "consultant", value: string) { const next = new URLSearchParams(search); if (value) next.set(name, value); else next.delete(name); router.push(`?${next}`); }
+  const consultantName = (id: string | null | undefined) => id ? (directory.find((d) => d.profileId === id)?.fullName ?? "Consultora") : "Coletivo";
   const currentPeriod = configuration?.periods.find((item) => item.id === data?.period_id);
   const realized = data?.realized ?? {};
   const realizedValue = num(metric(realized, "realized_value"));
@@ -98,6 +115,7 @@ export function SalesAdminDashboard() {
   const goalScope = data?.consultant_profile_id ? "INDIVIDUAL" : "COLLECTIVE";
   const goalRings = (configuration?.goals ?? []).filter((g) => g.isActive && g.scope === goalScope && g.targetValue > 0).sort((a, b) => a.sortOrder - b.sortOrder);
   const topTarget = goalRings.length ? Math.min(...goalRings.map((g) => g.targetValue)) : 0;
+  const hitGoals = goalRings.filter((g) => realizedValue >= g.targetValue);
 
   return (
     <div className="space-y-8">
@@ -111,10 +129,10 @@ export function SalesAdminDashboard() {
       {warning && <p role="status" className="rounded-lg border border-border/60 bg-secondary/30 p-3 text-sm text-muted-foreground">{warning}</p>}
       {error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error} <Button variant="link" onClick={() => void load()}>Tentar novamente</Button></div>}
 
-      {/* Filtros — período e consultora */}
-      <div className="grid gap-4 rounded-[20px] border border-border bg-card p-5 shadow-[0_20px_40px_-24px_rgba(0,0,0,0.6)] sm:grid-cols-2">
+      {/* Filtros — período, consultora e comparação (L3) */}
+      <div className="grid gap-4 rounded-[20px] border border-border bg-card p-5 shadow-[0_20px_40px_-24px_rgba(0,0,0,0.6)] sm:grid-cols-3">
         <div>
-          <Label htmlFor="dashboard-period" className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Período</Label>
+          <Label htmlFor="dashboard-period" className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Período (mês)</Label>
           <select id="dashboard-period" className="input-field mt-1.5" value={data?.period_id ?? ""} onChange={(event) => change("period", event.target.value)}>
             {configuration?.periods.map((item) => <option key={item.id} value={item.id}>{item.startsOn} a {item.endsOn} · {item.status === "OPEN" ? "Aberto" : "Encerrado"}</option>)}
           </select>
@@ -126,6 +144,13 @@ export function SalesAdminDashboard() {
             {directory.filter((item) => item.salesRole === "CONSULTANT" && item.membershipIsActive).map((item) => <option key={item.profileId} value={item.profileId}>{item.fullName ?? "Consultora"}</option>)}
           </select>
         </div>
+        <div>
+          <Label htmlFor="dashboard-compare" className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Comparar com</Label>
+          <select id="dashboard-compare" className="input-field mt-1.5" value={compareId} onChange={(event) => setCompareId(event.target.value)}>
+            <option value="">— sem comparação —</option>
+            {directory.filter((item) => item.salesRole === "CONSULTANT" && item.membershipIsActive && item.profileId !== data?.consultant_profile_id).map((item) => <option key={item.profileId} value={item.profileId}>{item.fullName ?? "Consultora"}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -135,6 +160,23 @@ export function SalesAdminDashboard() {
       ) : (
         <>
           {currentPeriod?.status === "CLOSED" && <p className="rounded-lg border border-border/60 bg-secondary/30 p-3 text-sm text-muted-foreground">Histórico estável · período encerrado</p>}
+
+          {hitGoals.length > 0 && (
+            <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-success/40 bg-success/10 p-4">
+              <span className="text-2xl" aria-hidden>🎉</span>
+              <div>
+                <p className="font-display text-lg font-semibold text-success">Parabéns! {hitGoals.length === 1 ? "Meta batida" : `${hitGoals.length} metas batidas`}{data.consultant_profile_id ? " pela consultora" : " pelo coletivo"}.</p>
+                <p className="text-sm text-muted-foreground">{hitGoals.map((g) => `${g.name} (${money(g.targetValue)})`).join(" · ")}</p>
+              </div>
+            </div>
+          )}
+
+          {compareData && (
+            <>
+              <SectionHeader label="Comparativo" />
+              <ComparisonCard aName={consultantName(data.consultant_profile_id)} a={data} bName={consultantName(compareId)} b={compareData} />
+            </>
+          )}
 
           <SectionHeader label="Visão geral" className="mt-1" />
 
@@ -173,12 +215,10 @@ export function SalesAdminDashboard() {
 
           {/* Pipeline + gráfico de parcelamentos */}
           <SectionHeader label="Pipeline & parcelamentos" />
-          <section aria-labelledby="pipeline-title" className="grid gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-1 space-y-4">
-              <SectionTitle id="pipeline-title" title="Pipeline" hint="vendas OPEN" />
-              <Stat index={0} label="Valor em aberto" value={num(data.pipeline.value)} format={money} support={`${number(data.pipeline.sales_count)} venda(s) · ${number(data.pipeline.pieces_total)} peças`} />
-            </div>
-            <div className="lg:col-span-2">
+          <section aria-labelledby="pipeline-title" className="space-y-4">
+            <SectionTitle id="pipeline-title" title="Pipeline & parcelamentos" hint="OPEN vs CLOSED" />
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.6fr)]">
+              <Stat index={0} label="Valor em aberto" value={num(data.pipeline.value)} format={money} support={`${number(data.pipeline.sales_count)} venda(s) · ${number(data.pipeline.pieces_total)} peças em pipeline`} />
               <InstallmentsChart closed={data.installments.closed} open={data.installments.open} />
             </div>
           </section>
@@ -289,25 +329,68 @@ function GoalRings({ goals, realized }: { goals: SalesGoalRecord[]; realized: nu
   );
 }
 
+function ComparisonCard({ aName, a, bName, b }: { aName: string; a: SalesDashboard; bName: string; b: SalesDashboard }) {
+  const g = (d: SalesDashboard, key: string) => num(metric(d.realized, key));
+  const rows: Array<{ label: string; av: number; bv: number; fmt: (n: number) => string }> = [
+    { label: "Total realizado", av: g(a, "realized_value"), bv: g(b, "realized_value"), fmt: money },
+    { label: "Comissão", av: g(a, "commission_value"), bv: g(b, "commission_value"), fmt: money },
+    { label: "Vendas", av: g(a, "sales_count"), bv: g(b, "sales_count"), fmt: number },
+    { label: "Peças", av: g(a, "pieces_total"), bv: g(b, "pieces_total"), fmt: number },
+    { label: "Ticket médio / venda", av: num(a.tickets.sale), bv: num(b.tickets.sale), fmt: money },
+    { label: "Ticket médio / peça", av: num(a.tickets.piece), bv: num(b.tickets.piece), fmt: money },
+  ];
+  return (
+    <KpiCard className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border/60 text-left">
+            <th className="p-3 font-medium text-muted-foreground">Métrica</th>
+            <th className="p-3 font-semibold">{aName}</th>
+            <th className="p-3 font-semibold">{bName}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} className="border-b border-border/30">
+              <td className="p-3 text-muted-foreground">{r.label}</td>
+              <td className={cn("p-3 tabular-nums", r.av >= r.bv && r.av > 0 && "font-semibold text-success")}>{r.fmt(r.av)}</td>
+              <td className={cn("p-3 tabular-nums", r.bv > r.av && r.bv > 0 && "font-semibold text-success")}>{r.fmt(r.bv)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </KpiCard>
+  );
+}
+
 function InstallmentsChart({ closed, open }: { closed: SalesDashboard["installments"]["closed"]; open: SalesDashboard["installments"]["open"] }) {
   const byInstallment = new Map<number, { label: string; realizado: number; pipeline: number }>();
   for (const it of closed) byInstallment.set(it.installments, { label: `${it.installments}x`, realizado: Number(it.value) || 0, pipeline: 0 });
   for (const it of open) { const e = byInstallment.get(it.installments) ?? { label: `${it.installments}x`, realizado: 0, pipeline: 0 }; e.pipeline = Number(it.value) || 0; byInstallment.set(it.installments, e); }
   const rows = Array.from(byInstallment.values()).sort((a, b) => parseInt(a.label) - parseInt(b.label));
+  const maxVal = Math.max(0, ...rows.flatMap((r) => [r.realizado, r.pipeline]));
+  const yMax = maxVal > 0 ? maxVal * 1.15 : 1; // 15% de folga p/ a barra não bater no topo
   return (
-    <KpiCard className="flex h-full flex-col">
-      <KpiLabel className="mb-3">Parcelamentos · realizado vs. pipeline</KpiLabel>
+    <KpiCard className="flex flex-col">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <KpiLabel className="mb-0">Parcelamentos · realizado vs. pipeline</KpiLabel>
+        <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-foreground" /> Realizado</span>
+          <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-foreground/30" /> Pipeline</span>
+        </div>
+      </div>
       {rows.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center py-10 text-sm text-muted-foreground">Nenhuma venda parcelada neste período.</div>
+        <div className="flex items-center justify-center text-sm text-muted-foreground" style={{ height: 340 }}>Nenhuma venda parcelada neste período.</div>
       ) : (
-        <div className="min-h-0 flex-1" style={{ height: 220 }}>
+        <div className="w-full" style={{ height: 340 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={rows} margin={{ top: 8, right: 4, bottom: 0, left: 0 }} barGap={4}>
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={(v) => moneyShort(v)} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={48} />
+            <BarChart data={rows} margin={{ top: 16, right: 8, bottom: 4, left: 4 }} barGap={8} barCategoryGap="22%">
+              <CartesianGrid vertical={false} stroke="var(--foreground)" strokeOpacity={0.06} />
+              <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, yMax]} tickFormatter={(v) => moneyShort(v)} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={56} />
               <Tooltip cursor={{ fill: "var(--foreground)", fillOpacity: 0.06 }} content={<ChartTooltip formatter={money} />} />
-              <Bar dataKey="realizado" fill="var(--foreground)" radius={[6, 6, 0, 0]} maxBarSize={40} isAnimationActive animationDuration={700} />
-              <Bar dataKey="pipeline" fill="var(--foreground)" fillOpacity={0.28} radius={[6, 6, 0, 0]} maxBarSize={40} isAnimationActive animationDuration={700} />
+              <Bar dataKey="realizado" fill="var(--foreground)" radius={[8, 8, 0, 0]} maxBarSize={72} isAnimationActive animationDuration={700} />
+              <Bar dataKey="pipeline" fill="var(--foreground)" fillOpacity={0.3} radius={[8, 8, 0, 0]} maxBarSize={72} isAnimationActive animationDuration={700} />
             </BarChart>
           </ResponsiveContainer>
         </div>

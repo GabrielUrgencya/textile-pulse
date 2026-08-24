@@ -54,6 +54,9 @@ export function SalesAdminTeam() {
   const [formError, setFormError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const errorRef = useRef<HTMLDivElement>(null);
+  // D2: dados da consultora escopados ao Vendas
+  const [details, setDetails] = useState<{ displayName: string; phone: string; notes: string }>({ displayName: "", phone: "", notes: "" });
+  const [detailsSaving, setDetailsSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,6 +89,36 @@ export function SalesAdminTeam() {
     setEditing(person);
     setRole(person.salesRole ?? "CONSULTANT");
     setFormError(null);
+    setDetails({ displayName: "", phone: "", notes: "" });
+    if (person.membershipId) {
+      void (async () => {
+        try {
+          const response = await fetch(`/api/vendas/admin/consultant-details?profileId=${person.profileId}`, { cache: "no-store" });
+          const payload = (await response.json()) as { data?: { displayName: string | null; phone: string | null; notes: string | null } } & ApiError;
+          if (response.ok && payload.data) setDetails({ displayName: payload.data.displayName ?? "", phone: payload.data.phone ?? "", notes: payload.data.notes ?? "" });
+        } catch { /* dados são opcionais; silenciar */ }
+      })();
+    }
+  }
+  async function saveDetails() {
+    if (!editing || detailsSaving) return;
+    setDetailsSaving(true);
+    setFormError(null);
+    try {
+      const response = await fetch("/api/vendas/admin/consultant-details", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: editing.profileId, displayName: details.displayName.trim() || null, phone: details.phone.trim() || null, notes: details.notes.trim() || null }),
+      });
+      const payload = (await response.json()) as ApiError;
+      if (!response.ok) throw new Error(payload.error?.message || "Não foi possível salvar os dados.");
+      setAnnouncement(`Dados de ${personName(editing)} salvos.`);
+    } catch (cause) {
+      setFormError(cause instanceof Error ? cause.message : "Não foi possível salvar os dados.");
+      requestAnimationFrame(() => errorRef.current?.focus());
+    } finally {
+      setDetailsSaving(false);
+    }
   }
 
   async function saveMembership(
@@ -240,6 +273,20 @@ export function SalesAdminTeam() {
               </SelectContent>
             </Select>
           </div>
+          {editing?.membershipId && (
+            <div className="space-y-3 rounded-lg border border-border/60 p-4">
+              <div>
+                <p className="text-sm font-medium">Dados da consultora (LISION Vendas)</p>
+                <p className="text-[11px] text-muted-foreground">Nome de exibição, contato e notas — usados apenas no Vendas, sem alterar o perfil do Lision.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1"><Label htmlFor="cd-name">Nome de exibição</Label><Input id="cd-name" maxLength={120} value={details.displayName} onChange={(e) => setDetails((d) => ({ ...d, displayName: e.target.value }))} className="min-h-11" placeholder={editing ? personName(editing) : ""} /></div>
+                <div className="space-y-1"><Label htmlFor="cd-phone">Telefone</Label><Input id="cd-phone" maxLength={40} value={details.phone} onChange={(e) => setDetails((d) => ({ ...d, phone: e.target.value }))} className="min-h-11" /></div>
+              </div>
+              <div className="space-y-1"><Label htmlFor="cd-notes">Notas</Label><Input id="cd-notes" maxLength={2000} value={details.notes} onChange={(e) => setDetails((d) => ({ ...d, notes: e.target.value }))} className="min-h-11" /></div>
+              <Button variant="outline" className="min-h-11" disabled={detailsSaving} onClick={() => void saveDetails()}>{detailsSaving ? "Salvando dados..." : "Salvar dados"}</Button>
+            </div>
+          )}
           <DialogFooter className="gap-2">
             {editing?.membershipIsActive && (
               <Button variant="destructive" className="min-h-11" disabled={saving} onClick={() => { setPendingDeactivate(editing); setEditing(null); }}>
