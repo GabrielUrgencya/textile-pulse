@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { SalesAccessState } from "@/components/sales/SalesAccessState";
 import { SalesAdminSubnavigation } from "@/components/sales/admin/SalesAdminSubnavigation";
 import { SalesAdminTeam } from "@/components/sales/admin/SalesAdminTeam";
+import { SalesMemberManagement } from "@/components/sales/admin/SalesMemberManagement";
 import { SalesShell } from "@/components/sales/SalesShell";
 import { salesHomeForRole } from "@/lib/sales-access";
 import { resolveSalesPageAccess } from "@/lib/sales-page-access";
@@ -14,6 +15,9 @@ export default async function SalesAdminTeamPage() {
       <SalesShell role="ADMIN">
         <SalesAdminSubnavigation />
         <SalesAdminTeam />
+        <div className="mt-10 border-t border-border/40 pt-8">
+          <SalesMemberManagement />
+        </div>
       </SalesShell>
     );
   }

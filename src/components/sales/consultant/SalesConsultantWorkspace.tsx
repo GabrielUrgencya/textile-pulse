@@ -618,8 +618,8 @@ function Dashboard({
             value={currency(metric(realized, "realized_value"))}
           />
           <Metric
-            label="Percentual de ritmo"
-            value={`${numeric(metric(realized, "ideal_pace_percent"))}%`}
+            label="Vendas realizadas"
+            value={numeric(metric(realized, "sales_count"))}
           />
           <Metric
             label="Comissão"
@@ -629,6 +629,27 @@ function Dashboard({
           <Metric
             label="Acumulado no ano"
             value={currency(dashboard.accumulated.realized_value)}
+          />
+        </div>
+      </section>
+      <section aria-labelledby="percentuais">
+        <h2 id="percentuais" className="text-xl font-semibold">Percentuais do mês</h2>
+        <p className="text-muted-foreground text-sm">Três leituras diferentes — cada uma responde a uma pergunta.</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <Metric
+            label="% atingido da Meta 1"
+            value={`${numeric(regularGoals[0]?.progress_percent ?? 0)}%`}
+            help="Quanto do valor da 1ª meta você já vendeu"
+          />
+          <Metric
+            label="% de ritmo ideal"
+            value={`${numeric(metric(realized, "ideal_pace_percent"))}%`}
+            help="Onde você deveria estar hoje (dias úteis)"
+          />
+          <Metric
+            label="% de contribuição coletiva"
+            value={dashboard.collective.allowed ? `${numeric(dashboard.collective.progress_percent)}%` : "—"}
+            help="Quanto você contribui da meta do time"
           />
         </div>
       </section>
