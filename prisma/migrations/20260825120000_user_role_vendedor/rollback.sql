@@ -1,0 +1,22 @@
+-- Rollback de 20260825120000_user_role_vendedor
+--
+-- PostgreSQL NÃO suporta remover um valor de um enum (não há ALTER TYPE ... DROP VALUE).
+-- Portanto este rollback é intencionalmente um NO-OP: reverter exige recriar o tipo,
+-- o que só deve ser feito manualmente e apenas se NENHUMA linha usar 'VENDEDOR'.
+--
+-- Procedimento manual (executar fora de horário, com backup, SOMENTE se necessário):
+--
+--   -- 0) Garantir que ninguém usa o valor:
+--   --    SELECT count(*) FROM public.profiles WHERE role = 'VENDEDOR';
+--   --    (repetir para toda coluna que referencie public."UserRole")
+--   --
+--   -- 1) Recriar o tipo sem 'VENDEDOR' e migrar as colunas:
+--   --    ALTER TYPE public."UserRole" RENAME TO "UserRole_old";
+--   --    CREATE TYPE public."UserRole" AS ENUM ('ADMIN','GERENTE','COORDENADOR','OPERADOR','FACCAO');
+--   --    ALTER TABLE public.profiles
+--   --      ALTER COLUMN role TYPE public."UserRole" USING role::text::public."UserRole";
+--   --    -- (repetir o ALTER ... TYPE para cada coluna que use o enum, ex.: notifications.target_role)
+--   --    DROP TYPE public."UserRole_old";
+--
+-- Deixado como NO-OP deliberado — reter o valor de enum é inócuo e seguro.
+SELECT 1;

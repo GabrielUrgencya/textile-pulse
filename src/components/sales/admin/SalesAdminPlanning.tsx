@@ -131,7 +131,47 @@ function Periods(props: Shared<SalesPeriodRecord>) {
 }
 function PeriodForm({ item, setEditing, reload, announce }: Shared<SalesPeriodRecord> & { item: SalesPeriodRecord | "new" }) { const base = item === "new" ? null : item; const [startsOn, setStart] = useState(base?.startsOn ?? ""); const [endsOn, setEnd] = useState(base?.endsOn ?? ""); return <Editor title={base ? "Editar período aberto" : "Novo período"} endpoint="/api/vendas/admin/periods" body={{ periodId: base?.id ?? null, startsOn, endsOn, expectedRevision: base?.revision ?? 0 }} close={() => setEditing(null)} reload={reload} announce={() => announce("Período salvo.")}><Field label="Início" id="period-start"><Input id="period-start" type="date" value={startsOn} onChange={(e) => setStart(e.target.value)} className="min-h-11" /></Field><Field label="Fim" id="period-end"><Input id="period-end" type="date" value={endsOn} onChange={(e) => setEnd(e.target.value)} className="min-h-11" /></Field></Editor>; }
 
-function Goals(props: Shared<SalesGoalRecord>) { return <div className="space-y-6"><SalesGoalsCard goals={props.data.goals} reload={props.reload} announce={props.announce} /><GoalSimulator goals={props.data.goals} /><section aria-labelledby="assignments-heading" className="space-y-3"><h2 id="assignments-heading" className="text-xl font-semibold">Atribuições vigentes</h2>{props.data.assignments.length === 0 ? <Empty text="Nenhuma atribuição configurada." /> : props.data.assignments.map((item) => <Row key={item.id} title={props.data.goals.find((goal) => goal.id === item.goalId)?.name ?? "Meta"} detail={`${item.profileId ? "Individual" : "Coletiva"} · snapshot R$ ${item.targetValueSnapshot.toLocaleString("pt-BR")} · comissão ${item.commissionPercentSnapshot}%`} action={null} />)}</section></div>; }
+function Goals(props: Shared<SalesGoalRecord>) { return <div className="space-y-6">{props.data.goals.length === 0 && <GoalsInitCard reload={props.reload} announce={props.announce} />}<SalesGoalsCard goals={props.data.goals} reload={props.reload} announce={props.announce} /><GoalSimulator goals={props.data.goals} /><section aria-labelledby="assignments-heading" className="space-y-3"><h2 id="assignments-heading" className="text-xl font-semibold">Atribuições vigentes</h2>{props.data.assignments.length === 0 ? <Empty text="Nenhuma atribuição configurada." /> : props.data.assignments.map((item) => <Row key={item.id} title={props.data.goals.find((goal) => goal.id === item.goalId)?.name ?? "Meta"} detail={`${item.profileId ? "Individual" : "Coletiva"} · snapshot R$ ${item.targetValueSnapshot.toLocaleString("pt-BR")} · comissão ${item.commissionPercentSnapshot}%`} action={null} />)}</section></div>; }
+
+/**
+ * Inicialização self-service das metas padrão. Aparece só quando o tenant ainda
+ * não tem metas — chama a RPC idempotente e recarrega, revelando as 6 metas
+ * canônicas prontas para edição. Substitui o script de provisionamento.
+ */
+function GoalsInitCard({ reload, announce }: { reload: () => Promise<void>; announce: (value: string) => void }) {
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function run() {
+    if (running) return; setRunning(true); setError(null);
+    try {
+      const result = await salesAdminConfigurationRequest<{ goalsCreated: number; assignmentsCreated: number; periodCreated: boolean }>(
+        "/api/vendas/admin/provision-defaults", { method: "POST" },
+      );
+      announce(`Metas inicializadas: ${result.goalsCreated} meta(s)${result.periodCreated ? " + período do mês" : ""}.`);
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível inicializar as metas.");
+    } finally { setRunning(false); }
+  }
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-5">
+        <div>
+          <h3 className="font-semibold">Comece por aqui — inicialize as metas padrão</h3>
+          <p className="text-sm text-muted-foreground">
+            Cria as 6 metas do modelo (Meta 1/2/3, Desafio, Trimestral, Coletiva) com valores
+            de exemplo, um período aberto para o mês corrente e os métodos de pagamento padrão —
+            tudo editável depois. Pode rodar de novo sem risco: só preenche o que faltar.
+          </p>
+        </div>
+        {error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+        <Button className="min-h-11" disabled={running} onClick={() => void run()}>
+          {running ? "Inicializando..." : "Inicializar metas padrão"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 function GoalSimulator({ goals }: { goals: SalesGoalRecord[] }) {
   const money = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n || 0);

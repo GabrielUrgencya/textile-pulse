@@ -8,6 +8,12 @@ import { BrandLogo } from "@/components/ui/brand-logo";
 
 type AuthMode = "choose" | "email" | "pin";
 
+// Vendedor não tem áreas de produção — cai direto no módulo LISION Vendas.
+// O roteamento do /vendas decide entre /vendas/admin e /vendas/app conforme o vínculo.
+function landingFor(role: unknown): string {
+  return role === "VENDEDOR" ? "/vendas" : "/dashboard";
+}
+
 function LoginContent() {
   const router = useRouter();
   // HOTFIX multi-tenant: /login?tenant=<slug> define o tenant sem depender do
@@ -52,7 +58,8 @@ function LoginContent() {
         return;
       }
 
-      router.push("/dashboard");
+      const data = await res.json().catch(() => null);
+      router.push(landingFor(data?.user?.role));
       router.refresh();
     } catch {
       setError("Erro de conexão. Tente novamente.");
@@ -85,7 +92,8 @@ function LoginContent() {
         return;
       }
 
-      router.push("/dashboard");
+      const data = await res.json().catch(() => null);
+      router.push(landingFor(data?.user?.role));
       router.refresh();
     } catch {
       setError("Erro de conexão. Tente novamente.");

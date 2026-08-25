@@ -26,6 +26,7 @@ const ROLES = [
   { value: "GERENTE", label: "Gerente" },
   { value: "COORDENADOR", label: "Coordenador" },
   { value: "OPERADOR", label: "Operador" },
+  { value: "VENDEDOR", label: "Vendedor (LISION Vendas)" },
 ];
 
 const SECTORS = [
@@ -35,6 +36,7 @@ const SECTORS = [
   { value: "QUALIDADE", label: "Qualidade" },
   { value: "EXPEDICAO", label: "Expedição" },
   { value: "ADMINISTRATIVO", label: "Administrativo" },
+  { value: "VENDAS", label: "Vendas" },
 ];
 
 interface MemberFormData {
@@ -322,6 +324,11 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
                 onValueChange={(v) => {
                   setRole(v);
                   if (errors.role) setErrors((p) => ({ ...p, role: undefined }));
+                  // Vendedor já cai no setor Vendas por padrão (segue editável).
+                  if (v === "VENDEDOR" && !sector) {
+                    setSector("VENDAS");
+                    setErrors((p) => ({ ...p, sector: undefined }));
+                  }
                 }}
               >
                 <SelectTrigger className="input-field">
@@ -337,6 +344,12 @@ function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) 
               </Select>
               {errors.role && (
                 <p className="text-xs text-destructive">{errors.role}</p>
+              )}
+              {role === "VENDEDOR" && (
+                <p className="text-xs text-muted-foreground">
+                  Acessa somente o módulo LISION Vendas — sem acesso às áreas de produção.
+                  Recebe vínculo de vendedora automaticamente.
+                </p>
               )}
             </div>
 

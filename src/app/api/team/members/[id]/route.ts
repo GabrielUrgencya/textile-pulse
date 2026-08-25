@@ -3,6 +3,9 @@ import { withAuth } from "@/lib/auth-middleware";
 import { can } from "@/lib/effective-permissions";
 import { dbError, requireTenantId } from "@/lib/api-helpers";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { ensureSalesConsultantMembership } from "@/lib/sales-vendedor-link";
+
+const VALID_ROLES = ["ADMIN", "GERENTE", "COORDENADOR", "OPERADOR", "VENDEDOR"];
 
 export async function PATCH(
   request: Request,
@@ -17,6 +20,9 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden: users:manage required" }, { status: 403 });
   }
 
+  const t = requireTenantId(user);
+  if (t.error) return t.error;
+
   const { id } = await params;
   const body = await request.json().catch(() => null);
 
@@ -27,6 +33,24 @@ export async function PATCH(
   // Cannot edit own role
   if (id === user.id && body.role) {
     return NextResponse.json({ error: "Cannot change your own role" }, { status: 403 });
+  }
+
+  if (body.role !== undefined && !VALID_ROLES.includes(body.role)) {
+    return NextResponse.json(
+      { error: "Role inválido. Valores permitidos: ADMIN, GERENTE, COORDENADOR, OPERADOR, VENDEDOR" },
+      { status: 400 },
+    );
+  }
+
+  // Confirma que o alvo pertence ao tenant do admin (service role bypassa RLS).
+  const { data: target } = await supabaseAdmin
+    .from("profiles")
+    .select("id")
+    .eq("id", id)
+    .eq("tenant_id", t.tenantId)
+    .maybeSingle();
+  if (!target) {
+    return NextResponse.json({ error: "Membro não encontrado neste tenant." }, { status: 404 });
   }
 
   const updates: Record<string, unknown> = {};
@@ -42,7 +66,28 @@ export async function PATCH(
 
   if (error) return dbError("PATCH /api/team/members/[id]", error);
 
-  return NextResponse.json({ data: { success: true } });
+  // CRÍTICO: o RBAC lê o cargo de auth.users.app_metadata.role (NÃO de profiles.role).
+  // Sem sincronizar aqui, trocar o cargo não mudava as permissões efetivas do usuário.
+  if (body.role !== undefined) {
+    const { error: metaErr } = await supabaseAdmin.auth.admin.updateUserById(id, {
+      app_metadata: { tenant_id: t.tenantId, role: body.role },
+    });
+    if (metaErr) {
+      return NextResponse.json(
+        { error: `Cargo salvo, mas a sincronização de permissões falhou: ${metaErr.message}` },
+        { status: 500 },
+      );
+    }
+  }
+
+  // Vendedor precisa de vínculo Vendas para ter a que acessar (não tem produção).
+  let salesLinkWarning: string | undefined;
+  if (body.role === "VENDEDOR") {
+    const link = await ensureSalesConsultantMembership(t.tenantId, id);
+    if (!link.ok) salesLinkWarning = link.error;
+  }
+
+  return NextResponse.json({ data: { success: true, ...(salesLinkWarning ? { salesLinkWarning } : {}) } });
 }
 
 // Exclusão DEFINITIVA de membro (auth + profile). Só ADM (users:manage).

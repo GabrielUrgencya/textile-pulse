@@ -8,7 +8,7 @@
  *   OPERADOR   — apenas bipagem + visualização
  */
 
-export type AppRole = "ADMIN" | "GERENTE" | "COORDENADOR" | "OPERADOR";
+export type AppRole = "ADMIN" | "GERENTE" | "COORDENADOR" | "OPERADOR" | "VENDEDOR";
 
 type Permission =
   | "dashboard:view"
@@ -109,6 +109,11 @@ export const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
     "rework:report",
     "rework:view",
   ],
+  // Vendedor: cargo exclusivo do LISION Vendas. Sem NENHUMA permissão de produção,
+  // então o sidebar (que filtra por permissão) só mostra o módulo "LISION Vendas".
+  // O acesso ao Vendas em si vem do vínculo (sales_memberships), não daqui.
+  // 100% editável pelo cliente na matriz de Configurações → Permissões (Story 8.22).
+  VENDEDOR: [],
 } as const;
 
 /** Check if a role has a specific permission */
@@ -143,6 +148,7 @@ const ROLE_LEVEL: Record<AppRole, number> = {
   GERENTE: 30,
   COORDENADOR: 20,
   OPERADOR: 10,
+  VENDEDOR: 5,
 };
 
 /** Check if role meets minimum required level */

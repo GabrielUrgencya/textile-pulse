@@ -4,6 +4,7 @@ import { can } from "@/lib/effective-permissions";
 import { dbError, requireTenantId } from "@/lib/api-helpers";
 import { escapeLikePattern } from "@/lib/utils";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { ensureSalesConsultantMembership } from "@/lib/sales-vendedor-link";
 import { todayInTz, TENANT_UTC_OFFSET } from "@/lib/tz";
 import bcrypt from "bcryptjs";
 import { randomInt } from "crypto";
@@ -95,10 +96,10 @@ export async function POST(request: Request) {
   }
 
   // M4 FIX: Validate role against allowed enum values
-  const VALID_ROLES = ["ADMIN", "GERENTE", "COORDENADOR", "OPERADOR"];
+  const VALID_ROLES = ["ADMIN", "GERENTE", "COORDENADOR", "OPERADOR", "VENDEDOR"];
   if (!VALID_ROLES.includes(body.role)) {
     return NextResponse.json(
-      { error: "Role inválido. Valores permitidos: ADMIN, GERENTE, COORDENADOR, OPERADOR" },
+      { error: "Role inválido. Valores permitidos: ADMIN, GERENTE, COORDENADOR, OPERADOR, VENDEDOR" },
       { status: 400 },
     );
   }
@@ -151,8 +152,15 @@ export async function POST(request: Request) {
 
   if (profileError) return dbError("POST /api/team/members", profileError);
 
+  // Vendedor precisa de vínculo Vendas para ter a que acessar (não tem produção).
+  let salesLinkWarning: string | undefined;
+  if (body.role === "VENDEDOR") {
+    const link = await ensureSalesConsultantMembership(t.tenantId, authData.user.id);
+    if (!link.ok) salesLinkWarning = link.error;
+  }
+
   return NextResponse.json(
-    { data: { id: authData.user.id, pin } },
+    { data: { id: authData.user.id, pin, ...(salesLinkWarning ? { salesLinkWarning } : {}) } },
     { status: 201 },
   );
 }

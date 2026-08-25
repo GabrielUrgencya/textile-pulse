@@ -79,6 +79,34 @@ function errorFrom(error: PostgrestError): SalesAdminError {
 const failed = <T>(error: PostgrestError): SalesAdminResult<T> => ({ data: null, error: errorFrom(error) });
 const ok = <T>(data: T): SalesAdminResult<T> => ({ data, error: null });
 
+export interface SalesProvisionDefaultsResult {
+  configCreated: boolean;
+  methodsCreated: number;
+  periodId: string | null;
+  periodCreated: boolean;
+  goalsCreated: number;
+  assignmentsCreated: number;
+}
+
+/**
+ * Inicializa, para o tenant do ADM chamador, config + métodos + período aberto do
+ * mês + as 6 metas canônicas + atribuições. Idempotente (a RPC só preenche o que
+ * falta). Substitui o script de provisionamento por um clique na interface.
+ */
+export async function provisionSalesDefaults(supabase: SupabaseClient): Promise<SalesAdminResult<SalesProvisionDefaultsResult>> {
+  const { data, error } = await supabase.rpc("sales_admin_provision_defaults_v1");
+  if (error) return failed(error);
+  const row = (data ?? {}) as Row;
+  return ok({
+    configCreated: row.config_created === true,
+    methodsCreated: num(row.methods_created ?? 0),
+    periodId: row.period_id ? String(row.period_id) : null,
+    periodCreated: row.period_created === true,
+    goalsCreated: num(row.goals_created ?? 0),
+    assignmentsCreated: num(row.assignments_created ?? 0),
+  });
+}
+
 export async function loadSalesAdminConfiguration(supabase: SupabaseClient): Promise<SalesAdminResult<SalesAdminConfiguration>> {
   const { data, error } = await supabase.rpc("sales_admin_configuration_v1"); if (error) return failed(error);
   const row = (data ?? {}) as Row;

@@ -84,6 +84,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Cargo VENDEDOR é exclusivo do LISION Vendas: nunca acessa páginas de produção,
+  // mesmo digitando a URL. Só as áreas /vendas/* ficam liberadas (o roteamento de lá
+  // decide admin vs. app). Sessão compartilhada, então o redirect não pede novo login.
+  const sessionRole = user?.app_metadata?.role as string | undefined;
+  if (user && sessionRole === "VENDEDOR" && !isSalesPage) {
+    const salesUrl = request.nextUrl.clone();
+    salesUrl.pathname = "/vendas";
+    salesUrl.search = "";
+    return NextResponse.redirect(salesUrl);
+  }
+
   // Authenticated user on the MAIN login page → redirect to dashboard.
   // O /vendas/login NÃO rebate autenticados de propósito: o módulo "LISION Vendas"
   // manda quem NÃO tem vínculo para cá (para entrar com outra conta que tenha acesso).
