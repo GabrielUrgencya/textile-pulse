@@ -28,6 +28,8 @@ export function SalesGoalsCard({
   const sorted = React.useMemo(() => [...goals].sort((a, b) => a.sortOrder - b.sortOrder), [goals]);
   const [draft, setDraft] = React.useState<Record<string, Draft>>({});
   const [saving, setSaving] = React.useState<string | null>(null);
+  const [deleting, setDeleting] = React.useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   function val(goal: SalesGoalRecord): Draft {
@@ -70,6 +72,20 @@ export function SalesGoalsCard({
       setError(cause instanceof Error ? cause.message : "Falha ao salvar a meta.");
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function remove(goal: SalesGoalRecord) {
+    setDeleting(goal.id); setError(null);
+    try {
+      await salesAdminConfigurationRequest(`/api/vendas/admin/goals/${goal.id}`, { method: "DELETE" });
+      announce(`Meta "${goal.name}" excluída.`);
+      setConfirmDelete(null);
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao excluir a meta.");
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -156,9 +172,23 @@ export function SalesGoalsCard({
                     value={v.commission}
                     onChange={(e) => set(goal, "commission", e.target.value)}
                   />
-                  <Button onClick={() => void save(goal)} disabled={saving !== null} className="h-9">
-                    {saving === goal.id ? "..." : "Salvar"}
-                  </Button>
+                  {confirmDelete === goal.id ? (
+                    <div className="flex items-center gap-1">
+                      <Button variant="destructive" onClick={() => void remove(goal)} disabled={deleting !== null} className="h-9">
+                        {deleting === goal.id ? "..." : "Excluir"}
+                      </Button>
+                      <Button variant="outline" onClick={() => setConfirmDelete(null)} disabled={deleting !== null} className="h-9">Cancelar</Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <Button onClick={() => void save(goal)} disabled={saving !== null || deleting !== null} className="h-9">
+                        {saving === goal.id ? "..." : "Salvar"}
+                      </Button>
+                      <Button variant="ghost" onClick={() => { setConfirmDelete(goal.id); setError(null); }} disabled={saving !== null || deleting !== null} className="h-9 text-destructive hover:text-destructive" title="Excluir meta">
+                        Excluir
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}

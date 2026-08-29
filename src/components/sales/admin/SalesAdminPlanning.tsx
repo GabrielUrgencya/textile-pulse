@@ -131,7 +131,7 @@ function Periods(props: Shared<SalesPeriodRecord>) {
 }
 function PeriodForm({ item, setEditing, reload, announce }: Shared<SalesPeriodRecord> & { item: SalesPeriodRecord | "new" }) { const base = item === "new" ? null : item; const [startsOn, setStart] = useState(base?.startsOn ?? ""); const [endsOn, setEnd] = useState(base?.endsOn ?? ""); return <Editor title={base ? "Editar período aberto" : "Novo período"} endpoint="/api/vendas/admin/periods" body={{ periodId: base?.id ?? null, startsOn, endsOn, expectedRevision: base?.revision ?? 0 }} close={() => setEditing(null)} reload={reload} announce={() => announce("Período salvo.")}><Field label="Início" id="period-start"><Input id="period-start" type="date" value={startsOn} onChange={(e) => setStart(e.target.value)} className="min-h-11" /></Field><Field label="Fim" id="period-end"><Input id="period-end" type="date" value={endsOn} onChange={(e) => setEnd(e.target.value)} className="min-h-11" /></Field></Editor>; }
 
-function Goals(props: Shared<SalesGoalRecord>) { return <div className="space-y-6">{props.data.goals.length === 0 && <GoalsInitCard reload={props.reload} announce={props.announce} />}<SalesGoalsCard goals={props.data.goals} reload={props.reload} announce={props.announce} /><GoalSimulator goals={props.data.goals} /><section aria-labelledby="assignments-heading" className="space-y-3"><h2 id="assignments-heading" className="text-xl font-semibold">Atribuições vigentes</h2>{props.data.assignments.length === 0 ? <Empty text="Nenhuma atribuição configurada." /> : props.data.assignments.map((item) => <Row key={item.id} title={props.data.goals.find((goal) => goal.id === item.goalId)?.name ?? "Meta"} detail={`${item.profileId ? "Individual" : "Coletiva"} · snapshot R$ ${item.targetValueSnapshot.toLocaleString("pt-BR")} · comissão ${item.commissionPercentSnapshot}%`} action={null} />)}</section></div>; }
+function Goals(props: Shared<SalesGoalRecord>) { return <div className="space-y-6">{props.data.goals.length === 0 && <GoalsInitCard reload={props.reload} announce={props.announce} />}<SalesGoalsCard goals={props.data.goals} reload={props.reload} announce={props.announce} /><GoalSimulator goals={props.data.goals} /></div>; }
 
 /**
  * Inicialização self-service das metas padrão. Aparece só quando o tenant ainda
@@ -173,7 +173,7 @@ function GoalsInitCard({ reload, announce }: { reload: () => Promise<void>; anno
   );
 }
 
-function GoalSimulator({ goals }: { goals: SalesGoalRecord[] }) {
+export function GoalSimulator({ goals }: { goals: SalesGoalRecord[] }) {
   const money = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n || 0);
   const tiers = [...goals].filter((g) => g.isActive && g.scope === "INDIVIDUAL" && g.commissionPercent > 0).sort((a, b) => a.targetValue - b.targetValue);
   const [value, setValue] = useState(0);
