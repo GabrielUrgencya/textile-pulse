@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { areaForPath } from "@/lib/sales-areas";
 import {
   ArrowLeft,
   CalendarDays,
@@ -67,8 +68,23 @@ export function SalesSidebar({ role }: { role: SalesRole }) {
   const collapsed = state === "collapsed";
   const { profile } = useUserProfile();
   const [loggingOut, setLoggingOut] = useState(false);
+  // 11.6a: áreas efetivas do admin (permissões por cargo/usuário). null = ainda carregando → mostra tudo.
+  const [areas, setAreas] = useState<string[] | null>(null);
 
-  const mainItems = role === "ADMIN" ? ADMIN_ITEMS : CONSULTANT_ITEMS;
+  useEffect(() => {
+    if (role !== "ADMIN") return;
+    let alive = true;
+    fetch("/api/vendas/admin/my-areas", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => { if (alive) setAreas(Array.isArray(j?.data) ? j.data : null); })
+      .catch(() => { /* falha silenciosa: mantém tudo visível */ });
+    return () => { alive = false; };
+  }, [role]);
+
+  const baseItems = role === "ADMIN" ? ADMIN_ITEMS : CONSULTANT_ITEMS;
+  const mainItems = role === "ADMIN" && areas
+    ? baseItems.filter((item) => { const a = areaForPath(item.url); return a === null || areas.includes(a); })
+    : baseItems;
   const bottomItems = role === "ADMIN" ? ADMIN_BOTTOM : [];
 
   const isActive = (url: string) =>

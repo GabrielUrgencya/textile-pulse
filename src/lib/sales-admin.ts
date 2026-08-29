@@ -102,6 +102,7 @@ export type SalesAdminErrorCode =
   | "DUPLICATE_HOLIDAY"
   | "DUPLICATE_GOAL_IDENTITY"
   | "GOAL_HAS_HISTORY"
+  | "PERMISSION_LOCKOUT"
   | "INELIGIBLE_ASSIGNEE"
   | "STALE_REVISION"
   | "VALIDATION"
@@ -240,7 +241,27 @@ const ERROR_CONTRACTS: Record<
   sales_delete_validation: { code: "VALIDATION", message: "Dados de exclusão inválidos.", status: 400 },
   sales_consultant_not_in_scope: { code: "RESOURCE_NOT_FOUND", message: "Consultora indisponível para esta operação.", status: 404 },
   sales_consultant_details_validation: { code: "INVALID_INPUT", message: "Dados da consultora inválidos.", status: 400 },
+  sales_permission_lockout: { code: "PERMISSION_LOCKOUT", message: "Você não pode remover seu próprio acesso a Configurações.", status: 409 },
 };
+
+export async function loadSalesAreaPermissions(supabase: SupabaseClient): Promise<SalesAdminResult<unknown>> {
+  const { data, error } = await supabase.rpc("sales_admin_area_permissions_v1");
+  if (error) return { data: null, error: mapSalesAdminRpcError(error) };
+  return { data: data ?? {}, error: null };
+}
+
+export async function setSalesAreaPermissions(
+  supabase: SupabaseClient,
+  roleOverrides: Record<string, Record<string, boolean>>,
+  userOverrides: Record<string, Record<string, boolean>>,
+): Promise<SalesAdminResult<unknown>> {
+  const { data, error } = await supabase.rpc("sales_admin_set_area_permissions_v1", {
+    p_role_overrides: roleOverrides,
+    p_user_overrides: userOverrides,
+  });
+  if (error) return { data: null, error: mapSalesAdminRpcError(error) };
+  return { data: data ?? {}, error: null };
+}
 
 function parseOrderDetails(details?: string | null) {
   if (!details) return undefined;

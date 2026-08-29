@@ -42,11 +42,18 @@ Isolar o LISION Vendas do LISION de produção (dados de equipe), tornar a gest�
 - **11.3 — Workspace de Metas (UI única estilo produção).**
   `SalesGoalsWorkspace`: bloco "Metas coletivas/trimestrais" + tabela de metas individuais por consultora com edição inline e criação no topo. Incorpora editar/excluir metas e atribuições. Remove o empilhamento e o scroll.
 
-### Fase 3 — Acesso & Configuração
-- **11.4 — Acesso "Somente Vendas" + matriz fina.**
-  Revalida o guard VENDEDOR em produção; melhora a UX de restrição no formulário de equipe (padrão Lision); adiciona matriz de permissões por área por usuário (adaptação do `PermissionsEditor`).
-- **11.5 — Config do Vendas em abas + módulos úteis.**
-  Reorganiza o admin do Vendas em abas verticais (padrão `SettingsPage`) e traz módulos equivalentes úteis (identidade do Vendas, referências), mantendo períodos/feriados/métodos.
+### Fase 3 — Acesso & Configuração (refinada após investigação)
+
+Descoberta: o Lision controla permissões **por CARGO** (`role_permissions`), não por usuário; o `PermissionsEditor` não inclui VENDEDOR. Decisão do usuário: o controle de permissões deve viver no **módulo de Configurações** (mesma UI/UX do Lision) e ser **por cargo E por usuário**. A config do Vendas deve ser **enriquecida** (a navegação lateral já existe).
+
+- **11.4a — "Somente Vendas" + cargo Vendedor na matriz (bounded).**
+  Melhora a UX de "Acesso: Somente Vendas" no `MemberForm` (padrão Lision) + inclui VENDEDOR no `PermissionsEditor` (controle por cargo no módulo de config). Revalida o guard em produção.
+- **11.5 — Enriquecer Configurações do Vendas (bounded).**
+  Mantém a navegação atual; adiciona módulos úteis à página de Configurações do Vendas (identidade/rótulos do Vendas, referências) no padrão visual do Lision.
+- **11.6 — Permissões por usuário (subsistema novo — LARGE).**
+  Camada de permissões por usuário (overrides por pessoa) além do por-cargo, no módulo de Configurações, controlando o que cada usuário vê. NÃO existe no Lision hoje → requer tabela + resolução de permissões efetivas + UI (matriz por cargo + seção por usuário) + gating. Construída como peça dedicada, com atenção a segurança (RLS, escopo por tenant).
+
+**Status Fase 3:** Fases 1 e 2 entregues e em produção. Fase 3 planejada e fatiada; 11.6 é um subsistema que merece um ciclo próprio focado.
 
 ## Sequenciamento & entrega
 
