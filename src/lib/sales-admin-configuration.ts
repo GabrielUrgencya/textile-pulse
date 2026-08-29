@@ -20,7 +20,7 @@ export const salesPeriodInputSchema = z.object({
 }).strict().refine((value) => value.endsOn >= value.startsOn, { path: ["endsOn"], message: "A data final deve ser posterior à inicial." });
 export const salesGoalInputSchema = z.object({
   goalId: uuid.nullable().optional(), provisioningKey: z.enum(["META_1", "META_2", "META_3", "CHALLENGE", "QUARTERLY", "COLLECTIVE"]).nullable(),
-  name: z.string().trim().min(1).max(120), scope: z.enum(["INDIVIDUAL", "COLLECTIVE"]),
+  name: z.string().trim().min(1).max(120), scope: z.enum(["INDIVIDUAL", "COLLECTIVE", "QUARTERLY"]),
   targetValue: money, commissionPercent: z.number().min(0).max(100), sortOrder: z.number().int().nonnegative(),
   isChallenge: z.boolean(), isActive: z.boolean(), validFrom: date.nullable(), validUntil: date.nullable(), expectedRevision: revision,
 }).strict().superRefine((value, context) => {

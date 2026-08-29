@@ -41,8 +41,9 @@ export function SalesGoalsWorkspace() {
   useEffect(() => void load(), [load]);
 
   const openPeriod = useMemo<SalesPeriodRecord | null>(() => data?.periods.find((p) => p.status === "OPEN") ?? null, [data]);
-  const generalGoals = useMemo(() => (data?.goals ?? []).filter((g) => g.scope !== "INDIVIDUAL").sort((a, b) => a.sortOrder - b.sortOrder), [data]);
-  const individualGoals = useMemo(() => (data?.goals ?? []).filter((g) => g.scope === "INDIVIDUAL").sort((a, b) => a.sortOrder - b.sortOrder), [data]);
+  // Coletiva = time todo (sem consultora). Individual e Trimestral (QUARTERLY) são por consultora.
+  const generalGoals = useMemo(() => (data?.goals ?? []).filter((g) => g.scope === "COLLECTIVE").sort((a, b) => a.sortOrder - b.sortOrder), [data]);
+  const individualGoals = useMemo(() => (data?.goals ?? []).filter((g) => g.scope === "INDIVIDUAL" || g.scope === "QUARTERLY").sort((a, b) => a.sortOrder - b.sortOrder), [data]);
 
   if (loading && !data) return <div className="p-6 text-sm text-muted-foreground">Carregando metas...</div>;
 
@@ -58,7 +59,7 @@ export function SalesGoalsWorkspace() {
         <>
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Metas gerais (coletiva & trimestral)</h2>
+              <h2 className="text-xl font-semibold">Metas gerais (coletiva do time)</h2>
             </div>
             {generalGoals.length === 0 ? (
               <Card><CardContent className="p-4 text-sm text-muted-foreground">Nenhuma meta geral. Crie uma abaixo ou inicialize as metas padrão.</CardContent></Card>
@@ -166,7 +167,7 @@ function IndividualGoalCard({ goal, period, consultants, assignments, onChanged,
     if (t === null || Number.isNaN(t) || c === null || Number.isNaN(c) || c > 100) { setError("Valores inválidos."); return; }
     setBusy(true); setError(null);
     try {
-      await salesAdminConfigurationRequest(`/api/vendas/admin/goals`, { method: "PUT", body: JSON.stringify({ goalId: goal.id, provisioningKey: goal.provisioningKey, name: name.trim(), scope: "INDIVIDUAL", targetValue: t, commissionPercent: c, sortOrder: goal.sortOrder, isChallenge: goal.isChallenge, isActive: goal.isActive, validFrom: goal.validFrom, validUntil: goal.validUntil, expectedRevision: goal.revision }) });
+      await salesAdminConfigurationRequest(`/api/vendas/admin/goals`, { method: "PUT", body: JSON.stringify({ goalId: goal.id, provisioningKey: goal.provisioningKey, name: name.trim(), scope: goal.scope, targetValue: t, commissionPercent: c, sortOrder: goal.sortOrder, isChallenge: goal.isChallenge, isActive: goal.isActive, validFrom: goal.validFrom, validUntil: goal.validUntil, expectedRevision: goal.revision }) });
       announce(`Meta "${name.trim()}" salva.`); await onChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao salvar."); }
     finally { setBusy(false); }
@@ -180,7 +181,7 @@ function IndividualGoalCard({ goal, period, consultants, assignments, onChanged,
   return (
     <Card><CardContent className="space-y-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge status="neutral">Individual</StatusBadge>{goal.isChallenge && <StatusBadge status="warning">Desafio</StatusBadge>}{goal.provisioningKey && <span className="text-xs text-muted-foreground">{goal.provisioningKey}</span>}
+        <StatusBadge status="neutral">{goal.scope === "QUARTERLY" ? "Trimestral (por consultora)" : "Individual (mensal)"}</StatusBadge>{goal.isChallenge && <StatusBadge status="warning">Desafio</StatusBadge>}{goal.provisioningKey && <span className="text-xs text-muted-foreground">{goal.provisioningKey}</span>}
       </div>
       <div className="grid gap-3 sm:grid-cols-[1fr_160px_120px_auto] sm:items-end">
         <div className="space-y-1"><Label htmlFor={`in-${goal.id}`}>Nome</Label><Input id={`in-${goal.id}`} className="min-h-11" value={name} onChange={(e) => setName(e.target.value)} /></div>

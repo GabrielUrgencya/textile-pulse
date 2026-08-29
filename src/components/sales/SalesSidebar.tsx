@@ -69,14 +69,22 @@ export function SalesSidebar({ role }: { role: SalesRole }) {
   const { profile } = useUserProfile();
   const [loggingOut, setLoggingOut] = useState(false);
   // 11.6a: áreas efetivas do admin (permissões por cargo/usuário). null = ainda carregando → mostra tudo.
-  const [areas, setAreas] = useState<string[] | null>(null);
+  // Cache em sessionStorage evita flicker (mostrar-e-esconder) nas navegações seguintes.
+  const [areas, setAreas] = useState<string[] | null>(() => {
+    if (role !== "ADMIN" || typeof window === "undefined") return null;
+    try { const c = sessionStorage.getItem("sales-my-areas"); return c ? (JSON.parse(c) as string[]) : null; } catch { return null; }
+  });
 
   useEffect(() => {
     if (role !== "ADMIN") return;
     let alive = true;
     fetch("/api/vendas/admin/my-areas", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j) => { if (alive) setAreas(Array.isArray(j?.data) ? j.data : null); })
+      .then((j) => {
+        if (!alive || !Array.isArray(j?.data)) return;
+        setAreas(j.data);
+        try { sessionStorage.setItem("sales-my-areas", JSON.stringify(j.data)); } catch { /* ignora */ }
+      })
       .catch(() => { /* falha silenciosa: mantém tudo visível */ });
     return () => { alive = false; };
   }, [role]);
