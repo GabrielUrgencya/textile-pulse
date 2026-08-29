@@ -40,7 +40,7 @@ export type SalesPeriodInput = z.infer<typeof salesPeriodInputSchema>;
 export type SalesGoalInput = z.infer<typeof salesGoalInputSchema>;
 export type SalesGoalAssignmentInput = z.infer<typeof salesGoalAssignmentInputSchema>;
 
-export interface SalesConfigRecord { id: string; piecesPerSet: number; timezone: string; weekStartsOn: number; allowTeamAggregates: boolean; revision: number; }
+export interface SalesConfigRecord { id: string; piecesPerSet: number; timezone: string; weekStartsOn: number; allowTeamAggregates: boolean; autoOpenPeriod: boolean; revision: number; }
 export interface SalesHolidayRecord { id: string; date: string; name: string; isActive: boolean; revision: number; }
 export interface SalesPeriodRecord { id: string; startsOn: string; endsOn: string; status: "OPEN" | "CLOSED"; revision: number; readOnlyReason: "CLOSED_PERIOD" | null; }
 export type SalesGoalScope = "INDIVIDUAL" | "COLLECTIVE" | "QUARTERLY";
@@ -50,7 +50,23 @@ export interface SalesAdminConfiguration { config: SalesConfigRecord | null; hol
 
 type Row = Record<string, unknown>;
 const num = (value: unknown) => typeof value === "number" ? value : Number(value);
-const configFrom = (row: Row): SalesConfigRecord => ({ id: String(row.id), piecesPerSet: num(row.pieces_per_set), timezone: String(row.timezone), weekStartsOn: num(row.week_starts_on), allowTeamAggregates: row.allow_team_aggregates === true, revision: num(row.revision) });
+const configFrom = (row: Row): SalesConfigRecord => ({ id: String(row.id), piecesPerSet: num(row.pieces_per_set), timezone: String(row.timezone), weekStartsOn: num(row.week_starts_on), allowTeamAggregates: row.allow_team_aggregates === true, autoOpenPeriod: row.auto_open_period !== false, revision: num(row.revision) });
+
+/** Abertura automática do período do mês corrente (P4-segura). */
+export async function ensureOpenSalesPeriod(supabase: SupabaseClient): Promise<SalesAdminResult<{ periodId: string | null; created: boolean; reason: string }>> {
+  const { data, error } = await supabase.rpc("sales_ensure_open_period_v1");
+  if (error) return failed(error);
+  const row = (data ?? {}) as Row;
+  return ok({ periodId: row.period_id ? String(row.period_id) : null, created: row.created === true, reason: String(row.reason ?? "") });
+}
+
+/** Liga/desliga a abertura automática de período. */
+export async function setSalesAutoOpenPeriod(supabase: SupabaseClient, enabled: boolean): Promise<SalesAdminResult<{ autoOpenPeriod: boolean }>> {
+  const { data, error } = await supabase.rpc("sales_admin_set_auto_open_period_v1", { p_enabled: enabled });
+  if (error) return failed(error);
+  const row = (data ?? {}) as Row;
+  return ok({ autoOpenPeriod: row.auto_open_period === true });
+}
 const holidayFrom = (row: Row): SalesHolidayRecord => ({ id: String(row.id), date: String(row.date), name: String(row.name), isActive: row.is_active === true, revision: num(row.revision) });
 const periodFrom = (row: Row): SalesPeriodRecord => ({ id: String(row.id), startsOn: String(row.starts_on), endsOn: String(row.ends_on), status: row.status === "CLOSED" ? "CLOSED" : "OPEN", revision: num(row.revision), readOnlyReason: row.read_only_reason === "CLOSED_PERIOD" ? "CLOSED_PERIOD" : null });
 const scopeFrom = (value: unknown): SalesGoalScope => value === "COLLECTIVE" ? "COLLECTIVE" : value === "QUARTERLY" ? "QUARTERLY" : "INDIVIDUAL";

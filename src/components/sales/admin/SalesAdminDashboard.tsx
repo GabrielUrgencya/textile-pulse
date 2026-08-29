@@ -40,6 +40,8 @@ export function SalesAdminDashboard() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
+      // P4: garante o período do mês corrente aberto (se o toggle estiver ligado). Tolerante a falha.
+      await salesAdminConfigurationRequest("/api/vendas/admin/ensure-period", { method: "POST" }).catch(() => {});
       const [config, people] = await Promise.all([salesAdminConfigurationRequest<SalesAdminConfiguration>("/api/vendas/admin/configuration"), salesAdminConfigurationRequest<SalesAdminDirectoryEntry[]>("/api/vendas/admin/directory")]);
       setConfiguration(config); setDirectory(people);
       const requestedPeriod = search.get("period"); const requestedConsultant = search.get("consultant");

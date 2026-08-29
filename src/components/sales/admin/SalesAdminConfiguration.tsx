@@ -21,7 +21,9 @@ export function SalesAdminConfiguration() {
   const [data, setData] = useState<SalesAdminConfiguration | null>(null);
   const [error, setError] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [announcement, setAnnouncement] = useState("");
   const [pieces, setPieces] = useState(1); const [timezone, setTimezone] = useState("America/Sao_Paulo"); const [week, setWeek] = useState(1); const [aggregates, setAggregates] = useState(true); const errorRef = useRef<HTMLDivElement>(null);
-  const load = useCallback(async () => { setError(null); try { const value = await salesAdminConfigurationRequest<SalesAdminConfiguration>("/api/vendas/admin/configuration"); setData(value); setPieces(value.config?.piecesPerSet ?? 1); setTimezone(value.config?.timezone ?? "America/Sao_Paulo"); setWeek(value.config?.weekStartsOn ?? 1); setAggregates(value.config?.allowTeamAggregates ?? true); } catch (cause) { setError(cause instanceof Error ? cause.message : "Configuração indisponível."); } }, []);
+  const [autoOpen, setAutoOpen] = useState(true); const [autoSaving, setAutoSaving] = useState(false);
+  const load = useCallback(async () => { setError(null); try { const value = await salesAdminConfigurationRequest<SalesAdminConfiguration>("/api/vendas/admin/configuration"); setData(value); setPieces(value.config?.piecesPerSet ?? 1); setTimezone(value.config?.timezone ?? "America/Sao_Paulo"); setWeek(value.config?.weekStartsOn ?? 1); setAggregates(value.config?.allowTeamAggregates ?? true); setAutoOpen(value.config?.autoOpenPeriod ?? true); } catch (cause) { setError(cause instanceof Error ? cause.message : "Configuração indisponível."); } }, []);
+  async function toggleAutoOpen(next: boolean) { setAutoSaving(true); setError(null); const prev = autoOpen; setAutoOpen(next); try { await salesAdminConfigurationRequest("/api/vendas/admin/auto-open-period", { method: "PUT", body: JSON.stringify({ enabled: next }) }); setAnnouncement(next ? "Abertura automática de período ligada." : "Abertura automática desligada."); } catch (cause) { setAutoOpen(prev); setError(cause instanceof Error ? cause.message : "Falha ao salvar."); } finally { setAutoSaving(false); } }
   useEffect(() => void load(), [load]);
   async function save(event: React.FormEvent) { event.preventDefault(); setSaving(true); setError(null); try { await salesAdminConfigurationRequest("/api/vendas/admin/configuration", { method: "PUT", body: JSON.stringify({ piecesPerSet: pieces, timezone, weekStartsOn: week, allowTeamAggregates: aggregates, expectedRevision: data?.config?.revision ?? 0 }) }); setAnnouncement("Configurações salvas."); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao salvar."); requestAnimationFrame(() => errorRef.current?.focus()); } finally { setSaving(false); } }
   return (
@@ -58,6 +60,12 @@ export function SalesAdminConfiguration() {
             </div>
             <Button type="submit" disabled={saving || !data} className="min-h-11 md:col-span-2 md:w-fit">{saving ? "Salvando..." : "Salvar configurações"}</Button>
           </form>
+          <div className="mt-6 border-t border-border/60 pt-5">
+            <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
+              <div><Label htmlFor="auto-open">Abertura automática de período</Label><p className="mt-0.5 text-[11px] text-muted-foreground">Se não houver período aberto, o sistema abre o do mês corrente automaticamente. O fechamento continua manual (deliberado). Salva na hora.</p></div>
+              <Switch id="auto-open" checked={autoOpen} onCheckedChange={(v) => void toggleAutoOpen(v)} disabled={autoSaving || !data} />
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
