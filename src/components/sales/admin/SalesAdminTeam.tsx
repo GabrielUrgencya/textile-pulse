@@ -57,6 +57,17 @@ export function SalesAdminTeam() {
   // D2: dados da consultora escopados ao Vendas
   const [details, setDetails] = useState<{ displayName: string; phone: string; notes: string }>({ displayName: "", phone: "", notes: "" });
   const [detailsSaving, setDetailsSaving] = useState(false);
+  // 11.1: criação de consultora (VENDEDOR) e adição de admin por busca
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState<{ name: string; email: string; password: string }>({ name: "", email: "", password: "" });
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdPin, setCreatedPin] = useState<string | null>(null);
+  const [adminSearch, setAdminSearch] = useState(false);
+  const [adminQuery, setAdminQuery] = useState("");
+  const [adminResults, setAdminResults] = useState<SalesAdminDirectoryEntry[]>([]);
+  const [adminBusy, setAdminBusy] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,6 +160,71 @@ export function SalesAdminTeam() {
     }
   }
 
+  async function createConsultant() {
+    if (createBusy) return;
+    if (!createForm.name.trim()) { setCreateError("Informe o nome da consultora."); return; }
+    setCreateBusy(true); setCreateError(null); setCreatedPin(null);
+    try {
+      const response = await fetch("/api/team/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: createForm.name.trim(),
+          email: createForm.email.trim() || undefined,
+          password: createForm.password.trim() || undefined,
+          role: "VENDEDOR",
+          sector: "VENDAS",
+        }),
+      });
+      const payload = (await response.json()) as { data?: { pin?: string; salesLinkWarning?: string } } & ApiError;
+      if (!response.ok || !payload.data) throw new Error(payload.error?.message || "Não foi possível criar a consultora.");
+      setCreatedPin(payload.data.pin ?? null);
+      setAnnouncement(`Consultora ${createForm.name.trim()} criada.`);
+      await load();
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : "Não foi possível criar a consultora.");
+    } finally {
+      setCreateBusy(false);
+    }
+  }
+
+  async function runAdminSearch(term: string) {
+    setAdminQuery(term);
+    if (term.trim().length < 2) { setAdminResults([]); return; }
+    setAdminBusy(true); setAdminError(null);
+    try {
+      const response = await fetch(`/api/vendas/admin/profile-search?q=${encodeURIComponent(term.trim())}`, { cache: "no-store" });
+      const payload = (await response.json()) as { data?: SalesAdminDirectoryEntry[] } & ApiError;
+      if (!response.ok || !payload.data) throw new Error(payload.error?.message || "Falha na busca.");
+      setAdminResults(payload.data);
+    } catch (cause) {
+      setAdminError(cause instanceof Error ? cause.message : "Falha na busca.");
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
+  async function promoteAdmin(person: SalesAdminDirectoryEntry) {
+    if (adminBusy) return;
+    setAdminBusy(true); setAdminError(null);
+    try {
+      const response = await fetch("/api/vendas/admin/memberships", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: person.profileId, role: "ADMIN", isActive: true }),
+      });
+      const payload = (await response.json()) as ApiError;
+      if (!response.ok) throw new Error(payload.error?.message || "Não foi possível promover a administrador.");
+      setAnnouncement(`${personName(person)} agora é administrador do Vendas.`);
+      setAdminSearch(false); setAdminQuery(""); setAdminResults([]);
+      await load();
+    } catch (cause) {
+      setAdminError(cause instanceof Error ? cause.message : "Não foi possível promover a administrador.");
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
   const columns: DataTableColumn<SalesAdminDirectoryEntry>[] = [
     {
       key: "fullName",
@@ -190,9 +266,15 @@ export function SalesAdminTeam() {
   return (
     <>
       <div aria-live="polite" className="sr-only">{announcement}</div>
-      <PageHeader eyebrow="Administração comercial" title="Equipe" className="items-start gap-4 max-sm:flex-col" />
-      <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-        Habilite perfis que já pertencem a este tenant. Nenhuma conta ou senha é criada aqui.
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <PageHeader eyebrow="Administração comercial" title="Equipe" className="items-start gap-4 max-sm:flex-col" />
+        <div className="flex flex-wrap gap-2">
+          <Button className="min-h-11" onClick={() => { setCreateForm({ name: "", email: "", password: "" }); setCreateError(null); setCreatedPin(null); setCreating(true); }}>Nova consultora</Button>
+          <Button variant="outline" className="min-h-11" onClick={() => { setAdminQuery(""); setAdminResults([]); setAdminError(null); setAdminSearch(true); }}>Adicionar administrador</Button>
+        </div>
+      </div>
+      <p className="mb-6 mt-2 max-w-2xl text-sm text-muted-foreground">
+        A equipe do Vendas é isolada da produção: aqui aparecem só consultoras e administradores do Vendas. Use &quot;Nova consultora&quot; para criar um acesso exclusivo de vendas.
       </p>
 
       <Card>
@@ -316,6 +398,72 @@ export function SalesAdminTeam() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={creating} onOpenChange={(open) => !open && !createBusy && setCreating(false)}>
+        <DialogContent className="sales-theme max-h-[90dvh] w-[calc(100%-2rem)] overflow-y-auto motion-reduce:duration-0">
+          <DialogHeader>
+            <DialogTitle>Nova consultora</DialogTitle>
+            <DialogDescription>Cria um acesso exclusivo de Vendas (cargo Vendedor). A pessoa não vê nenhuma área de produção.</DialogDescription>
+          </DialogHeader>
+          {createError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{createError}</div>}
+          {createdPin ? (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border/60 bg-secondary/30 p-4">
+                <p className="text-sm">Consultora criada. PIN de acesso:</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums tracking-widest">{createdPin}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Anote e entregue à consultora. Ela também pode entrar por e-mail/senha, se informados.</p>
+              </div>
+              <DialogFooter>
+                <Button className="min-h-11" onClick={() => setCreating(false)}>Concluir</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="space-y-1"><Label htmlFor="nc-name">Nome</Label><Input id="nc-name" className="min-h-11" value={createForm.name} onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nome da consultora" /></div>
+              <div className="space-y-1"><Label htmlFor="nc-email">E-mail (opcional)</Label><Input id="nc-email" type="email" className="min-h-11" value={createForm.email} onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))} placeholder="para login por e-mail" /></div>
+              <div className="space-y-1"><Label htmlFor="nc-pass">Senha (opcional)</Label><Input id="nc-pass" type="text" className="min-h-11" value={createForm.password} onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))} placeholder="deixe em branco para acesso só por PIN" /></div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" className="min-h-11" disabled={createBusy} onClick={() => setCreating(false)}>Cancelar</Button>
+                <Button className="min-h-11" disabled={createBusy} onClick={() => void createConsultant()}>{createBusy ? "Criando..." : "Criar consultora"}</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={adminSearch} onOpenChange={(open) => !open && !adminBusy && setAdminSearch(false)}>
+        <DialogContent className="sales-theme max-h-[90dvh] w-[calc(100%-2rem)] overflow-y-auto motion-reduce:duration-0">
+          <DialogHeader>
+            <DialogTitle>Adicionar administrador</DialogTitle>
+            <DialogDescription>Busque um perfil do tenant para promover a administrador do Vendas. Esta é a única porta que consulta perfis de produção.</DialogDescription>
+          </DialogHeader>
+          {adminError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{adminError}</div>}
+          <div className="relative">
+            <Search aria-hidden className="absolute left-3 top-3 size-4 text-muted-foreground" />
+            <Input className="min-h-11 pl-10" value={adminQuery} onChange={(e) => void runAdminSearch(e.target.value)} placeholder="Buscar por nome ou e-mail (mín. 2 letras)" />
+          </div>
+          <div className="space-y-2">
+            {adminBusy && <p className="text-sm text-muted-foreground">Buscando...</p>}
+            {!adminBusy && adminQuery.trim().length >= 2 && adminResults.length === 0 && <p className="text-sm text-muted-foreground">Nenhum perfil encontrado.</p>}
+            {adminResults.map((person) => (
+              <div key={person.profileId} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{personName(person)}</p>
+                  {person.email && <p className="truncate text-xs text-muted-foreground">{person.email}</p>}
+                </div>
+                {person.salesRole === "ADMIN" && person.membershipIsActive ? (
+                  <StatusBadge status="success" size="md">Já é admin</StatusBadge>
+                ) : (
+                  <Button variant="outline" className="min-h-11 shrink-0" disabled={adminBusy} onClick={() => void promoteAdmin(person)}>Promover a admin</Button>
+                )}
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="min-h-11" disabled={adminBusy} onClick={() => setAdminSearch(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

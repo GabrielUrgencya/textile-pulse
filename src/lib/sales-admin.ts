@@ -101,6 +101,7 @@ export type SalesAdminErrorCode =
   | "OVERLAPPING_PERIOD"
   | "DUPLICATE_HOLIDAY"
   | "DUPLICATE_GOAL_IDENTITY"
+  | "GOAL_HAS_HISTORY"
   | "INELIGIBLE_ASSIGNEE"
   | "STALE_REVISION"
   | "VALIDATION"
@@ -300,6 +301,31 @@ export async function loadSalesAdminDirectory(
   if (error) return { data: null, error: mapSalesAdminRpcError(error) };
   if (!Array.isArray(data)) return unavailableResult();
 
+  const entries = (data as DirectoryRpcEntry[]).map((entry) => ({
+    profileId: entry.profile_id ?? "",
+    fullName: entry.full_name ?? null,
+    email: entry.email ?? null,
+    profileIsActive: entry.profile_is_active === true,
+    membershipId: entry.membership_id ?? null,
+    salesRole: entry.sales_role ?? null,
+    membershipIsActive: entry.membership_is_active === true,
+  }));
+  if (entries.some((entry) => !entry.profileId)) return unavailableResult();
+  return { data: entries, error: null };
+}
+
+/**
+ * Busca explícita de perfis do tenant (produção incluída) para promover a ADMIN
+ * do Vendas. Diferente de loadSalesAdminDirectory (escopado ao Vendas), esta porta
+ * enxerga todos os profiles — só sob busca ativa do admin. Termo < 2 chars → vazio.
+ */
+export async function searchSalesAdminProfiles(
+  supabase: SupabaseClient,
+  query: string,
+): Promise<SalesAdminResult<SalesAdminDirectoryEntry[]>> {
+  const { data, error } = await supabase.rpc("sales_admin_profile_search_v1", { p_query: query });
+  if (error) return { data: null, error: mapSalesAdminRpcError(error) };
+  if (!Array.isArray(data)) return unavailableResult();
   const entries = (data as DirectoryRpcEntry[]).map((entry) => ({
     profileId: entry.profile_id ?? "",
     fullName: entry.full_name ?? null,
