@@ -117,13 +117,15 @@ function Periods(props: Shared<SalesPeriodRecord>) {
               </div>
               <p className="text-sm text-muted-foreground">{item.status === "OPEN" ? `${businessDaysRemaining(item.endsOn, holidays)} dia(s) útil(eis) até o fim do período` : "Histórico · somente leitura"}</p>
             </div>
-            {item.status === "OPEN" && (
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" className="min-h-11" onClick={() => props.setEditing(item)}>Editar datas</Button>
-                <Button asChild variant="outline" className="min-h-11"><Link href="/vendas/admin/fechamento">Revisar fechamento</Link></Button>
-                <PeriodDeleteButton period={item} reload={props.reload} announce={props.announce} />
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {item.status === "OPEN" && (
+                <>
+                  <Button variant="outline" className="min-h-11" onClick={() => props.setEditing(item)}>Editar datas</Button>
+                  <Button asChild variant="outline" className="min-h-11"><Link href="/vendas/admin/fechamento">Revisar fechamento</Link></Button>
+                </>
+              )}
+              <PeriodDeleteButton period={item} reload={props.reload} announce={props.announce} />
+            </div>
           </CardContent>
         </Card>
       ))}
