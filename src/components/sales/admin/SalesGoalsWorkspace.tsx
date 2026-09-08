@@ -203,7 +203,7 @@ function IndividualGoalCard({ goal, period, consultants, assignments, onChanged,
         <div className="grid gap-3 rounded-lg border border-border/60 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <div className="space-y-1"><Label htmlFor={`vf-${goal.id}`}>Início da vigência (trimestre)</Label><Input id={`vf-${goal.id}`} type="date" className="min-h-11" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} /></div>
           <div className="space-y-1"><Label htmlFor={`vu-${goal.id}`}>Fim da vigência (trimestre)</Label><Input id={`vu-${goal.id}`} type="date" className="min-h-11" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} /></div>
-          <p className="text-[11px] text-muted-foreground sm:col-span-3">Defina o trimestre (ex.: de 3 em 3 meses). Salve com "Salvar base". Em branco = vale para todo o período.</p>
+          <p className="text-[11px] text-muted-foreground sm:col-span-3">Defina o trimestre (ex.: de 3 em 3 meses) e salve no botão Salvar base. Em branco = vale para todo o período.</p>
         </div>
       )}
       {error && <div role="alert" className="rounded border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>}
