@@ -230,6 +230,8 @@ export function SalesTvWorkspace() {
     },
   }[snapshot.progress.band];
   const BandIcon = band.icon;
+  const ranking = snapshot.ranking?.consultants ?? [];
+  const hasRanking = ranking.length > 0;
   const direction = snapshot.comparison.available
     ? { ABOVE: "acima", BELOW: "abaixo", STABLE: "estável" }[
         snapshot.comparison.direction
@@ -258,29 +260,62 @@ export function SalesTvWorkspace() {
           </StatusBadge>
         </header>
 
-        <Card className="bg-card flex flex-1 flex-col items-center justify-center gap-5 py-8 text-center">
-          <p className="text-muted-foreground text-base">
-            {snapshot.period.starts_on} a {snapshot.period.ends_on} ·{" "}
-            {snapshot.period.status === "OPEN" ? "Atual" : "Histórico"}
-          </p>
-          {/* Herói: medidor radial premium do Lision (mesmo componente da TV de produção),
-              em modo percentual da meta coletiva. */}
-          <RadialGauge
-            produced={Math.round(snapshot.progress.percent)}
-            target={100}
-            percent={snapshot.progress.percent}
-            unit="%"
-            state={BAND_STATE[snapshot.progress.band]}
-          />
-          <StatusBadge
-            className="text-sm"
-            status={band.status}
-            size="md"
-            icon={<BandIcon aria-hidden="true" className="h-4 w-4" />}
-          >
-            {band.label}
-          </StatusBadge>
-        </Card>
+        {/* F4: quadro dividido ao meio — meta coletiva de um lado, vendedoras do outro. */}
+        <section className={`grid flex-1 gap-5 ${hasRanking ? "lg:grid-cols-2" : ""}`}>
+          <Card className="bg-card flex flex-col items-center justify-center gap-5 py-8 text-center">
+            <p className="text-muted-foreground text-base">
+              Meta coletiva · {snapshot.period.starts_on} a {snapshot.period.ends_on} ·{" "}
+              {snapshot.period.status === "OPEN" ? "Atual" : "Histórico"}
+            </p>
+            {/* Herói: medidor radial premium do Lision, em modo percentual da meta coletiva. */}
+            <RadialGauge
+              produced={Math.round(snapshot.progress.percent)}
+              target={100}
+              percent={snapshot.progress.percent}
+              unit="%"
+              state={BAND_STATE[snapshot.progress.band]}
+            />
+            <StatusBadge
+              className="text-sm"
+              status={band.status}
+              size="md"
+              icon={<BandIcon aria-hidden="true" className="h-4 w-4" />}
+            >
+              {band.label}
+            </StatusBadge>
+          </Card>
+
+          {hasRanking && (
+            <Card className="bg-card flex flex-col py-6">
+              <CardHeader className="pb-2">
+                <CardTitle>Vendedoras · quanto falta para a meta</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col justify-center gap-4">
+                {ranking.slice(0, 5).map((c) => {
+                  const pct = Math.max(0, Math.min(100, Number(c.percent) || 0));
+                  const falta = Math.max(0, Math.round((100 - pct) * 10) / 10);
+                  return (
+                    <div key={c.profile_id} className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex min-w-0 items-center gap-2 text-lg font-medium">
+                          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-foreground text-sm font-bold text-background">{c.position}º</span>
+                          <span className="truncate">{c.name ?? "Consultora"}</span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="text-xl font-bold tabular-nums">{pct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</span>
+                          <span className="block text-xs text-muted-foreground">faltam {falta.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</span>
+                        </span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-foreground/10">
+                        <div className="h-full rounded-full bg-foreground transition-[width] duration-700" style={{ width: `${Math.max(2, pct)}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+        </section>
 
         <section
           className="grid gap-5 md:grid-cols-2"

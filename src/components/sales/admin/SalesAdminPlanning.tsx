@@ -121,6 +121,7 @@ function Periods(props: Shared<SalesPeriodRecord>) {
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" className="min-h-11" onClick={() => props.setEditing(item)}>Editar datas</Button>
                 <Button asChild variant="outline" className="min-h-11"><Link href="/vendas/admin/fechamento">Revisar fechamento</Link></Button>
+                <PeriodDeleteButton period={item} reload={props.reload} announce={props.announce} />
               </div>
             )}
           </CardContent>
@@ -128,6 +129,36 @@ function Periods(props: Shared<SalesPeriodRecord>) {
       ))}
     </div>
   );
+}
+function PeriodDeleteButton({ period, reload, announce }: { period: SalesPeriodRecord; reload: () => Promise<void>; announce: (v: string) => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function remove() {
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch(`/api/vendas/admin/periods/${period.id}`, { method: "DELETE", cache: "no-store" });
+      const payload = (await res.json()) as { data?: unknown; error?: { message?: string } };
+      if (!res.ok) throw new Error(payload.error?.message || "Não foi possível excluir o período.");
+      announce("Período excluído.");
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao excluir o período.");
+      setBusy(false);
+    }
+  }
+  if (confirming) {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex gap-1">
+          <Button variant="destructive" className="min-h-11" disabled={busy} onClick={() => void remove()}>{busy ? "Excluindo..." : "Confirmar exclusão"}</Button>
+          <Button variant="outline" className="min-h-11" disabled={busy} onClick={() => setConfirming(false)}>Cancelar</Button>
+        </div>
+        {error && <span className="text-xs text-destructive">{error}</span>}
+      </div>
+    );
+  }
+  return <Button variant="ghost" className="min-h-11 text-destructive hover:text-destructive" onClick={() => { setConfirming(true); setError(null); }}>Excluir período</Button>;
 }
 function PeriodForm({ item, setEditing, reload, announce }: Shared<SalesPeriodRecord> & { item: SalesPeriodRecord | "new" }) { const base = item === "new" ? null : item; const [startsOn, setStart] = useState(base?.startsOn ?? ""); const [endsOn, setEnd] = useState(base?.endsOn ?? ""); return <Editor title={base ? "Editar período aberto" : "Novo período"} endpoint="/api/vendas/admin/periods" body={{ periodId: base?.id ?? null, startsOn, endsOn, expectedRevision: base?.revision ?? 0 }} close={() => setEditing(null)} reload={reload} announce={() => announce("Período salvo.")}><Field label="Início" id="period-start"><Input id="period-start" type="date" value={startsOn} onChange={(e) => setStart(e.target.value)} className="min-h-11" /></Field><Field label="Fim" id="period-end"><Input id="period-end" type="date" value={endsOn} onChange={(e) => setEnd(e.target.value)} className="min-h-11" /></Field></Editor>; }
 

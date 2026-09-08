@@ -90,6 +90,7 @@ const errors: Record<string, Omit<SalesAdminError, "details">> = {
   sales_goal_has_history: { code: "GOAL_HAS_HISTORY", message: "Esta meta tem histórico em período encerrado e não pode ser excluída. Você pode zerar os valores ou criar outra.", status: 409 },
   sales_stale_revision: { code: "STALE_REVISION", message: "Os dados foram alterados por outra sessão. Recarregue e tente novamente.", status: 409 },
   sales_not_found_or_out_of_scope: { code: "RESOURCE_NOT_FOUND", message: "Registro indisponível para esta operação.", status: 404 },
+  sales_period_has_sales: { code: "PERIOD_HAS_SALES", message: "Este período tem vendas e não pode ser excluído. Cancele/mova as vendas primeiro.", status: 409 },
 };
 function errorFrom(error: PostgrestError): SalesAdminError {
   const match = Object.entries(errors).find(([key]) => error.message.includes(key))?.[1];
@@ -138,6 +139,14 @@ export async function setSalesHoliday(supabase: SupabaseClient, input: SalesHoli
 export async function setSalesPeriod(supabase: SupabaseClient, input: SalesPeriodInput) { const { data, error } = await supabase.rpc("sales_admin_set_period_v1", { p_period_id: input.periodId ?? null, p_starts_on: input.startsOn, p_ends_on: input.endsOn, p_expected_revision: input.expectedRevision }); return error ? failed<SalesPeriodRecord>(error) : ok(periodFrom(data as Row)); }
 export async function setSalesGoal(supabase: SupabaseClient, input: SalesGoalInput) { const { data, error } = await supabase.rpc("sales_admin_set_goal_v1", { p_goal_id: input.goalId ?? null, p_provisioning_key: input.provisioningKey, p_name: input.name, p_scope: input.scope, p_target_value: input.targetValue, p_commission_percent: input.commissionPercent, p_sort_order: input.sortOrder, p_is_challenge: input.isChallenge, p_is_active: input.isActive, p_valid_from: input.validFrom, p_valid_until: input.validUntil, p_expected_revision: input.expectedRevision }); return error ? failed<SalesGoalRecord>(error) : ok(goalFrom(data as Row)); }
 export async function setSalesGoalAssignment(supabase: SupabaseClient, input: SalesGoalAssignmentInput) { const { data, error } = await supabase.rpc("sales_admin_set_goal_assignment_v2", { p_assignment_id: input.assignmentId ?? null, p_goal_id: input.goalId, p_period_id: input.periodId, p_profile_id: input.profileId, p_is_active: input.isActive, p_target_override: input.targetOverride ?? null, p_commission_override: input.commissionOverride ?? null, p_expected_revision: input.expectedRevision }); return error ? failed<SalesGoalAssignmentRecord>(error) : ok(assignmentFrom(data as Row)); }
+
+/** Exclusão de período em ABERTO (bloqueada se houver vendas). Destrava criar novo período. */
+export async function deleteSalesPeriod(supabase: SupabaseClient, periodId: string): Promise<SalesAdminResult<{ id: string; deleted: boolean }>> {
+  const { data, error } = await supabase.rpc("sales_admin_delete_period_v1", { p_period_id: periodId });
+  if (error) return failed(error);
+  const row = (data ?? {}) as Row;
+  return ok({ id: String(row.id ?? periodId), deleted: row.deleted === true });
+}
 
 /** Exclusão definitiva de meta (bloqueada se houver histórico em período encerrado). */
 export async function deleteSalesGoal(supabase: SupabaseClient, goalId: string): Promise<SalesAdminResult<{ id: string; deleted: boolean }>> {

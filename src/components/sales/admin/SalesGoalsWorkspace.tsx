@@ -158,6 +158,9 @@ function IndividualGoalCard({ goal, period, consultants, assignments, onChanged,
   const [name, setName] = useState(goal.name);
   const [base, setBase] = useState(String(goal.targetValue));
   const [commission, setCommission] = useState(String(goal.commissionPercent));
+  const isQuarterly = goal.scope === "QUARTERLY";
+  const [validFrom, setValidFrom] = useState(goal.validFrom ?? "");
+  const [validUntil, setValidUntil] = useState(goal.validUntil ?? "");
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,9 +168,10 @@ function IndividualGoalCard({ goal, period, consultants, assignments, onChanged,
   async function saveGoal() {
     const t = parseNum(base); const c = parseNum(commission);
     if (t === null || Number.isNaN(t) || c === null || Number.isNaN(c) || c > 100) { setError("Valores inválidos."); return; }
+    if (isQuarterly && validFrom && validUntil && validUntil < validFrom) { setError("A data final da vigência deve ser posterior à inicial."); return; }
     setBusy(true); setError(null);
     try {
-      await salesAdminConfigurationRequest(`/api/vendas/admin/goals`, { method: "PUT", body: JSON.stringify({ goalId: goal.id, provisioningKey: goal.provisioningKey, name: name.trim(), scope: goal.scope, targetValue: t, commissionPercent: c, sortOrder: goal.sortOrder, isChallenge: goal.isChallenge, isActive: goal.isActive, validFrom: goal.validFrom, validUntil: goal.validUntil, expectedRevision: goal.revision }) });
+      await salesAdminConfigurationRequest(`/api/vendas/admin/goals`, { method: "PUT", body: JSON.stringify({ goalId: goal.id, provisioningKey: goal.provisioningKey, name: name.trim(), scope: goal.scope, targetValue: t, commissionPercent: c, sortOrder: goal.sortOrder, isChallenge: goal.isChallenge, isActive: goal.isActive, validFrom: isQuarterly ? (validFrom || null) : goal.validFrom, validUntil: isQuarterly ? (validUntil || null) : goal.validUntil, expectedRevision: goal.revision }) });
       announce(`Meta "${name.trim()}" salva.`); await onChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao salvar."); }
     finally { setBusy(false); }
@@ -195,6 +199,13 @@ function IndividualGoalCard({ goal, period, consultants, assignments, onChanged,
           )}
         </div>
       </div>
+      {isQuarterly && (
+        <div className="grid gap-3 rounded-lg border border-border/60 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <div className="space-y-1"><Label htmlFor={`vf-${goal.id}`}>Início da vigência (trimestre)</Label><Input id={`vf-${goal.id}`} type="date" className="min-h-11" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor={`vu-${goal.id}`}>Fim da vigência (trimestre)</Label><Input id={`vu-${goal.id}`} type="date" className="min-h-11" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} /></div>
+          <p className="text-[11px] text-muted-foreground sm:col-span-3">Defina o trimestre (ex.: de 3 em 3 meses). Salve com "Salvar base". Em branco = vale para todo o período.</p>
+        </div>
+      )}
       {error && <div role="alert" className="rounded border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>}
 
       {period && (

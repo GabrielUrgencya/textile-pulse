@@ -69,6 +69,22 @@ const snapshot = z
       .strict(),
     comparison,
     celebration,
+    ranking: z
+      .object({
+        allowed: z.boolean(),
+        consultants: z.array(
+          z.object({
+            profile_id: z.string(),
+            name: z.string().nullable(),
+            realized: decimal,
+            target: decimal,
+            percent: decimal,
+            position: z.number().int(),
+          }).strict(),
+        ),
+      })
+      .strict()
+      .optional(),
     updated_at: z.string().datetime({ offset: true }),
   })
   .strict();
@@ -99,7 +115,22 @@ export async function loadSalesTvSnapshot(
   });
   if (error) return { available: false };
   const parsed = salesTvSnapshotSchema.safeParse(data);
-  return parsed.success ? parsed.data : { available: false };
+  if (!parsed.success) return { available: false };
+  const result = parsed.data;
+  // F2/F4: ranking individual (com nomes) — gated por allow_team_aggregates na RPC.
+  if (result.available && !("empty" in result && result.empty)) {
+    try {
+      const { data: rank } = await supabase.rpc("sales_tv_kiosk_ranking_v2", {
+        p_token: input.token,
+        p_period_key: input.periodKey ?? null,
+      });
+      const r = (rank ?? {}) as { allowed?: boolean; consultants?: unknown };
+      if (r.allowed === true && Array.isArray(r.consultants)) {
+        (result as { ranking?: unknown }).ranking = { allowed: true, consultants: r.consultants };
+      }
+    } catch { /* ranking é opcional; painel coletivo segue sem ele */ }
+  }
+  return result;
 }
 
 export async function acknowledgeSalesTvCelebration(
