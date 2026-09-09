@@ -91,6 +91,8 @@ const errors: Record<string, Omit<SalesAdminError, "details">> = {
   sales_stale_revision: { code: "STALE_REVISION", message: "Os dados foram alterados por outra sessão. Recarregue e tente novamente.", status: 409 },
   sales_not_found_or_out_of_scope: { code: "RESOURCE_NOT_FOUND", message: "Registro indisponível para esta operação.", status: 404 },
   sales_period_has_sales: { code: "PERIOD_HAS_SALES", message: "Este período tem vendas e não pode ser excluído. Cancele/mova as vendas primeiro.", status: 409 },
+  // Sobreposição é permitida; só datas idênticas colidem (constraint única, usada pela auto-abertura).
+  sales_periods_tenant_dates_key: { code: "OVERLAPPING_PERIOD", message: "Já existe um período com exatamente essas datas. Exclua-o primeiro para recriar.", status: 409 },
 };
 function errorFrom(error: PostgrestError): SalesAdminError {
   const match = Object.entries(errors).find(([key]) => error.message.includes(key))?.[1];
